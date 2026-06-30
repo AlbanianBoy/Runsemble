@@ -1,0 +1,668 @@
+     1→import { db } from '@/lib/db'
+     2→import { NextResponse } from 'next/server'
+     3→import { addHours, subHours, subDays } from 'date-fns'
+     4→
+     5→async function seed() {
+     6→  console.log('Seeding database...')
+     7→
+     8→  // 1. Clear all existing data in FK-safe order
+     9→  await db.runRating.deleteMany()
+    10→  await db.hotspotParticipant.deleteMany()
+    11→  await db.userBadge.deleteMany()
+    12→  await db.groupChatMessage.deleteMany()
+    13→  await db.chatMessage.deleteMany()
+    14→  await db.runInvite.deleteMany()
+    15→  await db.feedPost.deleteMany()
+    16→  await db.groupMember.deleteMany()
+    17→  await db.runGroup.deleteMany()
+    18→  await db.hotspot.deleteMany()
+    19→  await db.user.deleteMany()
+    20→
+    21→  console.log('Cleared all existing data')
+    22→
+    23→  // 2. Create 8 realistic seed users
+    24→  const now = new Date()
+    25→  const users = await db.user.createMany({
+    26→    data: [
+    27→      {
+    28→        id: 'user-maya',
+    29→        name: 'Maya Chen',
+    30→        email: 'maya.chen@runsemble.app',
+    31→        avatar: null,
+    32→        bio: "Trail enthusiast & sunrise chaser. If the path has mud, I'm there \u{1F3C3}\u200D\u2640\uFE0F\u{1F33F}",
+    33→        city: 'Antwerp',
+    34→        preferredSport: 'running',
+    35→        paceLevel: 'advanced',
+    36→        schedulePreference: 'morning',
+    37→        xp: 1250,
+    38→        streak: 14,
+    39→        longestStreak: 30,
+    40→        lastActiveDate: now.toISOString().split('T')[0],
+    41→        totalRuns: 87,
+    42→        totalPeopleRunWith: 34,
+    43→        isAvailable: true,
+    44→        availableUntil: addHours(now, 2),
+    45→        privacyVisible: true,
+    46→        onboardingComplete: true,
+    47→      },
+    48→      {
+    49→        id: 'user-jonas',
+    50→        name: 'Jonas De Smedt',
+    51→        email: 'jonas.desmedt@runsemble.app',
+    52→        avatar: null,
+    53→        bio: 'Marathon runner turned social runner. Best pace: 4:15/km',
+    54→        city: 'Antwerp',
+    55→        preferredSport: 'running',
+    56→        paceLevel: 'advanced',
+    57→        schedulePreference: 'evening',
+    58→        xp: 980,
+    59→        streak: 7,
+    60→        longestStreak: 21,
+    61→        lastActiveDate: now.toISOString().split('T')[0],
+    62→        totalRuns: 62,
+    63→        totalPeopleRunWith: 19,
+    64→        isAvailable: false,
+    65→        privacyVisible: true,
+    66→        onboardingComplete: true,
+    67→      },
+    68→      {
+    69→        id: 'user-sophie',
+    70→        name: 'Sophie Van den Berg',
+    71→        email: 'sophie.vdb@runsemble.app',
+    72→        avatar: null,
+    73→        bio: 'Just finished my first 10K! Looking for running buddies',
+    74→        city: 'Antwerp',
+    75→        preferredSport: 'running',
+    76→        paceLevel: 'beginner',
+    77→        schedulePreference: 'evening',
+    78→        xp: 220,
+    79→        streak: 5,
+    80→        longestStreak: 12,
+    81→        lastActiveDate: subDays(now, 1).toISOString().split('T')[0],
+    82→        totalRuns: 18,
+    83→        totalPeopleRunWith: 7,
+    84→        isAvailable: true,
+    85→        availableUntil: addHours(now, 1),
+    86→        privacyVisible: true,
+    87→        onboardingComplete: true,
+    88→      },
+    89→      {
+    90→        id: 'user-lars',
+    91→        name: 'Lars Peeters',
+    92→        email: 'lars.peeters@runsemble.app',
+    93→        avatar: null,
+    94→        bio: 'Weekend warrior. Parkrun PB chaser. Dad of two',
+    95→        city: 'Antwerp',
+    96→        preferredSport: 'running',
+    97→        paceLevel: 'intermediate',
+    98→        schedulePreference: 'morning',
+    99→        xp: 540,
+   100→        streak: 3,
+   101→        longestStreak: 14,
+   102→        lastActiveDate: now.toISOString().split('T')[0],
+   103→        totalRuns: 41,
+   104→        totalPeopleRunWith: 12,
+   105→        isAvailable: false,
+   106→        privacyVisible: true,
+   107→        onboardingComplete: true,
+   108→      },
+   109→      {
+   110→        id: 'user-emma',
+   111→        name: 'Emma Wouters',
+   112→        email: 'emma.wouters@runsemble.app',
+   113→        avatar: null,
+   114→        bio: 'Yoga & running - the perfect balance',
+   115→        city: 'Antwerp',
+   116→        preferredSport: 'running',
+   117→        paceLevel: 'intermediate',
+   118→        schedulePreference: 'afternoon',
+   119→        xp: 680,
+   120→        streak: 9,
+   121→        longestStreak: 18,
+   122→        lastActiveDate: now.toISOString().split('T')[0],
+   123→        totalRuns: 53,
+   124→        totalPeopleRunWith: 22,
+   125→        isAvailable: true,
+   126→        availableUntil: addHours(now, 3),
+   127→        privacyVisible: true,
+   128→        onboardingComplete: true,
+   129→      },
+   130→      {
+   131→        id: 'user-kai',
+   132→        name: 'Kai Maes',
+   133→        email: 'kai.maes@runsemble.app',
+   134→        avatar: null,
+   135→        bio: 'Speed demon. Training for sub-40 10K',
+   136→        city: 'Antwerp',
+   137→        preferredSport: 'running',
+   138→        paceLevel: 'advanced',
+   139→        schedulePreference: 'evening',
+   140→        xp: 1100,
+   141→        streak: 11,
+   142→        longestStreak: 25,
+   143→        lastActiveDate: subDays(now, 1).toISOString().split('T')[0],
+   144→        totalRuns: 76,
+   145→        totalPeopleRunWith: 28,
+   146→        isAvailable: false,
+   147→        privacyVisible: true,
+   148→        onboardingComplete: true,
+   149→      },
+   150→      {
+   151→        id: 'user-anja',
+   152→        name: 'Anja Janssen',
+   153→        email: 'anja.janssen@runsemble.app',
+   154→        avatar: null,
+   155→        bio: 'Running since 2019. Love discovering new routes in Antwerp!',
+   156→        city: 'Antwerp',
+   157→        preferredSport: 'running',
+   158→        paceLevel: 'intermediate',
+   159→        schedulePreference: 'morning',
+   160→        xp: 850,
+   161→        streak: 6,
+   162→        longestStreak: 20,
+   163→        lastActiveDate: now.toISOString().split('T')[0],
+   164→        totalRuns: 58,
+   165→        totalPeopleRunWith: 15,
+   166→        isAvailable: true,
+   167→        availableUntil: addHours(now, 1.5),
+   168→        privacyVisible: true,
+   169→        onboardingComplete: true,
+   170→      },
+   171→      {
+   172→        id: 'user-tomas',
+   173→        name: 'Tomas Dubois',
+   174→        email: 'tomas.dubois@runsemble.app',
+   175→        avatar: null,
+   176→        bio: 'New to running but loving the community vibe!',
+   177→        city: 'Antwerp',
+   178→        preferredSport: 'running',
+   179→        paceLevel: 'beginner',
+   180→        schedulePreference: 'afternoon',
+   181→        xp: 90,
+   182→        streak: 2,
+   183→        longestStreak: 5,
+   184→        lastActiveDate: subDays(now, 2).toISOString().split('T')[0],
+   185→        totalRuns: 8,
+   186→        totalPeopleRunWith: 3,
+   187→        isAvailable: false,
+   188→        privacyVisible: true,
+   189→        onboardingComplete: true,
+   190→      },
+   191→    ],
+   192→  })
+   193→
+   194→  console.log(`Created ${users.count} users`)
+   195→
+   196→  // 3. Create 6 hotspot runs at Antwerp locations
+   197→  const hotspots = await db.hotspot.createMany({
+   198→    data: [
+   199→      {
+   200→        id: 'hotspot-1',
+   201→        name: 'Morning Loop - Stadspark',
+   202→        description: 'Easy 5K loop around the park. Perfect for beginners and recovery runs.',
+   203→        location: 'Stadspark, Antwerp',
+   204→        lat: 51.2163,
+   205→        lng: 4.4186,
+   206→        sportType: 'running',
+   207→        distanceKm: 5.0,
+   208→        paceRange: '6:00-7:00',
+   209→        startTime: addHours(now, 1),
+   210→        recurringIntervalMin: 30,
+   211→        isActive: true,
+   212→        createdBy: 'user-maya',
+   213→      },
+   214→      {
+   215→        id: 'hotspot-2',
+   216→        name: 'Speed Session - Scheldekaaien',
+   217→        description: 'Intervals along the river. Bring your A-game!',
+   218→        location: 'Scheldekaaien, Antwerp',
+   219→        lat: 51.2214,
+   220→        lng: 4.4163,
+   221→        sportType: 'running',
+   222→        distanceKm: 8.0,
+   223→        paceRange: '4:30-5:30',
+   224→        startTime: addHours(now, 3),
+   225→        recurringIntervalMin: 45,
+   226→        isActive: true,
+   227→        createdBy: 'user-kai',
+   228→      },
+   229→      {
+   230→        id: 'hotspot-3',
+   231→        name: 'Sunset Easy Run - Het Steen',
+   232→        description: 'Relaxed evening run starting from Het Steen. All paces welcome.',
+   233→        location: 'Het Steen, Antwerp',
+   234→        lat: 51.2241,
+   235→        lng: 4.4182,
+   236→        sportType: 'running',
+   237→        distanceKm: 4.0,
+   238→        paceRange: 'any',
+   239→        startTime: addHours(now, 5),
+   240→        recurringIntervalMin: 30,
+   241→        isActive: true,
+   242→        createdBy: 'user-emma',
+   243→      },
+   244→      {
+   245→        id: 'hotspot-4',
+   246→        name: 'Long Sunday Run - Hobokense Polder',
+   247→        description: 'Sunday long run through the polder. Flat and scenic.',
+   248→        location: 'Hobokense Polder, Antwerp',
+   249→        lat: 51.1976,
+   250→        lng: 4.3545,
+   251→        sportType: 'running',
+   252→        distanceKm: 12.0,
+   253→        paceRange: '5:30-6:30',
+   254→        startTime: addHours(now, 24),
+   255→        recurringIntervalMin: 60,
+   256→        isActive: true,
+   257→        createdBy: 'user-jonas',
+   258→      },
+   259→      {
+   260→        id: 'hotspot-5',
+   261→        name: 'Lunch Break Tempo - Stadionplein',
+   262→        description: 'Quick tempo run during lunch. 30-min blast!',
+   263→        location: 'Stadionplein, Antwerp',
+   264→        lat: 51.2065,
+   265→        lng: 4.4222,
+   266→        sportType: 'running',
+   267→        distanceKm: 6.0,
+   268→        paceRange: '5:00-6:00',
+   269→        startTime: subHours(now, 2),
+   270→        recurringIntervalMin: 30,
+   271→        isActive: false,
+   272→        createdBy: 'user-lars',
+   273→      },
+   274→      {
+   275→        id: 'hotspot-6',
+   276→        name: 'Trail Tuesday - Linkeroever',
+   277→        description: 'Off-road trails on the left bank. Muddy and fun!',
+   278→        location: 'Linkeroever, Antwerp',
+   279→        lat: 51.215,
+   280→        lng: 4.385,
+   281→        sportType: 'running',
+   282→        distanceKm: 7.0,
+   283→        paceRange: '6:00-7:30',
+   284→        startTime: addHours(now, 26),
+   285→        recurringIntervalMin: 45,
+   286→        isActive: true,
+   287→        createdBy: 'user-maya',
+   288→      },
+   289→    ],
+   290→  })
+   291→
+   292→  console.log(`Created ${hotspots.count} hotspots`)
+   293→
+   294→  // 4. Create 4 groups
+   295→  const groups = await db.runGroup.createMany({
+   296→    data: [
+   297→      {
+   298→        id: 'group-1',
+   299→        name: 'Antwerp Morning Runners',
+   300→        description: 'Early birds who love a sunrise run. We meet at different locations around the city.',
+   301→        isPublic: true,
+   302→        coverImage: null,
+   303→        city: 'Antwerp',
+   304→        totalKmThisWeek: 42.5,
+   305→        memberCount: 5,
+   306→        createdBy: 'user-maya',
+   307→      },
+   308→      {
+   309→        id: 'group-2',
+   310→        name: 'Sunday Long Run Crew',
+   311→        description: 'Building endurance one Sunday at a time. All levels welcome - we regroup!',
+   312→        isPublic: true,
+   313→        coverImage: null,
+   314→        city: 'Antwerp',
+   315→        totalKmThisWeek: 68.0,
+   316→        memberCount: 4,
+   317→        createdBy: 'user-jonas',
+   318→      },
+   319→      {
+   320→        id: 'group-3',
+   321→        name: 'Trail Blazers Antwerp',
+   322→        description: 'For those who prefer dirt over pavement. We explore trails in and around Antwerp.',
+   323→        isPublic: true,
+   324→        coverImage: null,
+   325→        city: 'Antwerp',
+   326→        totalKmThisWeek: 35.0,
+   327→        memberCount: 3,
+   328→        createdBy: 'user-maya',
+   329→      },
+   330→      {
+   331→        id: 'group-4',
+   332→        name: 'Speed Demons',
+   333→        description: 'Private group for sub-40 10K runners. Invitation only.',
+   334→        isPublic: false,
+   335→        coverImage: null,
+   336→        city: 'Antwerp',
+   337→        totalKmThisWeek: 52.0,
+   338→        memberCount: 3,
+   339→        createdBy: 'user-kai',
+   340→      },
+   341→    ],
+   342→  })
+   343→
+   344→  console.log(`Created ${groups.count} groups`)
+   345→
+   346→  // 5. Add group members
+   347→  const groupMembers = await db.groupMember.createMany({
+   348→    data: [
+   349→      // Antwerp Morning Runners
+   350→      { id: 'gm-1-1', groupId: 'group-1', userId: 'user-maya', role: 'owner' },
+   351→      { id: 'gm-1-2', groupId: 'group-1', userId: 'user-lars', role: 'admin' },
+   352→      { id: 'gm-1-3', groupId: 'group-1', userId: 'user-anja', role: 'member' },
+   353→      { id: 'gm-1-4', groupId: 'group-1', userId: 'user-sophie', role: 'member' },
+   354→      { id: 'gm-1-5', groupId: 'group-1', userId: 'user-emma', role: 'member' },
+   355→      // Sunday Long Run Crew
+   356→      { id: 'gm-2-1', groupId: 'group-2', userId: 'user-jonas', role: 'owner' },
+   357→      { id: 'gm-2-2', groupId: 'group-2', userId: 'user-emma', role: 'admin' },
+   358→      { id: 'gm-2-3', groupId: 'group-2', userId: 'user-lars', role: 'member' },
+   359→      { id: 'gm-2-4', groupId: 'group-2', userId: 'user-tomas', role: 'member' },
+   360→      // Trail Blazers Antwerp
+   361→      { id: 'gm-3-1', groupId: 'group-3', userId: 'user-maya', role: 'owner' },
+   362→      { id: 'gm-3-2', groupId: 'group-3', userId: 'user-kai', role: 'member' },
+   363→      { id: 'gm-3-3', groupId: 'group-3', userId: 'user-anja', role: 'member' },
+   364→      // Speed Demons
+   365→      { id: 'gm-4-1', groupId: 'group-4', userId: 'user-kai', role: 'owner' },
+   366→      { id: 'gm-4-2', groupId: 'group-4', userId: 'user-jonas', role: 'member' },
+   367→      { id: 'gm-4-3', groupId: 'group-4', userId: 'user-maya', role: 'member' },
+   368→    ],
+   369→  })
+   370→
+   371→  console.log(`Created ${groupMembers.count} group memberships`)
+   372→
+   373→  // 6. Add hotspot participants
+   374→  const hotspotParticipants = await db.hotspotParticipant.createMany({
+   375→    data: [
+   376→      { id: 'hp-1', hotspotId: 'hotspot-1', userId: 'user-maya', status: 'joined' },
+   377→      { id: 'hp-2', hotspotId: 'hotspot-1', userId: 'user-sophie', status: 'joined' },
+   378→      { id: 'hp-3', hotspotId: 'hotspot-1', userId: 'user-anja', status: 'joined' },
+   379→      { id: 'hp-4', hotspotId: 'hotspot-2', userId: 'user-kai', status: 'joined' },
+   380→      { id: 'hp-5', hotspotId: 'hotspot-2', userId: 'user-jonas', status: 'joined' },
+   381→      { id: 'hp-6', hotspotId: 'hotspot-2', userId: 'user-maya', status: 'joined' },
+   382→      { id: 'hp-7', hotspotId: 'hotspot-3', userId: 'user-emma', status: 'joined' },
+   383→      { id: 'hp-8', hotspotId: 'hotspot-3', userId: 'user-lars', status: 'joined' },
+   384→      { id: 'hp-9', hotspotId: 'hotspot-3', userId: 'user-tomas', status: 'joined' },
+   385→      { id: 'hp-10', hotspotId: 'hotspot-4', userId: 'user-jonas', status: 'joined' },
+   386→      { id: 'hp-11', hotspotId: 'hotspot-4', userId: 'user-emma', status: 'joined' },
+   387→      { id: 'hp-12', hotspotId: 'hotspot-4', userId: 'user-lars', status: 'joined' },
+   388→      { id: 'hp-13', hotspotId: 'hotspot-4', userId: 'user-tomas', status: 'joined' },
+   389→      { id: 'hp-14', hotspotId: 'hotspot-5', userId: 'user-lars', status: 'completed' },
+   390→      { id: 'hp-15', hotspotId: 'hotspot-5', userId: 'user-anja', status: 'completed' },
+   391→      { id: 'hp-16', hotspotId: 'hotspot-5', userId: 'user-sophie', status: 'completed' },
+   392→      { id: 'hp-17', hotspotId: 'hotspot-6', userId: 'user-maya', status: 'joined' },
+   393→      { id: 'hp-18', hotspotId: 'hotspot-6', userId: 'user-kai', status: 'joined' },
+   394→    ],
+   395→  })
+   396→
+   397→  console.log(`Created ${hotspotParticipants.count} hotspot participants`)
+   398→
+   399→  // 7. Create feed posts
+   400→  const feedPosts = await db.feedPost.createMany({
+   401→    data: [
+   402→      {
+   403→        id: 'post-1',
+   404→        authorId: 'user-maya',
+   405→        groupId: null,
+   406→        content: 'Just crushed 10K in the rain at Stadspark! Nothing beats the feeling of a tough run done.',
+   407→        postType: 'moment',
+   408→        likes: 12,
+   409→        comments: 3,
+   410→      },
+   411→      {
+   412→        id: 'post-2',
+   413→        authorId: 'user-sophie',
+   414→        groupId: null,
+   415→        content: 'Milestone: Completed my first 10K today! 1:02:34 - not fast, but I did it! Thanks to everyone in the Morning Runners group for the support',
+   416→        postType: 'milestone',
+   417→        likes: 28,
+   418→        comments: 8,
+   419→      },
+   420→      {
+   421→        id: 'post-3',
+   422→        authorId: 'user-kai',
+   423→        groupId: 'group-4',
+   424→        content: 'Sub-39 10K today! 38:47. The speed work is paying off.',
+   425→        postType: 'milestone',
+   426→        likes: 15,
+   427→        comments: 5,
+   428→      },
+   429→      {
+   430→        id: 'post-4',
+   431→        authorId: 'user-emma',
+   432→        groupId: 'group-1',
+   433→        content: 'Beautiful sunrise run this morning with the crew. 6 of us showed up at 6AM - the energy was amazing!',
+   434→        postType: 'moment',
+   435→        likes: 19,
+   436→        comments: 4,
+   437→      },
+   438→      {
+   439→        id: 'post-5',
+   440→        authorId: 'user-tomas',
+   441→        groupId: null,
+   442→        content: 'Any tips for a beginner dealing with shin splints? I just started running 3 weeks ago and my shins are killing me.',
+   443→        postType: 'question',
+   444→        likes: 8,
+   445→        comments: 12,
+   446→      },
+   447→      {
+   448→        id: 'post-6',
+   449→        authorId: 'user-jonas',
+   450→        groupId: 'group-2',
+   451→        content: "Who's in for the 18K long run this Sunday? Route: Hobokense Polder -> Blokkersdijk -> Scheldekaaien and back. Pace: ~5:45/km",
+   452→        postType: 'challenge',
+   453→        likes: 7,
+   454→        comments: 6,
+   455→      },
+   456→      {
+   457→        id: 'post-7',
+   458→        authorId: 'user-anja',
+   459→        groupId: 'group-3',
+   460→        content: 'Found an amazing new trail section near Linkeroever! Roots, mud, and a hidden bridge - pure trail paradise.',
+   461→        postType: 'moment',
+   462→        likes: 14,
+   463→        comments: 2,
+   464→      },
+   465→      {
+   466→        id: 'post-8',
+   467→        authorId: 'user-lars',
+   468→        groupId: null,
+   469→        content: "Streak day 21! Three weeks of running every single day. The kids think I'm crazy but it feels incredible.",
+   470→        postType: 'milestone',
+   471→        likes: 22,
+   472→        comments: 7,
+   473→      },
+   474→      {
+   475→        id: 'post-9',
+   476→        authorId: 'user-emma',
+   477→        groupId: null,
+   478→        content: 'Yoga + easy 5K = perfect Saturday morning. Balance is everything.',
+   479→        postType: 'moment',
+   480→        likes: 16,
+   481→        comments: 3,
+   482→      },
+   483→      {
+   484→        id: 'post-10',
+   485→        authorId: 'user-maya',
+   486→        groupId: 'group-3',
+   487→        content: 'Trail Tuesday this week: Linkeroever forest loop, 7K. Bring your trail shoes and sense of adventure! Meeting at 18:30.',
+   488→        postType: 'challenge',
+   489→        likes: 9,
+   490→        comments: 4,
+   491→      },
+   492→    ],
+   493→  })
+   494→
+   495→  console.log(`Created ${feedPosts.count} feed posts`)
+   496→
+   497→  // 8. Create badges
+   498→  const badges = await db.userBadge.createMany({
+   499→    data: [
+   500→      // Maya
+   501→      { id: 'badge-1', userId: 'user-maya', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   502→      { id: 'badge-2', userId: 'user-maya', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   503→      { id: 'badge-3', userId: 'user-maya', badgeType: 'streak_30', title: 'Monthly Legend', description: '30-day running streak', icon: 'star' },
+   504→      { id: 'badge-4', userId: 'user-maya', badgeType: 'social_butterfly', title: 'Social Butterfly', description: 'Ran with 25+ different people', icon: 'heart' },
+   505→      { id: 'badge-5', userId: 'user-maya', badgeType: 'early_bird', title: 'Early Bird', description: 'Completed 20+ morning runs', icon: 'sun' },
+   506→      // Jonas
+   507→      { id: 'badge-6', userId: 'user-jonas', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   508→      { id: 'badge-7', userId: 'user-jonas', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   509→      { id: 'badge-8', userId: 'user-jonas', badgeType: 'streak_21', title: 'Three-Week Titan', description: '21-day running streak', icon: 'trophy' },
+   510→      { id: 'badge-9', userId: 'user-jonas', badgeType: 'night_owl', title: 'Night Owl', description: 'Completed 15+ evening runs', icon: 'moon' },
+   511→      // Sophie
+   512→      { id: 'badge-10', userId: 'user-sophie', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   513→      { id: 'badge-11', userId: 'user-sophie', badgeType: 'streak_3', title: 'Hat Trick', description: '3-day running streak', icon: 'zap' },
+   514→      // Lars
+   515→      { id: 'badge-12', userId: 'user-lars', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   516→      { id: 'badge-13', userId: 'user-lars', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   517→      { id: 'badge-14', userId: 'user-lars', badgeType: 'streak_14', title: 'Two-Week Wonder', description: '14-day running streak', icon: 'sparkles' },
+   518→      // Emma
+   519→      { id: 'badge-15', userId: 'user-emma', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   520→      { id: 'badge-16', userId: 'user-emma', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   521→      { id: 'badge-17', userId: 'user-emma', badgeType: 'social_butterfly', title: 'Social Butterfly', description: 'Ran with 20+ different people', icon: 'heart' },
+   522→      // Kai
+   523→      { id: 'badge-18', userId: 'user-kai', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   524→      { id: 'badge-19', userId: 'user-kai', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   525→      { id: 'badge-20', userId: 'user-kai', badgeType: 'speed_demon', title: 'Speed Demon', description: 'Ran a sub-40 10K', icon: 'bolt' },
+   526→      { id: 'badge-21', userId: 'user-kai', badgeType: 'night_owl', title: 'Night Owl', description: 'Completed 15+ evening runs', icon: 'moon' },
+   527→      // Anja
+   528→      { id: 'badge-22', userId: 'user-anja', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+   529→      { id: 'badge-23', userId: 'user-anja', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
+   530→      { id: 'badge-24', userId: 'user-anja', badgeType: 'explorer', title: 'Explorer', description: 'Joined 5+ different hotspots', icon: 'compass' },
+   531→    ],
+   532→  })
+   533→
+   534→  console.log(`Created ${badges.count} badges`)
+   535→
+   536→  // 9. Create group chat messages
+   537→  const groupChats = await db.groupChatMessage.createMany({
+   538→    data: [
+   539→      // Antwerp Morning Runners chat
+   540→      { id: 'gc-1', groupId: 'group-1', senderId: 'user-maya', content: "Good morning crew! Who's joining the Stadspark loop today?" },
+   541→      { id: 'gc-2', groupId: 'group-1', senderId: 'user-lars', content: "I'll be there! Can we do 6K instead of 5K today?" },
+   542→      { id: 'gc-3', groupId: 'group-1', senderId: 'user-anja', content: 'Count me in! Bringing a friend who wants to try running' },
+   543→      { id: 'gc-4', groupId: 'group-1', senderId: 'user-sophie', content: "I'll try to make it! Still a bit nervous about keeping up" },
+   544→      { id: 'gc-5', groupId: 'group-1', senderId: 'user-maya', content: "Don't worry Sophie, we always regroup! See you all at 6:30" },
+   545→      // Sunday Long Run Crew chat
+   546→      { id: 'gc-6', groupId: 'group-2', senderId: 'user-jonas', content: 'Route is set for Sunday: 18K starting from Hobokense Polder. 8:00 AM.' },
+   547→      { id: 'gc-7', groupId: 'group-2', senderId: 'user-emma', content: "Perfect! I've been building up to this distance. What's the planned pace?" },
+   548→      { id: 'gc-8', groupId: 'group-2', senderId: 'user-jonas', content: 'Thinking 5:45/km with walk breaks every 3K. Nobody gets left behind.' },
+   549→      { id: 'gc-9', groupId: 'group-2', senderId: 'user-tomas', content: 'This will be my longest run ever! Should I carb-load the night before?' },
+   550→      { id: 'gc-10', groupId: 'group-2', senderId: 'user-lars', content: 'Yes Tomas! Pasta party the night before is a tradition' },
+   551→      // Trail Blazers chat
+   552→      { id: 'gc-11', groupId: 'group-3', senderId: 'user-maya', content: 'Found a new trail section near Linkeroever - roots, mud, hidden bridge!' },
+   553→      { id: 'gc-12', groupId: 'group-3', senderId: 'user-kai', content: 'Sounds amazing! Is it technical or more runnable?' },
+   554→      { id: 'gc-13', groupId: 'group-3', senderId: 'user-maya', content: 'Mix of both. Bring your grippiest trail shoes!' },
+   555→      // Speed Demons chat
+   556→      { id: 'gc-14', groupId: 'group-4', senderId: 'user-kai', content: 'Session plan for Thursday: 6x800m at 3:20 pace with 2min recovery' },
+   557→      { id: 'gc-15', groupId: 'group-4', senderId: 'user-jonas', content: "Solid session. I'll aim for 3:25s - still building back after my cold" },
+   558→      { id: 'gc-16', groupId: 'group-4', senderId: 'user-maya', content: "I'm in! The track at Bosuil or the Schelde straight?" },
+   559→      { id: 'gc-17', groupId: 'group-4', senderId: 'user-kai', content: 'Schelde straight - better surface and the views help forget the pain' },
+   560→    ],
+   561→  })
+   562→
+   563→  console.log(`Created ${groupChats.count} group chat messages`)
+   564→
+   565→  // 10. Create DMs
+   566→  const chatMessages = await db.chatMessage.createMany({
+   567→    data: [
+   568→      { id: 'dm-1', senderId: 'user-sophie', recipientId: 'user-maya', content: 'Thanks for being so encouraging on my first group run!' },
+   569→      { id: 'dm-2', senderId: 'user-maya', recipientId: 'user-sophie', content: 'You did amazing! The fact that you finished the full 5K says everything.' },
+   570→      { id: 'dm-3', senderId: 'user-tomas', recipientId: 'user-lars', content: 'Hey Lars, any advice for dealing with knee pain after running?' },
+   571→      { id: 'dm-4', senderId: 'user-lars', recipientId: 'user-tomas', content: 'I had the same issue! Try foam rolling your quads and IT band. Also, check your cadence - aim for ~170 spm' },
+   572→      { id: 'dm-5', senderId: 'user-emma', recipientId: 'user-jonas', content: 'The Sunday route looks great! Can we add a water stop around 8K?' },
+   573→      { id: 'dm-6', senderId: 'user-jonas', recipientId: 'user-emma', content: "Good idea! There's a fountain at the Blokkersdijk entrance. I'll add it to the route plan" },
+   574→    ],
+   575→  })
+   576→
+   577→  console.log(`Created ${chatMessages.count} direct messages`)
+   578→
+   579→  // 11. Create run invites
+   580→  const invites = await db.runInvite.createMany({
+   581→    data: [
+   582→      {
+   583→        id: 'invite-1',
+   584→        senderId: 'user-maya',
+   585→        recipientId: 'user-tomas',
+   586→        message: "Hey Tomas! We're doing an easy 5K at Stadspark tomorrow morning. Want to join? It's perfect for building up!",
+   587→        status: 'pending',
+   588→      },
+   589→      {
+   590→        id: 'invite-2',
+   591→        senderId: 'user-kai',
+   592→        recipientId: 'user-anja',
+   593→        message: "Anja, the Speed Demons are doing a track session. You're getting fast - want to try it out?",
+   594→        status: 'pending',
+   595→      },
+   596→      {
+   597→        id: 'invite-3',
+   598→        senderId: 'user-lars',
+   599→        recipientId: 'user-sophie',
+   600→        message: "Sunday long run crew! We'd love to have you. We always regroup so no pressure on pace.",
+   601→        status: 'accepted',
+   602→      },
+   603→      {
+   604→        id: 'invite-4',
+   605→        senderId: 'user-jonas',
+   606→        recipientId: 'user-emma',
+   607→        message: 'Partnership for the Antwerp 10K in March? We could pace each other!',
+   608→        status: 'accepted',
+   609→      },
+   610→    ],
+   611→  })
+   612→
+   613→  console.log(`Created ${invites.count} run invites`)
+   614→
+   615→  // 12. Create run ratings for completed hotspots
+   616→  const ratings = await db.runRating.createMany({
+   617→    data: [
+   618→      { id: 'rating-1', hotspotId: 'hotspot-5', userId: 'user-lars', rating: 5, comment: 'Great lunch break run! Perfect tempo effort.' },
+   619→      { id: 'rating-2', hotspotId: 'hotspot-5', userId: 'user-anja', rating: 4, comment: 'Good route but a bit crowded at noon.' },
+   620→      { id: 'rating-3', hotspotId: 'hotspot-5', userId: 'user-sophie', rating: 5, comment: 'Lars was so encouraging! Loved every minute.' },
+   621→    ],
+   622→  })
+   623→
+   624→  console.log(`Created ${ratings.count} run ratings`)
+   625→
+   626→  console.log('Seed complete!')
+   627→
+   628→  return {
+   629→    users: 8,
+   630→    hotspots: 6,
+   631→    groups: 4,
+   632→    groupMembers: 15,
+   633→    hotspotParticipants: 18,
+   634→    feedPosts: 10,
+   635→    badges: 24,
+   636→    groupChats: 17,
+   637→    chatMessages: 6,
+   638→    invites: 4,
+   639→    ratings: 3,
+   640→  }
+   641→}
+   642→
+   643→export async function POST() {
+   644→  try {
+   645→    const result = await seed()
+   646→    return NextResponse.json({ success: true, ...result })
+   647→  } catch (error) {
+   648→    console.error('Seed failed:', error)
+   649→    return NextResponse.json(
+   650→      { success: false, error: error instanceof Error ? error.message : 'Seed failed' },
+   651→      { status: 500 }
+   652→    )
+   653→  }
+   654→}
+   655→
+   656→export async function GET() {
+   657→  try {
+   658→    const result = await seed()
+   659→    return NextResponse.json({ success: true, ...result })
+   660→  } catch (error) {
+   661→    console.error('Seed failed:', error)
+   662→    return NextResponse.json(
+   663→      { success: false, error: error instanceof Error ? error.message : 'Seed failed' },
+   664→      { status: 500 }
+   665→    )
+   666→  }
+   667→}
+   668→

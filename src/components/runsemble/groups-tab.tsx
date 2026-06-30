@@ -36,7 +36,7 @@ export function GroupsTab() {
 
   const groups = (groupsData as any)?.groups || []
 
-  const { data: selectedGroupData } = useQuery({
+  const { data: selectedGroupData, isLoading: groupLoading } = useQuery({
     queryKey: ['group', selectedGroupId],
     queryFn: () => fetch(`/api/groups/${selectedGroupId}`).then(r => r.json()),
     enabled: !!selectedGroupId,
@@ -44,7 +44,7 @@ export function GroupsTab() {
 
   const selectedGroup = (selectedGroupData as any)?.group || null
 
-  const { data: messagesData } = useQuery({
+  const { data: messagesData, isLoading: chatLoading } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => fetch(`/api/groups/${selectedGroupId}/chat`).then(r => r.json()),
     enabled: !!selectedGroupId && groupView === 'chat',
@@ -81,7 +81,18 @@ export function GroupsTab() {
   })
 
   // Detail view
-  if (groupView === 'detail' && selectedGroup) {
+  if (groupView === 'detail') {
+    if (groupLoading || !selectedGroup) {
+      return (
+        <div className="space-y-4">
+          <Skeleton className="h-4 w-24" />
+          <Skeleton className="h-7 w-48" />
+          <Skeleton className="h-4 w-full" />
+          <div className="flex gap-4"><Skeleton className="h-16 flex-1 rounded-xl" /><Skeleton className="h-16 flex-1 rounded-xl" /><Skeleton className="h-16 flex-1 rounded-xl" /></div>
+          <Skeleton className="h-10 w-full rounded-xl" />
+        </div>
+      )
+    }
     const isMember = selectedGroup.members?.some((m: any) => m.userId === currentUser?.id)
     return (
       <div>
@@ -96,7 +107,7 @@ export function GroupsTab() {
           <div className="flex gap-4 text-center">
             <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.memberCount}</p><p className="text-xs text-muted-foreground">members</p></div>
             <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.totalKmThisWeek?.toFixed(0)}</p><p className="text-xs text-muted-foreground">km this week</p></div>
-            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.messageCount || 0}</p><p className="text-xs text-muted-foreground">messages</p></div>
+            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.totalMessages || 0}</p><p className="text-xs text-muted-foreground">messages</p></div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setGroupView('chat')}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button>
@@ -120,7 +131,14 @@ export function GroupsTab() {
   }
 
   // Chat view
-  if (groupView === 'chat' && selectedGroup) {
+  if (groupView === 'chat') {
+    if (!selectedGroup) {
+      return (
+        <div className="flex items-center justify-center h-[calc(100vh-140px)]">
+          <Skeleton className="h-4 w-32" />
+        </div>
+      )
+    }
     return (
       <div className="flex flex-col h-[calc(100vh-140px)]">
         <button onClick={() => setGroupView('detail')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3"><ArrowLeft className="h-4 w-4" />{selectedGroup.name}</button>
@@ -146,8 +164,35 @@ export function GroupsTab() {
   }
 
   // List view
+  if (isLoading) {
+    return (
+      <div className="space-y-3 pb-4">
+        <div className="flex items-center justify-between">
+          <Skeleton className="h-6 w-20" />
+          <Skeleton className="h-8 w-20 rounded-full" />
+        </div>
+        {[1,2,3].map(i => (<Card key={i}><CardContent className="p-4"><div className="space-y-2"><Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/3" /></div></CardContent></Card>))}
+      </div>
+    )
+  }
+
   const myGroups = groups?.filter((g: any) => g.isMember) || []
   const discoverGroups = groups?.filter((g: any) => !g.isMember && g.isPublic) || []
+
+  if (myGroups.length === 0 && discoverGroups.length === 0) {
+    return (
+      <div className="space-y-5 pb-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold">Groups</h2>
+          <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
+        </div>
+        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
+          <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+          No groups yet. Create one to get started!
+        </CardContent></Card>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-5 pb-4">

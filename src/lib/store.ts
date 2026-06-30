@@ -108,8 +108,11 @@ export const useRunsembleStore = create<RunsembleState>()(
     }),
     {
       name: 'runsemble-store',
-      onRehydrateStorage: () => (state) => {
-        if (state) state._hydrated = true
+      onRehydrateStorage: () => () => {
+        // Use setState to ensure React re-renders
+        setTimeout(() => {
+          useRunsembleStore.setState({ _hydrated: true })
+        }, 0)
       },
     }
   )

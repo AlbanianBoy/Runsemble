@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import { MapPin, Clock, Users, Navigation } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { Card, CardContent } from '@/components/ui/card'
+import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -33,7 +34,7 @@ export function MapTab() {
 
   const hotspots = (hotspotsData as any)?.hotspots || []
   const users = (usersData as any)?.users || []
-  const availableRunners = (users as any[])?.filter((u: any) => u.isAvailable && u.id !== currentUser?.id) || []
+  const availableRunners = (users as any[])?.filter((u: any) => u.isAvailable && u.privacyVisible && u.id !== currentUser?.id) || []
 
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
@@ -44,6 +45,16 @@ export function MapTab() {
       }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['hotspots'] }),
   })
+
+  const isLoading = !hotspotsData && !usersData
+
+  if (isLoading) {
+    return (
+      <div className="h-[calc(100vh-140px)] flex items-center justify-center">
+        <Skeleton className="h-full w-full rounded-2xl" />
+      </div>
+    )
+  }
 
   return (
     <div className="relative h-[calc(100vh-140px)]">
