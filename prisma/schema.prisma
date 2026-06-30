@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                String    @id @default(cuid())
+  name              String
+  email             String    @unique
+  avatar            String?
+  bio               String?
+  city              String    @default("Antwerp")
+  preferredSport    String    @default("running")
+  paceLevel         String    @default("beginner") // beginner, intermediate, advanced, any
+  schedulePreference String   @default("evening") // morning, afternoon, evening
+  xp                Int       @default(0)
+  streak            Int       @default(0)
+  longestStreak     Int       @default(0)
+  lastActiveDate    String?
+  totalRuns         Int       @default(0)
+  totalPeopleRunWith Int      @default(0)
+  isAvailable       Boolean   @default(false)
+  availableUntil    DateTime?
+  privacyVisible    Boolean   @default(true)
+  onboardingComplete Boolean  @default(false)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  posts             FeedPost[]
+  joinedHotspots    HotspotParticipant[]
+  groupMemberships  GroupMember[]
+  sentMessages      ChatMessage[] @relation("SentMessages")
+  receivedMessages  ChatMessage[] @relation("ReceivedMessages")
+  sentInvites       RunInvite[] @relation("SentInvites")
+  receivedInvites   RunInvite[] @relation("ReceivedInvites")
+  earnedBadges      UserBadge[]
+  groupChats        GroupChatMessage[]
+  runRatings        RunRating[]
+}
+
+model Hotspot {
+  id          String    @id @default(cuid())
+  name        String
+  description String?
+  location    String
+  lat         Float
+  lng         Float
+  sportType   String    @default("running")
+  distanceKm  Float     @default(5.0)
+  paceRange   String    @default("any")
+  startTime   DateTime
+  recurringIntervalMin Int @default(30)
+  isActive    Boolean   @default(true)
+  createdBy   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  participants HotspotParticipant[]
+  ratings     RunRating[]
+}
+
+model HotspotParticipant {
+  id          String   @id @default(cuid())
+  hotspotId   String
+  userId      String
+  joinedAt    DateTime @default(now())
+  status      String   @default("joined") // joined, completed, cancelled
+
+  hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([hotspotId, userId])
+}
+
+model RunGroup {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  isPublic    Boolean  @default(true)
+  coverImage  String?
+  city        String   @default("Antwerp")
+  totalKmThisWeek Float @default(0)
+  memberCount Int      @default(0)
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     GroupMember[]
+  chatMessages GroupChatMessage[]
+  posts       FeedPost[]
+}
+
+model GroupMember {
+  id          String   @id @default(cuid())
+  groupId     String
+  userId      String
+  role        String   @default("member") // member, admin, owner
+  joinedAt    DateTime @default(now())
+
+  group       RunGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+}
+
+model FeedPost {
+  id          String   @id @default(cuid())
+  authorId    String
+  groupId     String?
+  content     String
+  imageUrl    String?
+  postType    String   @default("moment") // moment, milestone, question, challenge
+  likes       Int      @default(0)
+  comments    Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+}
+
+model ChatMessage {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String?
+  groupId     String?
+  content     String
+  read        Boolean  @default(false)
+  createdAt   DateTime @default(now())
+
+  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User?    @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@index([senderId, recipientId])
+  @@index([groupId])
+}
+
+model GroupChatMessage {
+  id          String   @id @default(cuid())
+  groupId     String
+  senderId    String
+  content     String
+  createdAt   DateTime @default(now())
+
+  group       RunGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([groupId])
+}
+
+model RunInvite {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  message     String?
+  status      String   @default("pending") // pending, accepted, declined
+  createdAt   DateTime @default(now())
+
+  sender      User     @relation("SentInvites", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("ReceivedInvites", fields: [recipientId], references: [id], onDelete: Cascade)
+}
+
+model UserBadge {
+  id          String   @id @default(cuid())
+  userId      String
+  badgeType   String   // first_run, streak_3, streak_7, streak_30, social_butterfly, early_bird, night_owl, etc.
+  title       String
+  description String
+  icon        String
+  earnedAt    DateTime @default(now())
+
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeType])
+}
+
+model RunRating {
+  id          String   @id @default(cuid())
+  hotspotId   String
+  userId      String
+  rating      Int      // 1-5
+  comment     String?
+  createdAt   DateTime @default(now())
+
+  hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
