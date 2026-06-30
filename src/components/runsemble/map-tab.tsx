@@ -28,14 +28,20 @@ export function MapTab() {
   const [selectedRunner, setSelectedRunner] = useState<any>(null)
   const queryClient = useQueryClient()
 
-  const { data: hotspots } = useQuery({ queryKey: ['hotspots'], queryFn: () => fetch('/api/hotspots').then(r => r.json()) })
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => fetch('/api/users').then(r => r.json()) })
+  const { data: hotspotsData } = useQuery({ queryKey: ['hotspots'], queryFn: () => fetch('/api/hotspots').then(r => r.json()) })
+  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => fetch('/api/users').then(r => r.json()) })
 
-  const availableRunners = users?.filter((u: any) => u.isAvailable && u.id !== currentUser?.id) || []
+  const hotspots = (hotspotsData as any)?.hotspots || []
+  const users = (usersData as any)?.users || []
+  const availableRunners = (users as any[])?.filter((u: any) => u.isAvailable && u.id !== currentUser?.id) || []
 
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
-      fetch(`/api/hotspots/${id}/join`, { method: action === 'join' ? 'POST' : 'DELETE' }).then(r => r.json()),
+      fetch(`/api/hotspots/${id}/join${action === 'leave' ? `?userId=${currentUser?.id}` : ''}`, {
+        method: action === 'join' ? 'POST' : 'DELETE',
+        headers: action === 'join' ? { 'Content-Type': 'application/json' } : undefined,
+        body: action === 'join' ? JSON.stringify({ userId: currentUser?.id }) : undefined,
+      }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['hotspots'] }),
   })
 

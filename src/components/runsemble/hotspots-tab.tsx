@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Clock, MapPin, Users, ChevronDown, ChevronUp } from 'lucide-react'
+import { useRunsembleStore } from '@/lib/store'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -14,17 +15,24 @@ import { getAvatarColor, getInitials } from './helpers'
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
 export function HotspotsTab() {
+  const { currentUser } = useRunsembleStore()
   const [expanded, setExpanded] = useState<string | null>(null)
   const queryClient = useQueryClient()
 
-  const { data: hotspots, isLoading } = useQuery({
+  const { data: hotspotsData, isLoading } = useQuery({
     queryKey: ['hotspots'],
     queryFn: () => fetch('/api/hotspots').then(r => r.json()),
   })
 
+  const hotspots = (hotspotsData as any)?.hotspots || []
+
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
-      fetch(`/api/hotspots/${id}/join`, { method: action === 'join' ? 'POST' : 'DELETE' }).then(r => r.json()),
+      fetch(`/api/hotspots/${id}/join${action === 'leave' ? `?userId=${currentUser?.id}` : ''}`, {
+        method: action === 'join' ? 'POST' : 'DELETE',
+        headers: action === 'join' ? { 'Content-Type': 'application/json' } : undefined,
+        body: action === 'join' ? JSON.stringify({ userId: currentUser?.id }) : undefined,
+      }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['hotspots'] }),
   })
 

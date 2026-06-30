@@ -16,11 +16,13 @@ const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 export function ProfileTab() {
   const { currentUser } = useRunsembleStore()
 
-  const { data: badges, isLoading: badgesLoading } = useQuery({
+  const { data: badgesData, isLoading: badgesLoading } = useQuery({
     queryKey: ['badges', currentUser?.id],
     queryFn: () => fetch(`/api/badges?userId=${currentUser?.id}`).then(r => r.json()),
     enabled: !!currentUser?.id,
   })
+
+  const badges = (badgesData as any)?.badges || []
 
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
 

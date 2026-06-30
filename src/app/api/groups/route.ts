@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
+    const { searchParams } = new URL(request.url)
+    const userId = searchParams.get('userId')
+
     const groups = await db.runGroup.findMany({
-      where: {
-        isPublic: true,
-      },
       include: {
         members: {
           include: {
@@ -19,6 +19,11 @@ export async function GET() {
             },
           },
         },
+        _count: {
+          select: {
+            chatMessages: true,
+          },
+        },
       },
       orderBy: { createdAt: 'desc' },
     })
@@ -26,6 +31,9 @@ export async function GET() {
     const groupsWithMeta = groups.map((group) => ({
       ...group,
       memberCount: group.members.length,
+      messageCount: group._count.chatMessages,
+      isMember: userId ? group.members.some((m: any) => m.userId === userId) : false,
+      _count: undefined,
     }))
 
     return NextResponse.json({ groups: groupsWithMeta })

@@ -24,9 +24,13 @@ export function FeedTab() {
   const [postDialogOpen, setPostDialogOpen] = useState(false)
   const [newPostContent, setNewPostContent] = useState('')
 
-  const { data: posts, isLoading } = useQuery({ queryKey: ['feed'], queryFn: () => fetch('/api/feed').then(r => r.json()) })
-  const { data: hotspots } = useQuery({ queryKey: ['hotspots'], queryFn: () => fetch('/api/hotspots').then(r => r.json()) })
-  const { data: users } = useQuery({ queryKey: ['users'], queryFn: () => fetch('/api/users').then(r => r.json()) })
+  const { data: feedData, isLoading } = useQuery({ queryKey: ['feed'], queryFn: () => fetch('/api/feed').then(r => r.json()) })
+  const { data: hotspotsData } = useQuery({ queryKey: ['hotspots'], queryFn: () => fetch('/api/hotspots').then(r => r.json()) })
+  const { data: usersData } = useQuery({ queryKey: ['users'], queryFn: () => fetch('/api/users').then(r => r.json()) })
+
+  const posts = (feedData as any)?.posts || []
+  const hotspots = (hotspotsData as any)?.hotspots || []
+  const users = (usersData as any)?.users || []
 
   const nextHotspot = hotspots?.find((h: any) => h.minutesUntil > 0)
   const availableRunners = users?.filter((u: any) => u.isAvailable && u.id !== currentUser?.id) || []
@@ -95,11 +99,11 @@ export function FeedTab() {
               <Card className="hover:shadow-md transition-shadow">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-3">
-                    <Avatar className="h-10 w-10 mt-0.5"><AvatarFallback className={`text-xs text-white ${getAvatarColor(post.authorName || 'U')}`}>{getInitials(post.authorName || 'U')}</AvatarFallback></Avatar>
+                    <Avatar className="h-10 w-10 mt-0.5"><AvatarFallback className={`text-xs text-white ${getAvatarColor(post.author?.name || 'U')}`}>{getInitials(post.author?.name || 'U')}</AvatarFallback></Avatar>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-sm">{post.authorName}</span>
-                        {post.groupName && <Badge variant="secondary" className="text-xs px-1.5 py-0">{post.groupName}</Badge>}
+                        <span className="font-semibold text-sm">{post.author?.name}</span>
+                        {post.group?.name && <Badge variant="secondary" className="text-xs px-1.5 py-0">{post.group.name}</Badge>}
                         {post.postType === 'milestone' && <Badge className="text-xs px-1.5 py-0 bg-amber-500 text-white border-0">milestone</Badge>}
                         {post.postType === 'question' && <Badge className="text-xs px-1.5 py-0 bg-emerald-500 text-white border-0">question</Badge>}
                         <span className="text-xs text-muted-foreground">{timeAgo(post.createdAt)}</span>

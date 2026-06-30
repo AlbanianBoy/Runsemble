@@ -29,28 +29,38 @@ export function GroupsTab() {
   const [newPublic, setNewPublic] = useState(true)
   const queryClient = useQueryClient()
 
-  const { data: groups, isLoading } = useQuery({
+  const { data: groupsData, isLoading } = useQuery({
     queryKey: ['groups'],
-    queryFn: () => fetch('/api/groups').then(r => r.json()),
+    queryFn: () => fetch(`/api/groups?userId=${currentUser?.id}`).then(r => r.json()),
   })
 
-  const { data: selectedGroup } = useQuery({
+  const groups = (groupsData as any)?.groups || []
+
+  const { data: selectedGroupData } = useQuery({
     queryKey: ['group', selectedGroupId],
     queryFn: () => fetch(`/api/groups/${selectedGroupId}`).then(r => r.json()),
     enabled: !!selectedGroupId,
   })
 
-  const { data: messages } = useQuery({
+  const selectedGroup = (selectedGroupData as any)?.group || null
+
+  const { data: messagesData } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => fetch(`/api/groups/${selectedGroupId}/chat`).then(r => r.json()),
     enabled: !!selectedGroupId && groupView === 'chat',
   })
 
+  const messages = (messagesData as any)?.messages || []
+
   const [chatMsg, setChatMsg] = useState('')
 
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
-      fetch(`/api/groups/${id}/join`, { method: action === 'join' ? 'POST' : 'DELETE' }).then(r => r.json()),
+      fetch(`/api/groups/${id}/join${action === 'leave' ? `?userId=${currentUser?.id}` : ''}`, {
+        method: action === 'join' ? 'POST' : 'DELETE',
+        headers: action === 'join' ? { 'Content-Type': 'application/json' } : undefined,
+        body: action === 'join' ? JSON.stringify({ userId: currentUser?.id }) : undefined,
+      }).then(r => r.json()),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
   })
 
@@ -97,8 +107,8 @@ export function GroupsTab() {
             <div className="space-y-2">
               {selectedGroup.members?.map((m: any) => (
                 <div key={m.userId} className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs text-white ${getAvatarColor(m.userName || m.name || 'U')}`}>{getInitials(m.userName || m.name || 'U')}</AvatarFallback></Avatar>
-                  <span className="text-sm font-medium flex-1">{m.userName || m.name}</span>
+                  <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs text-white ${getAvatarColor(m.user?.name || 'U')}`}>{getInitials(m.user?.name || 'U')}</AvatarFallback></Avatar>
+                  <span className="text-sm font-medium flex-1">{m.user?.name}</span>
                   <Badge variant="outline" className="text-[10px] capitalize">{m.role}</Badge>
                 </div>
               ))}
@@ -120,7 +130,7 @@ export function GroupsTab() {
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
                 <div className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm ${isMe ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md'}`}>
-                  {!isMe && <p className="text-xs font-semibold mb-0.5 opacity-70">{msg.senderName}</p>}
+                  {!isMe && <p className="text-xs font-semibold mb-0.5 opacity-70">{msg.sender?.name}</p>}
                   <p>{msg.content}</p>
                 </div>
               </div>
