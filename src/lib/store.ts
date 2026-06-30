@@ -28,6 +28,9 @@ interface UserProfile {
 }
 
 interface RunsembleState {
+  // Hydration
+  _hydrated: boolean
+
   // Onboarding
   onboardingStep: OnboardingStep
   setOnboardingStep: (step: OnboardingStep) => void
@@ -68,6 +71,7 @@ interface RunsembleState {
 export const useRunsembleStore = create<RunsembleState>()(
   persist(
     (set) => ({
+      _hydrated: false,
       onboardingStep: 'welcome',
       setOnboardingStep: (step) => set({ onboardingStep: step }),
 
@@ -104,6 +108,9 @@ export const useRunsembleStore = create<RunsembleState>()(
     }),
     {
       name: 'runsemble-store',
+      onRehydrateStorage: () => (state) => {
+        if (state) state._hydrated = true
+      },
     }
   )
 )

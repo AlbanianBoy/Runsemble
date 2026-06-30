@@ -21,7 +21,19 @@ const pageVariants = {
 }
 
 export default function Home() {
-  const { onboardingStep, activeTab, currentUser } = useRunsembleStore()
+  const { onboardingStep, activeTab, currentUser, _hydrated } = useRunsembleStore()
+
+  // Don't render until Zustand has rehydrated from localStorage
+  if (!_hydrated) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="text-center">
+          <h1 className="text-2xl font-bold text-gradient-brand">Runsemble</h1>
+          <p className="text-sm text-muted-foreground mt-2">Loading...</p>
+        </div>
+      </div>
+    )
+  }
 
   if (onboardingStep === 'welcome') return <OnboardingWelcome />
   if (onboardingStep === 'profile') return <OnboardingProfile />
