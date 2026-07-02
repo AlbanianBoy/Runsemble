@@ -287,3 +287,31 @@ Verification:
   XP/stats/streak/badges/feed post/notification, like toggle + unlike, comments
   add, notifications panel + unread badge, leaderboard (XP + distance metrics,
   you-highlight), official-spot badges, Map/Runs toggle, dark ↔ light toggle.
+
+---
+Task ID: 16 (Founder brief: audit → roadmap → design polish pass)
+Agent: Claude (Fable 5)
+
+Work Log:
+- Committed all prior work: branch `feature/runsemble-v2`, commits 53e0b18
+  (v2 features) and eca3553 (this polish pass). Repo-local git identity set.
+- **Explicit bug fixes:** verified the sheet z-index fix live — hotspot sheet
+  now stacks above the Leaflet map (z-1400) and its Join button is hittable via
+  elementFromPoint; fixed bottom-nav Start label overlapping the raised button.
+- **Map filters (core concept gap):** pace (any/beginner/intermediate/advanced)
+  + distance (<1/<3/<5 km/anywhere) chips filtering both runner markers and
+  hotspot pins; nearby-count chip updates live (tested 9→7 markers, 4→2 runners).
+- **Feed hierarchy:** replaced three competing animated cards with one next-run
+  CTA card (taps through to Explore) + two calm stat cards; killed all
+  infinite/looping emoji animations; empty state for the For-you scope;
+  running-specific composer copy.
+- **Design discipline:** gradient reserved for the Start button + live tracker
+  only; toggles/pills/CTAs/FAB now solid primary; solid tracking-tight wordmark;
+  removed onboarding diagonal-line pattern; removed duplicate Edit Profile
+  button; availability CTA copy → "I'm free to run" / "Available · tap to stop".
+- **Chat UX:** auto-scroll to newest message in group chat + DMs; per-message
+  timestamps in group chat.
+- .gitignore now excludes prisma/dev.db.
+
+Verification: tsc 0 errors · eslint 0 errors · next build green · live-tested
+filters, sheet stacking, feed layout, chat; zero console errors.
