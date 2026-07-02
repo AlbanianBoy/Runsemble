@@ -315,3 +315,34 @@ Work Log:
 
 Verification: tsc 0 errors · eslint 0 errors · next build green · live-tested
 filters, sheet stacking, feed layout, chat; zero console errors.
+
+---
+Task ID: 17 (Strava-style tracker) + Task 18 (P0: lobby, auth, GDPR)
+Agent: Claude (Fable 5)
+
+Work Log:
+- Tracker rebuilt map-first (commit d4f3525): live position, green start
+  marker, route polyline drawing in real time, Strava record flow
+  (START → pause → black Finish / orange Resume), neutral theme.
+- **Run lobby** (commit c102510): hotspot runs open in a gathering screen —
+  participant list with live "here" status (3s polling), geofenced "I'm here"
+  check-in (~300m, +25 XP once, auto-joins), "Start together" starts the run
+  for everyone (fresh-start window 2h so recurring spots don't replay old
+  signals), "Running with X +n" strip during the run, lobby-mates pre-tagged
+  as buddies at the finish, participant marked completed on save.
+- **Auth**: scrypt password hashing (node:crypto), Session table + httpOnly
+  cookie (30d), /api/auth/{signup,login,logout,me}; onboarding now creates
+  real accounts (password + consent required); login screen; session restore
+  on load. NOTE (hardening): API routes still trust client-sent userId —
+  migrate them to getSessionUser() before real launch.
+- **GDPR**: consentAt recorded; /api/auth/export (full JSON download) and
+  /api/auth/account DELETE (cascading erasure) + profile "Account & data"
+  card (export / logout / delete). PWA manifest added.
+
+Verified live: signup 201 (no hash leak) → me 200 → dup email 409 → wrong pw
+401 → login 200 → export 200 → delete 200 → me 401; geofence rejected a
+check-in from ~132 km; full lobby flow incl. pre-filled buddy tags.
+tsc/eslint/next build green; zero console errors.
+
+Still infrastructure-gated (not code): native wrapper build (Capacitor +
+app-store accounts) for background GPS + push, and Postgres hosting.
