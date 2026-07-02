@@ -26,18 +26,18 @@ export function BottomNav() {
             <NavButton key={tab.id} tab={tab} active={activeTab === tab.id} onClick={() => setActiveTab(tab.id)} />
           ))}
 
-          {/* Center raised Start button */}
-          <div className="relative flex-1 flex justify-center">
+          {/* Center raised Start button — label sits in flow so it never overlaps */}
+          <div className="relative flex-1 self-stretch flex flex-col items-center justify-end pb-1.5">
             <motion.button
               onClick={() => openRunTracker({ label: 'Solo run' })}
               whileTap={{ scale: 0.9 }}
               whileHover={{ scale: 1.05 }}
-              className="absolute -top-8 h-16 w-16 rounded-full gradient-brand text-white shadow-lg shadow-orange-500/40 flex flex-col items-center justify-center ring-4 ring-background"
+              className="absolute -top-6 h-14 w-14 rounded-full gradient-brand text-white shadow-lg shadow-orange-500/40 flex items-center justify-center ring-4 ring-background"
               aria-label="Start a run"
             >
               <Play className="h-6 w-6" fill="currentColor" />
             </motion.button>
-            <span className="absolute -bottom-0 text-[10px] font-semibold text-primary">Start</span>
+            <span className="text-[10px] font-semibold text-primary">Start</span>
           </div>
 
           {/* Right pair */}

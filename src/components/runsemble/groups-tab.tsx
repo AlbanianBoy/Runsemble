@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play } from 'lucide-react'
@@ -55,6 +55,14 @@ export function GroupsTab() {
   const messages: ApiGroupMessage[] = messagesData?.messages ?? []
 
   const [chatMsg, setChatMsg] = useState('')
+
+  // Keep the chat pinned to the newest message.
+  const chatEndRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (groupView === 'chat' && messages.length > 0) {
+      chatEndRef.current?.scrollIntoView({ block: 'end' })
+    }
+  }, [messages, groupView])
 
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
@@ -114,7 +122,7 @@ export function GroupsTab() {
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setGroupView('chat')}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button>
             {isMember ? (
-              <Button className="flex-1 rounded-xl gradient-brand border-0 text-white" onClick={() => openRunTracker({ groupId: selectedGroup.id, label: selectedGroup.name })}>
+              <Button className="flex-1 rounded-xl" onClick={() => openRunTracker({ groupId: selectedGroup.id, label: selectedGroup.name })}>
                 <Play className="h-4 w-4 mr-2" fill="currentColor" />Start run
               </Button>
             ) : (
@@ -158,10 +166,14 @@ export function GroupsTab() {
                 <div className={`max-w-[75%] px-3.5 py-2.5 rounded-2xl text-sm ${isMe ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md'}`}>
                   {!isMe && <p className="text-xs font-semibold mb-0.5 opacity-70">{msg.sender?.name}</p>}
                   <p>{msg.content}</p>
+                  <p className={`text-[10px] mt-1 ${isMe ? 'text-primary-foreground/60' : 'text-muted-foreground'}`}>
+                    {new Date(msg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                  </p>
                 </div>
               </div>
             )
           })}
+          <div ref={chatEndRef} />
         </div>
         <div className="flex gap-2 pt-2 border-t">
           <Input value={chatMsg} onChange={e => setChatMsg(e.target.value)} placeholder="Type a message..." className="rounded-full" onKeyDown={e => e.key === 'Enter' && chatMsg.trim() && sendMsgMutation.mutate(chatMsg)} />

@@ -39,7 +39,7 @@ export default function Home() {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
-          <h1 className="text-2xl font-bold text-gradient-brand">Runsemble</h1>
+          <h1 className="text-2xl font-extrabold tracking-tight text-primary">Runsemble</h1>
           <p className="text-sm text-muted-foreground mt-2">Loading...</p>
         </div>
       </div>
@@ -66,7 +66,7 @@ export default function Home() {
       <div className="max-w-md mx-auto min-h-screen flex flex-col relative">
         <header className="sticky top-0 z-40 glass border-b px-4 py-3">
           <div className="flex items-center justify-between">
-            <h1 className="text-lg font-bold text-gradient-brand">Runsemble</h1>
+            <h1 className="text-lg font-extrabold tracking-tight text-primary">Runsemble</h1>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"

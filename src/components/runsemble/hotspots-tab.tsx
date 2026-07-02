@@ -244,7 +244,7 @@ export function HotspotsTab() {
       {/* ── FAB ── */}
       <motion.button
         onClick={openCreateDialog}
-        className="fixed bottom-24 right-4 sm:bottom-20 sm:right-6 z-40 w-14 h-14 rounded-full gradient-brand text-white shadow-lg shadow-orange-400/30 flex items-center justify-center"
+        className="fixed bottom-24 right-4 sm:bottom-20 sm:right-6 z-40 w-14 h-14 rounded-full bg-primary text-primary-foreground shadow-lg shadow-orange-400/30 flex items-center justify-center"
         whileHover={{ scale: 1.08 }}
         whileTap={{ scale: 0.95 }}
         aria-label="Create a new run"
@@ -410,7 +410,6 @@ export function HotspotsTab() {
               </Button>
               <Button
                 type="submit"
-                className="gradient-brand border-0 text-white hover:opacity-90"
                 disabled={!formValid || isSubmitting}
               >
                 {isSubmitting && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}

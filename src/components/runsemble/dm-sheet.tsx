@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Send, Loader2 } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
@@ -28,6 +28,12 @@ export function DmSheet() {
     refetchInterval: 5000,
   })
   const messages: ApiDirectMessage[] = data?.messages ?? []
+
+  // Pin the thread to the newest message.
+  const endRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    if (messages.length > 0) endRef.current?.scrollIntoView({ block: 'end' })
+  }, [messages])
 
   const send = useMutation({
     mutationFn: (content: string) => apiSend('/api/messages', 'POST', { senderId: me, recipientId: partnerId, content }),
@@ -66,6 +72,7 @@ export function DmSheet() {
               )
             })
           )}
+          <div ref={endRef} />
         </div>
 
         <div className="flex items-center gap-2 p-3 border-t bg-background">

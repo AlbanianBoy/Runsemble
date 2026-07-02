@@ -255,18 +255,6 @@ export function ProfileTab() {
         </button>
       </motion.div>
 
-      {/* Edit Profile Button (mobile-friendly) */}
-      <motion.div {...fadeUp}>
-        <Button
-          variant="outline"
-          className="w-full h-11 text-sm font-medium"
-          onClick={openEditDialog}
-        >
-          <Pencil className="h-4 w-4 mr-2" />
-          Edit Profile
-        </Button>
-      </motion.div>
-
       {/* Stats row */}
       <motion.div {...fadeUp} className="grid grid-cols-4 gap-2">
         <Card><CardContent className="p-2.5 text-center">

@@ -69,15 +69,6 @@ export function OnboardingWelcome() {
           animate={{ scale: [1, 1.2, 1] }}
           transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
         />
-        {/* Diagonal lines pattern */}
-        <svg className="absolute inset-0 w-full h-full opacity-[0.04]" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <pattern id="onboard-lines" patternUnits="userSpaceOnUse" width="40" height="40" patternTransform="rotate(45)">
-              <line x1="0" y1="0" x2="0" y2="40" stroke="white" strokeWidth="1" />
-            </pattern>
-          </defs>
-          <rect width="100%" height="100%" fill="url(#onboard-lines)" />
-        </svg>
       </div>
 
       {/* Content */}

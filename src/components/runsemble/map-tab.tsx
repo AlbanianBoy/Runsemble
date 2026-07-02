@@ -29,11 +29,29 @@ const MapCanvas = dynamic(() => import('./map-canvas'), {
   loading: () => <Skeleton className="h-full w-full rounded-2xl" />,
 })
 
+type PaceFilter = 'any' | 'beginner' | 'intermediate' | 'advanced'
+
+const PACE_OPTIONS: { id: PaceFilter; label: string }[] = [
+  { id: 'any', label: 'Any pace' },
+  { id: 'beginner', label: 'Beginner' },
+  { id: 'intermediate', label: 'Intermediate' },
+  { id: 'advanced', label: 'Advanced' },
+]
+
+const RADIUS_OPTIONS: { v: number | null; label: string }[] = [
+  { v: null, label: 'Anywhere' },
+  { v: 1, label: '< 1 km' },
+  { v: 3, label: '< 3 km' },
+  { v: 5, label: '< 5 km' },
+]
+
 export function MapTab() {
   const { currentUser, isAvailable, setAvailability, updateProfile, openRunTracker, openDm } = useRunsembleStore()
   const [selectedHotspot, setSelectedHotspot] = useState<ApiHotspot | null>(null)
   const [selectedRunner, setSelectedRunner] = useState<ApiUser | null>(null)
   const [view, setView] = useState<'map' | 'runs'>('map')
+  const [paceFilter, setPaceFilter] = useState<PaceFilter>('any')
+  const [radiusKm, setRadiusKm] = useState<number | null>(null)
   const queryClient = useQueryClient()
 
   const { data: hotspotsData } = useQuery({
@@ -60,7 +78,8 @@ export function MapTab() {
     [myLat, myLng]
   )
 
-  // Runners who are available, visible, located, and not me — sorted by distance.
+  // Runners who are available, visible, located, not me, and match the active
+  // pace/distance filters — sorted by distance.
   const availableRunners = useMemo(
     () =>
       users
@@ -70,14 +89,27 @@ export function MapTab() {
             u.privacyVisible &&
             u.lat != null &&
             u.lng != null &&
-            u.id !== myId
+            u.id !== myId &&
+            (paceFilter === 'any' || u.paceLevel === 'any' || u.paceLevel === paceFilter) &&
+            (radiusKm == null || haversineKm(me, { lat: u.lat, lng: u.lng }) <= radiusKm)
         )
         .sort(
           (a, b) =>
             haversineKm(me, { lat: a.lat!, lng: a.lng! }) -
             haversineKm(me, { lat: b.lat!, lng: b.lng! })
         ),
-    [users, myId, me]
+    [users, myId, me, paceFilter, radiusKm]
+  )
+
+  // Hotspot pins that match the same filters.
+  const visibleHotspots = useMemo(
+    () =>
+      hotspots.filter(
+        (h) =>
+          (paceFilter === 'any' || h.paceRange === 'any' || h.paceRange === paceFilter) &&
+          (radiusKm == null || haversineKm(me, { lat: h.lat, lng: h.lng }) <= radiusKm)
+      ),
+    [hotspots, paceFilter, radiusKm, me]
   )
 
   const joinMutation = useMutation({
@@ -131,7 +163,7 @@ export function MapTab() {
             onClick={() => setView(opt.id)}
             className={`relative flex items-center justify-center gap-1.5 rounded-full py-1.5 text-sm font-medium transition-colors ${active ? 'text-primary-foreground' : 'text-muted-foreground'}`}
           >
-            {active && <motion.span layoutId="map-toggle" className="absolute inset-0 rounded-full gradient-brand" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
+            {active && <motion.span layoutId="map-toggle" className="absolute inset-0 rounded-full bg-primary" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
             <span className="relative z-10 flex items-center gap-1.5"><Icon className="h-4 w-4" />{opt.label}</span>
           </button>
         )
@@ -151,11 +183,39 @@ export function MapTab() {
   return (
     <div>
       {toggle}
-      <div className="relative h-[calc(100vh-190px)]">
+
+      {/* Pace + distance filters */}
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+        {PACE_OPTIONS.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setPaceFilter(p.id)}
+            className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+              paceFilter === p.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {p.label}
+          </button>
+        ))}
+        <span className="h-4 w-px bg-border shrink-0 mx-0.5" />
+        {RADIUS_OPTIONS.map((r) => (
+          <button
+            key={r.label}
+            onClick={() => setRadiusKm(r.v)}
+            className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+              radiusKm === r.v ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            {r.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="relative h-[calc(100vh-232px)]">
       <div className="rs-map-wrap absolute inset-0 overflow-hidden rounded-2xl border border-border/60 shadow-sm">
         {isLoading && <Skeleton className="absolute inset-0 z-[600] h-full w-full rounded-2xl" />}
         <MapCanvas
-          hotspots={hotspots}
+          hotspots={visibleHotspots}
           runners={availableRunners}
           me={me}
           myName={currentUser?.name ?? 'You'}
@@ -182,7 +242,7 @@ export function MapTab() {
           onClick={toggleAvailability}
         >
           <Navigation className={`h-4 w-4 mr-2 ${isAvailable ? 'animate-pulse' : ''}`} />
-          {isAvailable ? 'Available Now' : 'Go Available'}
+          {isAvailable ? 'Available · tap to stop' : "I'm free to run"}
         </Button>
       </div>
 
@@ -233,7 +293,7 @@ export function MapTab() {
                   Join
                 </Button>
                 <Button
-                  className="flex-1 rounded-full font-semibold gradient-brand border-0 text-white"
+                  className="flex-1 rounded-full font-semibold"
                   onClick={() => {
                     const hs = selectedHotspot
                     setSelectedHotspot(null)

@@ -69,7 +69,7 @@ export function Leaderboard() {
               onClick={() => setMetric(m.id)}
               className={`relative rounded-full px-3.5 py-1.5 text-xs font-medium whitespace-nowrap transition-colors ${active ? 'text-primary-foreground' : 'text-muted-foreground'}`}
             >
-              {active && <motion.span layoutId="lb-toggle" className="absolute inset-0 rounded-full gradient-brand" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
+              {active && <motion.span layoutId="lb-toggle" className="absolute inset-0 rounded-full bg-primary" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
               <span className="relative z-10">{m.label}</span>
             </button>
           )

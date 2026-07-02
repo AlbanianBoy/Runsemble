@@ -4,8 +4,8 @@ import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { Heart, MessageCircle } from 'lucide-react'
-import { useRunsembleStore, getRankFromXP } from '@/lib/store'
+import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock } from 'lucide-react'
+import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type {
   ApiFeedPost,
@@ -23,13 +23,13 @@ import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
-import { getAvatarColor, getInitials } from './helpers'
+import { getAvatarColor, getInitials, formatDuration } from './helpers'
 import { CommentsSheet } from './comments-sheet'
 
 const fadeUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
-  transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] },
+  transition: { duration: 0.35, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
 }
 
 const staggerContainer = {
@@ -38,7 +38,7 @@ const staggerContainer = {
 
 export function FeedTab() {
   const queryClient = useQueryClient()
-  const { currentUser } = useRunsembleStore()
+  const { currentUser, setActiveTab } = useRunsembleStore()
   const [postDialogOpen, setPostDialogOpen] = useState(false)
   const [newPostContent, setNewPostContent] = useState('')
   const [commentsPostId, setCommentsPostId] = useState<string | null>(null)
@@ -65,7 +65,6 @@ export function FeedTab() {
 
   const nextHotspot = hotspots.find((h) => h.minutesUntil > 0)
   const availableRunners = users.filter((u) => u.isAvailable && u.id !== currentUser?.id)
-  const rank = currentUser ? getRankFromXP(currentUser.xp) : null
 
   // Optimistically flip like state so the heart responds instantly; the server
   // is the source of truth and reconciles on invalidation.
@@ -126,80 +125,64 @@ export function FeedTab() {
               onClick={() => setScope(opt.id)}
               className={`relative rounded-full py-1.5 text-sm font-medium transition-colors ${active ? 'text-primary-foreground' : 'text-muted-foreground'}`}
             >
-              {active && <motion.span layoutId="feed-toggle" className="absolute inset-0 rounded-full gradient-brand" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
+              {active && <motion.span layoutId="feed-toggle" className="absolute inset-0 rounded-full bg-primary" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
               <span className="relative z-10">{opt.label}</span>
             </button>
           )
         })}
       </div>
 
-      {/* Stats strip with better shadows and spacing */}
-      <motion.div
-        className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1"
-        style={{ scrollbarWidth: 'none' }}
-        variants={staggerContainer}
-        initial="initial"
-        animate="animate"
-      >
-        {nextHotspot && (
-          <motion.div variants={fadeUp}>
-            <Card className="min-w-[250px] flex-shrink-0 border-0 shadow-sm hover:shadow-md transition-shadow duration-300 overflow-hidden">
-              <CardContent className="p-4 relative">
-                {/* Animated gradient background */}
-                <div className="absolute inset-0 bg-gradient-to-br from-orange-400 via-amber-400 to-orange-500 opacity-10" />
-                <div className="relative">
-                  <div className="flex items-center gap-2 mb-2">
-                    <span className="relative flex h-2.5 w-2.5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-orange-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-orange-500" />
-                    </span>
-                    <span className="text-xs font-semibold text-orange-700 uppercase tracking-wider">
-                      Next Run
-                    </span>
-                  </div>
-                  <p className="font-semibold text-sm leading-tight mb-1.5">{nextHotspot.name}</p>
-                  <p className="text-xs text-muted-foreground">
-                    starts in {nextHotspot.minutesUntil} min &middot;{' '}
-                    {nextHotspot.participantCount} joining
-                  </p>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-        {currentUser && rank && (
-          <motion.div variants={fadeUp}>
-            <Card className="min-w-[150px] flex-shrink-0 border-0 shadow-sm hover:shadow-md transition-shadow duration-300">
-              <CardContent className="p-4 text-center">
-                <motion.p
-                  className="text-2xl mb-0.5"
-                  animate={{ scale: [1, 1.15, 1] }}
-                  transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-                >
-                  {rank.icon}
-                </motion.p>
-                <p className="font-bold text-lg leading-none">Day {currentUser.streak}</p>
-                <p className="text-xs text-muted-foreground mt-1">current streak</p>
-              </CardContent>
-            </Card>
-          </motion.div>
-        )}
-        <motion.div variants={fadeUp}>
-          <Card className="min-w-[150px] flex-shrink-0 border-0 shadow-sm hover:shadow-md transition-shadow duration-300">
-            <CardContent className="p-4 text-center">
-              <motion.p
-                className="text-2xl mb-0.5"
-                animate={{ x: [0, 4, 0] }}
-                transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-              >
-                🏃
-              </motion.p>
-              <p className="font-bold text-lg leading-none">{availableRunners.length}</p>
-              <p className="text-xs text-muted-foreground mt-1">runners nearby</p>
+      {/* Next run — one clear call to action instead of three competing cards */}
+      {nextHotspot && (
+        <motion.div {...fadeUp}>
+          <Card
+            className="border-border/60 shadow-sm hover:shadow-md transition-shadow cursor-pointer"
+            onClick={() => setActiveTab('map')}
+          >
+            <CardContent className="p-4 flex items-center gap-3">
+              <div className="h-10 w-10 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+                <CalendarClock className="h-5 w-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">
+                  Next run · in {formatDuration(nextHotspot.minutesUntil)}
+                </p>
+                <p className="font-semibold text-sm truncate">{nextHotspot.name}</p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {nextHotspot.participantCount} joining · {nextHotspot.location}
+                </p>
+              </div>
+              <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
             </CardContent>
           </Card>
         </motion.div>
-      </motion.div>
+      )}
+
+      {/* Quick stats — calm, static, glanceable */}
+      <div className="grid grid-cols-2 gap-3">
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="p-3.5 flex items-center gap-3">
+            <div className="h-8 w-8 rounded-full bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+              <Flame className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-base leading-none tabular">{currentUser?.streak ?? 0} days</p>
+              <p className="text-[11px] text-muted-foreground mt-1">current streak</p>
+            </div>
+          </CardContent>
+        </Card>
+        <Card className="border-border/60 shadow-sm">
+          <CardContent className="p-3.5 flex items-center gap-3">
+            <div className="h-8 w-8 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+              <Users className="h-4 w-4" />
+            </div>
+            <div className="min-w-0">
+              <p className="font-bold text-base leading-none tabular">{availableRunners.length}</p>
+              <p className="text-[11px] text-muted-foreground mt-1">runners nearby</p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       <Separator />
 
@@ -221,7 +204,7 @@ export function FeedTab() {
           onClick={() => setPostDialogOpen(true)}
           className="flex-1 text-left text-sm text-muted-foreground bg-muted/50 rounded-full px-4 py-2.5 hover:bg-muted transition-colors duration-200 active:scale-[0.98] transform"
         >
-          What&apos;s on your mind?
+          Share a run or ask a question…
         </button>
       </motion.div>
 
@@ -243,6 +226,25 @@ export function FeedTab() {
             </Card>
           ))}
         </div>
+      ) : posts.length === 0 ? (
+        <Card className="border-dashed">
+          <CardContent className="p-8 text-center text-sm text-muted-foreground">
+            {scope === 'following' ? (
+              <>
+                <p className="font-medium text-foreground mb-1">Your feed is quiet</p>
+                <p>Run with people to add buddies — their posts and your groups show up here.</p>
+                <Button variant="outline" size="sm" className="rounded-full mt-4" onClick={() => setScope('all')}>
+                  Browse everyone
+                </Button>
+              </>
+            ) : (
+              <>
+                <p className="font-medium text-foreground mb-1">No posts yet</p>
+                <p>Track a run and share it to get things going.</p>
+              </>
+            )}
+          </CardContent>
+        </Card>
       ) : (
         <motion.div className="space-y-3" variants={staggerContainer} initial="initial" animate="animate">
           {posts.map((post) => {
@@ -345,7 +347,7 @@ export function FeedTab() {
           <Textarea
             value={newPostContent}
             onChange={e => setNewPostContent(e.target.value)}
-            placeholder="What's on your mind?"
+            placeholder="Share a run, a milestone, or ask a question…"
             rows={4}
           />
           <DialogFooter>

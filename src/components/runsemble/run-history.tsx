@@ -51,7 +51,7 @@ export function RunHistory() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-xl font-bold">Your Runs</h2>
-        <Button size="sm" className="rounded-full gradient-brand border-0 text-white" onClick={() => openRunTracker({ label: 'Solo run' })}>
+        <Button size="sm" className="rounded-full" onClick={() => openRunTracker({ label: 'Solo run' })}>
           <Play className="h-4 w-4 mr-1" fill="currentColor" />Start
         </Button>
       </div>
