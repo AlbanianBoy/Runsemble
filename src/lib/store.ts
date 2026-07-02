@@ -8,11 +8,11 @@ export { getRankFromXP }
 export type { RankTier }
 
 export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
-export type OnboardingStep = 'welcome' | 'profile' | 'complete' | 'done'
+export type OnboardingStep = 'welcome' | 'profile' | 'login' | 'complete' | 'done'
 export type PaceLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
 export type SchedulePreference = 'morning' | 'afternoon' | 'evening' | 'anytime'
 
-interface UserProfile {
+export interface UserProfile {
   id: string
   name: string
   email: string

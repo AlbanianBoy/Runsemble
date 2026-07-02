@@ -3,12 +3,53 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
-import { useRunsembleStore } from '@/lib/store'
+import { useRunsembleStore, type UserProfile, type PaceLevel, type SchedulePreference } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
+import { Checkbox } from '@/components/ui/checkbox'
+
+// ─── API → store mapping ─────────────────────────────────────────────────────
+// One place that turns a user object from any auth endpoint into the store's
+// profile shape, with safe defaults.
+interface DbUser {
+  id: string; name: string; email: string
+  avatar?: string | null; bio?: string | null; city?: string
+  lat?: number | null; lng?: number | null
+  preferredSport?: string; paceLevel?: string; schedulePreference?: string
+  xp?: number; streak?: number; longestStreak?: number
+  totalRuns?: number; totalPeopleRunWith?: number
+  totalDistanceKm?: number; totalDurationSec?: number
+  isAvailable?: boolean; privacyVisible?: boolean
+}
+
+export function toUserProfile(u: DbUser): UserProfile {
+  return {
+    id: u.id,
+    name: u.name,
+    email: u.email,
+    avatar: u.avatar ?? null,
+    bio: u.bio ?? null,
+    city: u.city ?? 'Antwerp',
+    lat: u.lat ?? null,
+    lng: u.lng ?? null,
+    preferredSport: u.preferredSport ?? 'running',
+    paceLevel: (u.paceLevel ?? 'beginner') as PaceLevel,
+    schedulePreference: (u.schedulePreference ?? 'evening') as SchedulePreference,
+    xp: u.xp ?? 0,
+    streak: u.streak ?? 0,
+    longestStreak: u.longestStreak ?? 0,
+    totalRuns: u.totalRuns ?? 0,
+    totalPeopleRunWith: u.totalPeopleRunWith ?? 0,
+    totalDistanceKm: u.totalDistanceKm ?? 0,
+    totalDurationSec: u.totalDurationSec ?? 0,
+    isAvailable: u.isAvailable ?? false,
+    privacyVisible: u.privacyVisible ?? true,
+    onboardingComplete: true,
+  }
+}
 
 const fadeUp = {
   initial: { opacity: 0, y: 16 },
@@ -126,6 +167,17 @@ export function OnboardingWelcome() {
               >
                 Skip for now
               </motion.button>
+
+              {/* Returning users */}
+              <motion.button
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                transition={{ delay: 1 }}
+                onClick={() => setOnboardingStep('login')}
+                className="block mx-auto mt-3 text-white/80 hover:text-white text-sm font-medium transition-colors duration-200 underline-offset-4 hover:underline"
+              >
+                Already have an account? Log in
+              </motion.button>
             </motion.div>
           ) : (
             <motion.div
@@ -181,6 +233,9 @@ export function OnboardingProfile() {
   const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [consent, setConsent] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [city, setCity] = useState('Antwerp')
   const [paceLevel, setPaceLevel] = useState('beginner')
   const [schedule, setSchedule] = useState('evening')
@@ -188,6 +243,8 @@ export function OnboardingProfile() {
   const [loading, setLoading] = useState(false)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'ok' | 'denied'>('idle')
+
+  const canSubmit = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
 
   // Ask for location so "runners near you" and the map centre on the real user.
   const requestLocation = () => {
@@ -207,15 +264,19 @@ export function OnboardingProfile() {
   }
 
   const handleSubmit = async () => {
-    if (!name || !email) return
+    if (!canSubmit) return
     setLoading(true)
+    setErrorMsg(null)
     try {
-      const res = await fetch('/api/users', {
+      // Real account: hashed password + session cookie, via /api/auth/signup.
+      const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name,
           email,
+          password,
+          consent,
           city,
           paceLevel,
           schedulePreference: schedule,
@@ -224,40 +285,16 @@ export function OnboardingProfile() {
           lng: coords?.lng,
         }),
       })
+      const data = await res.json().catch(() => ({}))
       if (!res.ok) {
-        const err = await res.json().catch(() => ({}))
-        console.error('Failed to create user:', err)
+        setErrorMsg(data?.error ?? 'Something went wrong — please try again')
         setLoading(false)
         return
       }
-      const data = await res.json()
-      const dbUser = data.user ?? data
-      setCurrentUser({
-        id: dbUser.id,
-        name: dbUser.name,
-        email: dbUser.email,
-        avatar: dbUser.avatar,
-        bio: dbUser.bio,
-        city: dbUser.city,
-        lat: dbUser.lat ?? null,
-        lng: dbUser.lng ?? null,
-        preferredSport: dbUser.preferredSport ?? 'running',
-        paceLevel: dbUser.paceLevel ?? 'beginner',
-        schedulePreference: dbUser.schedulePreference ?? 'evening',
-        xp: dbUser.xp ?? 0,
-        streak: dbUser.streak ?? 0,
-        longestStreak: dbUser.longestStreak ?? 0,
-        totalRuns: dbUser.totalRuns ?? 0,
-        totalPeopleRunWith: dbUser.totalPeopleRunWith ?? 0,
-        totalDistanceKm: dbUser.totalDistanceKm ?? 0,
-        totalDurationSec: dbUser.totalDurationSec ?? 0,
-        isAvailable: false,
-        privacyVisible: true,
-        onboardingComplete: true,
-      })
+      setCurrentUser(toUserProfile(data.user))
       setOnboardingStep('done')
-    } catch (e) {
-      console.error('Onboarding error:', e)
+    } catch {
+      setErrorMsg('Network error — please try again')
     }
     setLoading(false)
   }
@@ -296,6 +333,17 @@ export function OnboardingProfile() {
               value={email}
               onChange={e => setEmail(e.target.value)}
               placeholder="you@email.com"
+              className="mt-1.5"
+            />
+          </div>
+          <div>
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              placeholder="At least 8 characters"
               className="mt-1.5"
             />
           </div>
@@ -394,16 +442,130 @@ export function OnboardingProfile() {
             />
           </div>
         </div>
-        <motion.div whileTap={{ scale: 0.98 }} className="mt-8">
+        {/* Consent — required, and honest about what we process */}
+        <label className="mt-6 flex items-start gap-3 cursor-pointer">
+          <Checkbox
+            checked={consent}
+            onCheckedChange={(v) => setConsent(v === true)}
+            className="mt-0.5"
+          />
+          <span className="text-xs text-muted-foreground leading-relaxed">
+            I agree that Runsemble processes my profile and (approximate) location
+            to show me nearby runs and runners. I can export or delete my data at
+            any time from my profile.
+          </span>
+        </label>
+
+        {errorMsg && (
+          <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>
+        )}
+
+        <motion.div whileTap={{ scale: 0.98 }} className="mt-6">
           <Button
             size="lg"
             className="w-full rounded-full font-semibold hover:shadow-lg hover:shadow-primary/20 transition-all duration-300"
             onClick={handleSubmit}
-            disabled={!name || !email || loading}
+            disabled={!canSubmit}
           >
-            {loading ? 'Setting up...' : 'Start Running Together'}
+            {loading ? 'Setting up...' : 'Create account & start running'}
           </Button>
         </motion.div>
+
+        <button
+          onClick={() => setOnboardingStep('login')}
+          className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+        >
+          Already have an account? Log in
+        </button>
+      </motion.div>
+    </div>
+  )
+}
+
+export function OnboardingLogin() {
+  const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const submit = async () => {
+    if (!email.trim() || !password || loading) return
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      const res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setErrorMsg(data?.error ?? 'Could not log in')
+        setLoading(false)
+        return
+      }
+      setCurrentUser(toUserProfile(data.user))
+      setOnboardingStep('done')
+    } catch {
+      setErrorMsg('Network error — please try again')
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col justify-center p-6 bg-background">
+      <motion.div {...fadeUp} className="max-w-md mx-auto w-full">
+        <h1 className="text-2xl font-extrabold tracking-tight text-primary mb-1">Runsemble</h1>
+        <h2 className="text-2xl font-bold mb-1">Welcome back</h2>
+        <p className="text-muted-foreground mb-6">Log in and find your next run.</p>
+
+        <div className="space-y-5">
+          <div>
+            <Label htmlFor="login-email">Email</Label>
+            <Input
+              id="login-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              className="mt-1.5"
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+            />
+          </div>
+          <div>
+            <Label htmlFor="login-password">Password</Label>
+            <Input
+              id="login-password"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Your password"
+              className="mt-1.5"
+              onKeyDown={(e) => e.key === 'Enter' && submit()}
+            />
+          </div>
+        </div>
+
+        {errorMsg && (
+          <p className="mt-4 text-sm text-destructive" role="alert">{errorMsg}</p>
+        )}
+
+        <Button
+          size="lg"
+          className="w-full rounded-full font-semibold mt-6"
+          onClick={submit}
+          disabled={!email.trim() || !password || loading}
+        >
+          {loading ? 'Logging in…' : 'Log in'}
+        </Button>
+
+        <button
+          onClick={() => setOnboardingStep('welcome')}
+          className="block mx-auto mt-5 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+        >
+          New here? Create a profile
+        </button>
       </motion.div>
     </div>
   )

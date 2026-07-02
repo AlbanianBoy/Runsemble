@@ -1,11 +1,12 @@
 'use client'
 
+import { useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { OnboardingWelcome, OnboardingProfile } from '@/components/runsemble/onboarding'
+import { OnboardingWelcome, OnboardingProfile, OnboardingLogin, toUserProfile } from '@/components/runsemble/onboarding'
 import { FeedTab } from '@/components/runsemble/feed-tab'
 import { MapTab } from '@/components/runsemble/map-tab'
 import { GroupsTab } from '@/components/runsemble/groups-tab'
@@ -31,8 +32,28 @@ export default function Home() {
     unreadCount,
     setNotificationsOpen,
     setActiveTab,
+    setCurrentUser,
+    setOnboardingStep,
     runTrackerOpen,
   } = useRunsembleStore()
+
+  // Restore a login session: if local state has no user but a valid session
+  // cookie exists, pick up where the account left off (e.g. new device,
+  // cleared storage).
+  useEffect(() => {
+    if (!_hydrated || currentUser) return
+    let cancelled = false
+    fetch('/api/auth/me')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.user) {
+          setCurrentUser(toUserProfile(data.user))
+          setOnboardingStep('done')
+        }
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [_hydrated, currentUser, setCurrentUser, setOnboardingStep])
 
   // Don't render until Zustand has rehydrated from localStorage
   if (!_hydrated) {
@@ -48,6 +69,7 @@ export default function Home() {
 
   if (onboardingStep === 'welcome') return <OnboardingWelcome />
   if (onboardingStep === 'profile') return <OnboardingProfile />
+  if (onboardingStep === 'login') return <OnboardingLogin />
   if (!currentUser) return <OnboardingWelcome />
 
   const renderTab = () => {

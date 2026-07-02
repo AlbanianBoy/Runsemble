@@ -26,6 +26,7 @@ import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse }
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { getAvatarColor, getInitials } from './helpers'
+import { RunLobby } from './run-lobby'
 
 const LiveRunMap = dynamic(() => import('./live-run-map'), {
   ssr: false,
@@ -33,7 +34,7 @@ const LiveRunMap = dynamic(() => import('./live-run-map'), {
 })
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
-type Phase = 'ready' | 'running' | 'paused' | 'finished'
+type Phase = 'lobby' | 'ready' | 'running' | 'paused' | 'finished'
 interface GpsPoint { lat: number; lng: number; t: number }
 interface Candidate { id: string; name: string }
 
@@ -41,7 +42,10 @@ export function RunTracker() {
   const { runContext, closeRunTracker, currentUser, updateProfile } = useRunsembleStore()
   const queryClient = useQueryClient()
 
-  const [phase, setPhase] = useState<Phase>('ready')
+  // Group (hotspot) runs open in the lobby — you gather, check in, and start
+  // together. Solo and group-context runs go straight to the ready screen.
+  const [phase, setPhase] = useState<Phase>(() => (runContext?.hotspotId ? 'lobby' : 'ready'))
+  const [runningWith, setRunningWith] = useState<Candidate[]>([])
   const [elapsedSec, setElapsedSec] = useState(0)
   const [distanceKm, setDistanceKm] = useState(0)
   const [splits, setSplits] = useState<number[]>([])
@@ -128,6 +132,20 @@ export function RunTracker() {
       setRoutePoints([pos])
     }
     setPhase('running')
+  }
+
+  // The lobby says go — start recording with the group on screen. The people
+  // who were checked in become the pre-filled buddy tags at the finish.
+  const handleLobbyStart = (others: Candidate[]) => {
+    if (phaseRef.current !== 'lobby') return // guard against double-fire (own tap + poll)
+    setRunningWith(others)
+    setBuddyIds(others.map((o) => o.id))
+    if (pos) {
+      pointsRef.current = [{ lat: pos.lat, lng: pos.lng, t: Date.now() }]
+      setRoutePoints([pos])
+    }
+    setPhase('running')
+    toast.success(others.length > 0 ? `Run started — you're off with ${others.length} other${others.length > 1 ? 's' : ''}! 🏃` : 'Run started — go! 🏃')
   }
 
   // Candidate people to tag as buddies — only fetched at the finish step.
@@ -222,7 +240,14 @@ export function RunTracker() {
       className="fixed inset-0 z-[1500] flex flex-col bg-background text-foreground"
       initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }}
     >
-      {phase !== 'finished' ? (
+      {phase === 'lobby' && runContext?.hotspotId ? (
+        <RunLobby
+          hotspotId={runContext.hotspotId}
+          pos={pos}
+          onClose={closeRunTracker}
+          onStarted={handleLobbyStart}
+        />
+      ) : phase !== 'finished' ? (
         <>
           {/* Live map — where you are, where you started, the route so far */}
           <div className="relative flex-1 min-h-0">
@@ -256,6 +281,26 @@ export function RunTracker() {
                 )}
               </div>
             </div>
+
+            {/* Running-with strip — the group is visible the whole run */}
+            {runningWith.length > 0 && (
+              <div className="absolute top-[calc(env(safe-area-inset-top,0px)+3.1rem)] left-3 z-[600] pointer-events-none">
+                <span className="glass border shadow-sm rounded-full pl-1.5 pr-3 py-1 flex items-center gap-2 text-[11px] font-medium">
+                  <span className="flex -space-x-1.5">
+                    {runningWith.slice(0, 3).map((r) => (
+                      <span
+                        key={r.id}
+                        className={`h-5 w-5 rounded-full border-2 border-background flex items-center justify-center text-[8px] text-white ${getAvatarColor(r.name)}`}
+                      >
+                        {getInitials(r.name)}
+                      </span>
+                    ))}
+                  </span>
+                  Running with {runningWith[0].name.split(' ')[0]}
+                  {runningWith.length > 1 ? ` +${runningWith.length - 1}` : ''}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* Stats + record controls */}

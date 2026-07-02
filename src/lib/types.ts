@@ -225,6 +225,23 @@ export interface DmThreadResponse {
   messages: ApiDirectMessage[]
 }
 
+// ─── Run lobby ────────────────────────────────────────────────────────────────
+export interface LobbyParticipant {
+  userId: string
+  status: string // joined | here | completed | cancelled
+  checkedInAt: string | null
+  user: { id: string; name: string; avatar: string | null; paceLevel: string }
+}
+export interface LobbyResponse {
+  hotspot: { id: string; name: string; location: string; startTime: string; lat: number; lng: number }
+  participants: LobbyParticipant[]
+  lobbyStartedAt: string | null
+}
+export interface LobbyActionResponse {
+  lobby: LobbyResponse
+  xp?: XpAward | null
+}
+
 // ─── Challenges ───────────────────────────────────────────────────────────────
 export interface ApiChallenge {
   id: string

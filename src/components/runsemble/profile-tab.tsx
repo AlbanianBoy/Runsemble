@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target } from 'lucide-react'
+import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target, Download, LogOut } from 'lucide-react'
 import { useRunsembleStore, getRankFromXP, type PaceLevel, type SchedulePreference } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { BadgesResponse } from '@/lib/types'
@@ -136,6 +136,42 @@ export function ProfileTab() {
     } else {
       startAvailability()
     }
+  }
+
+  // ── Account & data (GDPR) ──────────────────────────────────────────────────
+  const handleExportData = async () => {
+    if (!currentUser) return
+    try {
+      const res = await fetch(`/api/auth/export?userId=${currentUser.id}`)
+      if (!res.ok) throw new Error('Export failed')
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = 'runsemble-data.json'
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {
+      alert('Could not export your data right now — try again in a moment.')
+    }
+  }
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {})
+    localStorage.removeItem('runsemble-store')
+    location.reload()
+  }
+
+  const handleDeleteAccount = async () => {
+    if (!currentUser) return
+    if (!confirm('Delete your account and ALL your data (runs, posts, messages, buddies)? This cannot be undone.')) return
+    const res = await fetch(`/api/auth/account?userId=${currentUser.id}`, { method: 'DELETE' }).catch(() => null)
+    if (!res?.ok) {
+      alert('Could not delete your account right now — try again in a moment.')
+      return
+    }
+    localStorage.removeItem('runsemble-store')
+    location.reload()
   }
 
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
@@ -383,6 +419,32 @@ export function ProfileTab() {
               <p className="text-xs text-muted-foreground">Switch between light and dark</p>
             </div>
             <ThemeToggle />
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Account & data (GDPR) */}
+      <motion.div {...fadeUp}>
+        <Card>
+          <CardContent className="p-4 space-y-3">
+            <div>
+              <p className="font-semibold text-sm">Account &amp; data</p>
+              <p className="text-xs text-muted-foreground">Your data belongs to you</p>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <Button variant="outline" size="sm" className="rounded-full" onClick={handleExportData}>
+                <Download className="h-4 w-4 mr-1.5" />My data
+              </Button>
+              <Button variant="outline" size="sm" className="rounded-full" onClick={handleLogout}>
+                <LogOut className="h-4 w-4 mr-1.5" />Log out
+              </Button>
+            </div>
+            <button
+              onClick={handleDeleteAccount}
+              className="block w-full text-center text-xs text-muted-foreground/70 hover:text-destructive transition-colors pt-1"
+            >
+              Delete my account and all data…
+            </button>
           </CardContent>
         </Card>
       </motion.div>

@@ -141,6 +141,13 @@ export async function POST(request: NextRequest) {
       },
     })
 
+    // Close the loop on the hotspot: this participant actually ran.
+    if (hotspotId) {
+      await db.hotspotParticipant
+        .updateMany({ where: { hotspotId, userId }, data: { status: 'completed' } })
+        .catch(() => {})
+    }
+
     // ── Rating (post-run, for hotspot runs) ──
     if (hotspotId && rating && Number(rating) >= 1) {
       await db.runRating.create({
