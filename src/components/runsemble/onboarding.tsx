@@ -2,7 +2,7 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { ArrowRight } from 'lucide-react'
+import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,7 +14,7 @@ const fadeUp = {
   initial: { opacity: 0, y: 16 },
   animate: { opacity: 1, y: 0 },
   exit: { opacity: 0, y: -12 },
-  transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] },
+  transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
 }
 
 /** Step indicator dots used on the welcome & profile screens */
@@ -38,13 +38,14 @@ function StepDots({ current }: { current: number }) {
 }
 
 export function OnboardingWelcome() {
-  const { setOnboardingStep } = useRunsembleStore()
+  const { setOnboardingStep, setOnboardingAnswer } = useRunsembleStore()
   const [selected, setSelected] = useState<string | null>(null)
   const [showResponse, setShowResponse] = useState(false)
   const options = ['Yesterday', 'Last week', "It's been a while", "I can't remember"]
 
   const handleSelect = (opt: string) => {
     setSelected(opt)
+    setOnboardingAnswer(opt)
     setTimeout(() => setShowResponse(true), 400)
   }
 
@@ -147,7 +148,7 @@ export function OnboardingWelcome() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
               >
-                Let&apos;s change that.
+                {selected === 'Yesterday' ? 'Love that.' : "Let's change that."}
               </motion.p>
               <motion.p
                 className="text-white/80 text-xl mb-8"
@@ -155,7 +156,7 @@ export function OnboardingWelcome() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.25 }}
               >
-                Together.
+                {selected === 'Yesterday' ? "Let's keep it going. Together." : 'Together.'}
               </motion.p>
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
@@ -194,6 +195,25 @@ export function OnboardingProfile() {
   const [schedule, setSchedule] = useState('evening')
   const [bio, setBio] = useState('')
   const [loading, setLoading] = useState(false)
+  const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
+  const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'ok' | 'denied'>('idle')
+
+  // Ask for location so "runners near you" and the map centre on the real user.
+  const requestLocation = () => {
+    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
+      setGeoStatus('denied')
+      return
+    }
+    setGeoStatus('locating')
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude })
+        setGeoStatus('ok')
+      },
+      () => setGeoStatus('denied'),
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
 
   const handleSubmit = async () => {
     if (!name || !email) return
@@ -209,6 +229,8 @@ export function OnboardingProfile() {
           paceLevel,
           schedulePreference: schedule,
           bio,
+          lat: coords?.lat,
+          lng: coords?.lng,
         }),
       })
       if (!res.ok) {
@@ -226,6 +248,8 @@ export function OnboardingProfile() {
         avatar: dbUser.avatar,
         bio: dbUser.bio,
         city: dbUser.city,
+        lat: dbUser.lat ?? null,
+        lng: dbUser.lng ?? null,
         preferredSport: dbUser.preferredSport ?? 'running',
         paceLevel: dbUser.paceLevel ?? 'beginner',
         schedulePreference: dbUser.schedulePreference ?? 'evening',
@@ -234,6 +258,8 @@ export function OnboardingProfile() {
         longestStreak: dbUser.longestStreak ?? 0,
         totalRuns: dbUser.totalRuns ?? 0,
         totalPeopleRunWith: dbUser.totalPeopleRunWith ?? 0,
+        totalDistanceKm: dbUser.totalDistanceKm ?? 0,
+        totalDurationSec: dbUser.totalDurationSec ?? 0,
         isAvailable: false,
         privacyVisible: true,
         onboardingComplete: true,
@@ -291,6 +317,32 @@ export function OnboardingProfile() {
               className="mt-1.5"
             />
           </div>
+
+          {/* Location capture */}
+          <button
+            type="button"
+            onClick={requestLocation}
+            disabled={geoStatus === 'locating'}
+            className={`w-full flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
+              geoStatus === 'ok' ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border hover:border-primary/30 hover:bg-muted/50'
+            }`}
+          >
+            <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${geoStatus === 'ok' ? 'bg-emerald-500 text-white' : 'bg-primary/10 text-primary'}`}>
+              {geoStatus === 'locating' ? <Loader2 className="h-4 w-4 animate-spin" /> : geoStatus === 'ok' ? <Check className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium">
+                {geoStatus === 'ok' ? 'Location shared' : geoStatus === 'denied' ? 'Location unavailable' : 'Find runners near me'}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                {geoStatus === 'ok'
+                  ? 'The map will centre on you'
+                  : geoStatus === 'denied'
+                  ? "No worries — we'll use your city"
+                  : 'Optional · share your location'}
+              </p>
+            </div>
+          </button>
           <div>
             <Label>Your pace</Label>
             <RadioGroup

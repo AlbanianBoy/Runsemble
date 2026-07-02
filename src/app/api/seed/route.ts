@@ -31,6 +31,8 @@ async function seed() {
         avatar: null,
         bio: "Trail enthusiast & sunrise chaser. If the path has mud, I'm there \u{1F3C3}\u200D\u2640\uFE0F\u{1F33F}",
         city: 'Antwerp',
+        lat: 51.2205,
+        lng: 4.4108,
         preferredSport: 'running',
         paceLevel: 'advanced',
         schedulePreference: 'morning',
@@ -52,6 +54,8 @@ async function seed() {
         avatar: null,
         bio: 'Marathon runner turned social runner. Best pace: 4:15/km',
         city: 'Antwerp',
+        lat: 51.2158,
+        lng: 4.4205,
         preferredSport: 'running',
         paceLevel: 'advanced',
         schedulePreference: 'evening',
@@ -72,6 +76,8 @@ async function seed() {
         avatar: null,
         bio: 'Just finished my first 10K! Looking for running buddies',
         city: 'Antwerp',
+        lat: 51.2078,
+        lng: 4.4255,
         preferredSport: 'running',
         paceLevel: 'beginner',
         schedulePreference: 'evening',
@@ -93,6 +99,8 @@ async function seed() {
         avatar: null,
         bio: 'Weekend warrior. Parkrun PB chaser. Dad of two',
         city: 'Antwerp',
+        lat: 51.2122,
+        lng: 4.398,
         preferredSport: 'running',
         paceLevel: 'intermediate',
         schedulePreference: 'morning',
@@ -113,6 +121,8 @@ async function seed() {
         avatar: null,
         bio: 'Yoga & running - the perfect balance',
         city: 'Antwerp',
+        lat: 51.2238,
+        lng: 4.4172,
         preferredSport: 'running',
         paceLevel: 'intermediate',
         schedulePreference: 'afternoon',
@@ -134,6 +144,8 @@ async function seed() {
         avatar: null,
         bio: 'Speed demon. Training for sub-40 10K',
         city: 'Antwerp',
+        lat: 51.2008,
+        lng: 4.4035,
         preferredSport: 'running',
         paceLevel: 'advanced',
         schedulePreference: 'evening',
@@ -154,6 +166,8 @@ async function seed() {
         avatar: null,
         bio: 'Running since 2019. Love discovering new routes in Antwerp!',
         city: 'Antwerp',
+        lat: 51.215,
+        lng: 4.431,
         preferredSport: 'running',
         paceLevel: 'intermediate',
         schedulePreference: 'morning',
@@ -175,6 +189,8 @@ async function seed() {
         avatar: null,
         bio: 'New to running but loving the community vibe!',
         city: 'Antwerp',
+        lat: 51.2052,
+        lng: 4.415,
         preferredSport: 'running',
         paceLevel: 'beginner',
         schedulePreference: 'afternoon',
@@ -622,6 +638,35 @@ async function seed() {
   })
 
   console.log(`Created ${ratings.count} run ratings`)
+
+  // ── Post-processing for the newer features ──────────────────────────────────
+  // Give each user a realistic total distance so the distance leaderboard is
+  // meaningful (~6.5 km per logged run, with a little variance).
+  const seededUsers = await db.user.findMany()
+  for (const u of seededUsers) {
+    const km = Math.round(u.totalRuns * 6.5 * (0.85 + Math.random() * 0.3) * 10) / 10
+    await db.user.update({
+      where: { id: u.id },
+      data: { totalDistanceKm: km, totalDurationSec: Math.round(km * 5.5 * 60) },
+    })
+  }
+
+  // Mark curated city spots as official so they recur + show an "Official" badge.
+  await db.hotspot.updateMany({
+    where: { id: { in: ['hotspot-1', 'hotspot-3', 'hotspot-5'] } },
+    data: { isOfficial: true },
+  })
+
+  // Backfill real PostLike rows so like counts are toggleable from the start.
+  const seededPosts = await db.feedPost.findMany({ select: { id: true, likes: true } })
+  const seededUserIds = seededUsers.map((u) => u.id)
+  for (const p of seededPosts) {
+    const likers = seededUserIds.slice(0, Math.min(p.likes, seededUserIds.length))
+    if (likers.length > 0) {
+      await db.postLike.createMany({ data: likers.map((userId) => ({ postId: p.id, userId })) })
+    }
+    await db.feedPost.update({ where: { id: p.id }, data: { likes: likers.length } })
+  }
 
   console.log('Seed complete!')
 

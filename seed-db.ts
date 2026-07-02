@@ -19,14 +19,14 @@ async function main() {
   await db.user.deleteMany()
   
   // Create users
-  const u1 = await db.user.create({ data: { id:'u1', name:'Maya Chen', email:'maya@r.app', city:'Antwerp', paceLevel:'advanced', schedulePreference:'morning', xp:1250, streak:14, longestStreak:21, totalRuns:87, totalPeopleRunWith:34, bio:'Trail runner & sunrise chaser', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
-  const u2 = await db.user.create({ data: { id:'u2', name:'Jonas De Smedt', email:'jonas@r.app', city:'Antwerp', paceLevel:'advanced', schedulePreference:'evening', xp:980, streak:7, longestStreak:30, totalRuns:62, totalPeopleRunWith:19, bio:'Marathon training — sub 3h goal', onboardingComplete:true, privacyVisible:true }})
-  const u3 = await db.user.create({ data: { id:'u3', name:'Sophie Vd Berg', email:'sophie@r.app', city:'Antwerp', paceLevel:'beginner', schedulePreference:'afternoon', xp:220, streak:3, longestStreak:7, totalRuns:12, totalPeopleRunWith:5, bio:'Just finished my first 10K!', onboardingComplete:true, privacyVisible:true }})
-  const u4 = await db.user.create({ data: { id:'u4', name:'Lars Peeters', email:'lars@r.app', city:'Antwerp', paceLevel:'intermediate', schedulePreference:'evening', xp:540, streak:5, longestStreak:14, totalRuns:38, totalPeopleRunWith:12, bio:'Dad runner. Best pace setter are my kids.', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
-  const u5 = await db.user.create({ data: { id:'u5', name:'Emma Wouters', email:'emma@r.app', city:'Antwerp', paceLevel:'intermediate', schedulePreference:'morning', xp:680, streak:9, longestStreak:18, totalRuns:45, totalPeopleRunWith:22, bio:'Yoga + running = balance', onboardingComplete:true, privacyVisible:true }})
-  const u6 = await db.user.create({ data: { id:'u6', name:'Kai Maes', email:'kai@r.app', city:'Antwerp', paceLevel:'advanced', schedulePreference:'morning', xp:1100, streak:11, longestStreak:25, totalRuns:71, totalPeopleRunWith:28, bio:'Training for sub-40 10K', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
-  const u7 = await db.user.create({ data: { id:'u7', name:'Anja Janssen', email:'anja@r.app', city:'Antwerp', paceLevel:'intermediate', schedulePreference:'afternoon', xp:850, streak:6, longestStreak:12, totalRuns:52, totalPeopleRunWith:16, bio:'Route explorer — show me a new path', onboardingComplete:true, privacyVisible:true }})
-  const u8 = await db.user.create({ data: { id:'u8', name:'Tomas Dubois', email:'tomas@r.app', city:'Antwerp', paceLevel:'beginner', schedulePreference:'evening', xp:90, streak:1, longestStreak:3, totalRuns:5, totalPeopleRunWith:2, bio:'New to running, loving it so far', onboardingComplete:true, privacyVisible:true }})
+  const u1 = await db.user.create({ data: { id:'u1', name:'Maya Chen', email:'maya@r.app', city:'Antwerp', lat:51.2205, lng:4.41, paceLevel:'advanced', schedulePreference:'morning', xp:1250, streak:14, longestStreak:21, totalRuns:87, totalPeopleRunWith:34, bio:'Trail runner & sunrise chaser', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
+  const u2 = await db.user.create({ data: { id:'u2', name:'Jonas De Smedt', email:'jonas@r.app', city:'Antwerp', lat:51.216, lng:4.422, paceLevel:'advanced', schedulePreference:'evening', xp:980, streak:7, longestStreak:30, totalRuns:62, totalPeopleRunWith:19, bio:'Marathon training — sub 3h goal', onboardingComplete:true, privacyVisible:true }})
+  const u3 = await db.user.create({ data: { id:'u3', name:'Sophie Vd Berg', email:'sophie@r.app', city:'Antwerp', lat:51.208, lng:4.43, paceLevel:'beginner', schedulePreference:'afternoon', xp:220, streak:3, longestStreak:7, totalRuns:12, totalPeopleRunWith:5, bio:'Just finished my first 10K!', onboardingComplete:true, privacyVisible:true }})
+  const u4 = await db.user.create({ data: { id:'u4', name:'Lars Peeters', email:'lars@r.app', city:'Antwerp', lat:51.212, lng:4.395, paceLevel:'intermediate', schedulePreference:'evening', xp:540, streak:5, longestStreak:14, totalRuns:38, totalPeopleRunWith:12, bio:'Dad runner. Best pace setter are my kids.', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
+  const u5 = await db.user.create({ data: { id:'u5', name:'Emma Wouters', email:'emma@r.app', city:'Antwerp', lat:51.224, lng:4.418, paceLevel:'intermediate', schedulePreference:'morning', xp:680, streak:9, longestStreak:18, totalRuns:45, totalPeopleRunWith:22, bio:'Yoga + running = balance', onboardingComplete:true, privacyVisible:true }})
+  const u6 = await db.user.create({ data: { id:'u6', name:'Kai Maes', email:'kai@r.app', city:'Antwerp', lat:51.2, lng:4.402, paceLevel:'advanced', schedulePreference:'morning', xp:1100, streak:11, longestStreak:25, totalRuns:71, totalPeopleRunWith:28, bio:'Training for sub-40 10K', onboardingComplete:true, isAvailable:true, privacyVisible:true }})
+  const u7 = await db.user.create({ data: { id:'u7', name:'Anja Janssen', email:'anja@r.app', city:'Antwerp', lat:51.215, lng:4.435, paceLevel:'intermediate', schedulePreference:'afternoon', xp:850, streak:6, longestStreak:12, totalRuns:52, totalPeopleRunWith:16, bio:'Route explorer — show me a new path', onboardingComplete:true, privacyVisible:true }})
+  const u8 = await db.user.create({ data: { id:'u8', name:'Tomas Dubois', email:'tomas@r.app', city:'Antwerp', lat:51.205, lng:4.415, paceLevel:'beginner', schedulePreference:'evening', xp:90, streak:1, longestStreak:3, totalRuns:5, totalPeopleRunWith:2, bio:'New to running, loving it so far', onboardingComplete:true, privacyVisible:true }})
 
   // Create hotspots with FUTURE times
   const h1 = await db.hotspot.create({ data: { id:'h1', name:'Morning Loop Stadspark', description:'Easy 5K loop through the park, all paces welcome', location:'Stadspark, Antwerp', lat:51.2185, lng:4.4250, sportType:'running', distanceKm:5, paceRange:'any', startTime: new Date(now.getTime() + 2*60*60*1000), recurringIntervalMin:60, isActive:true, createdBy:'u1' }})
@@ -158,11 +158,79 @@ async function main() {
     { senderId:'u6', recipientId:'u4', message:'Speedwork session — want to push your limits?', status:'accepted' },
   ]})
 
-  // Run ratings for a completed hotspot (we will create one that already happened)
-  // Actually all hotspots are future, so skip ratings for now
+  // ── Post-processing for the new features ────────────────────────────────────
+  // Give each user a realistic total distance so the distance leaderboard is
+  // meaningful (roughly 6.5 km per logged run, with a little variance).
+  const users = await db.user.findMany()
+  for (const u of users) {
+    const km = Math.round(u.totalRuns * 6.5 * (0.85 + Math.random() * 0.3) * 10) / 10
+    await db.user.update({
+      where: { id: u.id },
+      data: {
+        totalDistanceKm: km,
+        totalDurationSec: Math.round(km * 5.5 * 60), // ~5.5 min/km
+      },
+    })
+  }
+
+  // Genders (optional) so women-only runs have members to show.
+  await db.user.updateMany({ where: { id: { in: ['u1','u3','u5','u7'] } }, data: { gender: 'female' } })
+  await db.user.updateMany({ where: { id: { in: ['u2','u4','u6','u8'] } }, data: { gender: 'male' } })
+
+  // Mark curated city spots as official + give them weekly schedules & audiences.
+  await db.hotspot.update({ where: { id: 'h1' }, data: { isOfficial: true, daysOfWeek: '1,3,5', audience: 'all' } })      // Mon/Wed/Fri
+  await db.hotspot.update({ where: { id: 'h3' }, data: { isOfficial: true, daysOfWeek: '0,6', audience: 'all' } })        // weekends
+  await db.hotspot.update({ where: { id: 'h5' }, data: { isOfficial: true, daysOfWeek: '2,4', audience: 'beginner' } })   // Tue/Thu, beginners
+
+  // A recurring women-only official run.
+  await db.hotspot.create({ data: {
+    id: 'h7', name: 'Women Who Run — Evening Loop', description: 'A welcoming women-only group run. All paces.',
+    location: 'Nachtegalenpark, Antwerp', lat: 51.1935, lng: 4.4045, sportType: 'running', distanceKm: 5, paceRange: 'any',
+    startTime: new Date(now.getTime() + 3*60*60*1000), recurringIntervalMin: 1440, daysOfWeek: '1,4', audience: 'women',
+    isOfficial: true, isActive: true, createdBy: 'u5',
+  }})
+
+  // Buddy relationships (both directions) among the seed users.
+  const buddyPairs: [string,string][] = [['u1','u5'],['u1','u7'],['u2','u4'],['u3','u8'],['u6','u2']]
+  for (const [a,b] of buddyPairs) {
+    await db.buddy.createMany({ data: [{ userId:a, buddyId:b }, { userId:b, buddyId:a }] })
+  }
+
+  // Community challenges.
+  await db.challenge.create({ data: {
+    id:'c1', title:'City 500K', description:'Log 500 km together across the community this month.',
+    metric:'distance', goal:500, scope:'global', icon:'🌍',
+    startsAt: new Date(now.getTime() - 5*24*60*60*1000), endsAt: new Date(now.getTime() + 20*24*60*60*1000), createdBy:'u1',
+  }})
+  await db.challenge.create({ data: {
+    id:'c2', title:'Meet 5 New Runners', description:'Run with 5 people you have never run with before.',
+    metric:'buddies', goal:5, scope:'global', icon:'🤝',
+    startsAt: new Date(now.getTime() - 2*24*60*60*1000), endsAt: new Date(now.getTime() + 12*24*60*60*1000), createdBy:'u3',
+  }})
+  await db.challenge.create({ data: {
+    id:'c3', title:'10 Runs This Month', description:'Show up 10 times. Consistency over speed.',
+    metric:'runs', goal:10, scope:'global', icon:'🔥',
+    startsAt: new Date(now.getTime() - 3*24*60*60*1000), endsAt: new Date(now.getTime() + 24*24*60*60*1000), createdBy:'u2',
+  }})
+  await db.challengeParticipant.createMany({ data: [
+    { challengeId:'c1', userId:'u1' }, { challengeId:'c1', userId:'u2' }, { challengeId:'c1', userId:'u6' },
+    { challengeId:'c2', userId:'u3' }, { challengeId:'c2', userId:'u5' },
+    { challengeId:'c3', userId:'u1' }, { challengeId:'c3', userId:'u4' },
+  ]})
+
+  // Backfill PostLike rows so like counts are real and toggleable from the start.
+  const posts = await db.feedPost.findMany({ select: { id: true, likes: true } })
+  const allUserIds = users.map((u) => u.id)
+  for (const p of posts) {
+    const likers = allUserIds.slice(0, Math.min(p.likes, allUserIds.length))
+    if (likers.length > 0) {
+      await db.postLike.createMany({ data: likers.map((userId) => ({ postId: p.id, userId })) })
+    }
+    await db.feedPost.update({ where: { id: p.id }, data: { likes: likers.length } })
+  }
 
   console.log('✅ Database seeded successfully!')
-  console.log(`  Users: 8, Hotspots: 6, Groups: 4, Posts: 10, Badges: 18, Chat msgs: 17`)
+  console.log(`  Users: 8, Hotspots: 6 (3 official), Groups: 4, Posts: 10, Badges: 18, Chat msgs: 17`)
   
   await db.$disconnect()
 }

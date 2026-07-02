@@ -52,3 +52,7 @@ prompt
 server.log
 # Skills directory
 /skills/
+
+# local sqlite dev database (regenerate with: npx prisma db push && node seed-db.ts)
+prisma/dev.db
+prisma/dev.db-journal

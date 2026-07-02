@@ -92,6 +92,8 @@
   --warning-foreground: oklch(0.2 0.05 85);
   --hotspot: oklch(0.7 0.22 30);
   --hotspot-foreground: oklch(1 0 0);
+  --glass-bg: oklch(1 0 0 / 78%);
+  --glass-border: oklch(0.92 0.005 90 / 60%);
 }
 
 .dark {
@@ -134,6 +136,8 @@
   --warning-foreground: oklch(1 0 0);
   --hotspot: oklch(0.75 0.22 30);
   --hotspot-foreground: oklch(1 0 0);
+  --glass-bg: oklch(0.18 0.01 50 / 72%);
+  --glass-border: oklch(0.3 0.01 50 / 60%);
 }
 
 @layer base {
@@ -153,6 +157,9 @@
   .gradient-brand-subtle {
     background: linear-gradient(135deg, oklch(0.95 0.03 35), oklch(0.96 0.04 60));
   }
+  .dark .gradient-brand-subtle {
+    background: linear-gradient(135deg, oklch(0.32 0.08 35), oklch(0.3 0.06 60));
+  }
   .gradient-success {
     background: linear-gradient(135deg, oklch(0.7 0.15 145), oklch(0.75 0.18 160));
   }
@@ -163,14 +170,27 @@
     background-clip: text;
   }
   .glass {
-    background: oklch(1 0 0 / 80%);
-    backdrop-filter: blur(12px);
-    -webkit-backdrop-filter: blur(12px);
+    background: var(--glass-bg);
+    backdrop-filter: blur(14px) saturate(1.4);
+    -webkit-backdrop-filter: blur(14px) saturate(1.4);
+    border-color: var(--glass-border);
   }
   .glass-dark {
     background: oklch(0.2 0.01 50 / 80%);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
+  }
+  /* Soft ambient app background — subtle warm glow behind everything. */
+  .rs-app-bg {
+    background:
+      radial-gradient(120% 80% at 100% 0%, oklch(0.7 0.2 35 / 8%), transparent 60%),
+      radial-gradient(100% 70% at 0% 100%, oklch(0.7 0.15 60 / 6%), transparent 55%),
+      var(--background);
+  }
+  /* Number-heavy stat readouts use tabular figures so they don't jitter. */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
   }
 }
 
@@ -210,4 +230,31 @@ html {
 /* Mobile-safe bottom area */
 .safe-bottom {
   padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+/* ─── Leaflet map theming ──────────────────────────────────────────────────── */
+.rs-map-wrap,
+.rs-map-wrap .leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+.leaflet-container {
+  font-family: inherit;
+  background: oklch(0.96 0.01 220);
+}
+.leaflet-control-attribution {
+  font-size: 9px;
+  background: oklch(1 0 0 / 70%) !important;
+}
+/* Our custom div markers shouldn't carry Leaflet's default white box. */
+.rs-divicon {
+  background: transparent;
+  border: 0;
+}
+/* Shared pulse used by hotspot + "you" markers on the map. */
+@keyframes rs-pulse {
+  0%, 100% { opacity: 0.9; transform: scale(1); }
+  50% { opacity: 0.35; transform: scale(1.4); }
+}
+.rs-pulse {
+  animation: rs-pulse 2s ease-in-out infinite;
 }

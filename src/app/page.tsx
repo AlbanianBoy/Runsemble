@@ -8,10 +8,12 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { OnboardingWelcome, OnboardingProfile } from '@/components/runsemble/onboarding'
 import { FeedTab } from '@/components/runsemble/feed-tab'
 import { MapTab } from '@/components/runsemble/map-tab'
-import { HotspotsTab } from '@/components/runsemble/hotspots-tab'
 import { GroupsTab } from '@/components/runsemble/groups-tab'
 import { ProfileTab } from '@/components/runsemble/profile-tab'
 import { BottomNav } from '@/components/runsemble/bottom-nav'
+import { RunTracker } from '@/components/runsemble/run-tracker'
+import { NotificationsSheet } from '@/components/runsemble/notifications-sheet'
+import { DmSheet } from '@/components/runsemble/dm-sheet'
 import { getAvatarColor, getInitials } from '@/components/runsemble/helpers'
 
 const pageVariants = {
@@ -21,7 +23,16 @@ const pageVariants = {
 }
 
 export default function Home() {
-  const { onboardingStep, activeTab, currentUser, _hydrated } = useRunsembleStore()
+  const {
+    onboardingStep,
+    activeTab,
+    currentUser,
+    _hydrated,
+    unreadCount,
+    setNotificationsOpen,
+    setActiveTab,
+    runTrackerOpen,
+  } = useRunsembleStore()
 
   // Don't render until Zustand has rehydrated from localStorage
   if (!_hydrated) {
@@ -43,7 +54,7 @@ export default function Home() {
     switch (activeTab) {
       case 'feed': return <FeedTab />
       case 'map': return <MapTab />
-      case 'hotspots': return <HotspotsTab />
+      case 'hotspots': return <MapTab /> // legacy tab — Runs now live inside Explore
       case 'groups': return <GroupsTab />
       case 'profile': return <ProfileTab />
       default: return <FeedTab />
@@ -51,25 +62,37 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen rs-app-bg">
       <div className="max-w-md mx-auto min-h-screen flex flex-col relative">
-        <header className="sticky top-0 z-40 glass border-b border-border/50 px-4 py-3">
+        <header className="sticky top-0 z-40 glass border-b px-4 py-3">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-bold text-gradient-brand">Runsemble</h1>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="icon" className="h-8 w-8 relative">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 relative"
+                onClick={() => setNotificationsOpen(true)}
+                aria-label="Notifications"
+              >
                 <Bell className="h-4 w-4" />
-                <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full" />
+                {unreadCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[16px] h-4 flex items-center justify-center bg-rose-500 text-white text-[9px] font-bold rounded-full px-1">
+                    {unreadCount > 9 ? '9+' : unreadCount}
+                  </span>
+                )}
               </Button>
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className={`text-xs text-white ${getAvatarColor(currentUser.name)}`}>
-                  {getInitials(currentUser.name)}
-                </AvatarFallback>
-              </Avatar>
+              <button onClick={() => setActiveTab('profile')} aria-label="Your profile">
+                <Avatar className="h-8 w-8">
+                  <AvatarFallback className={`text-xs text-white ${getAvatarColor(currentUser.name)}`}>
+                    {getInitials(currentUser.name)}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
             </div>
           </div>
         </header>
-        <main className="flex-1 px-4 pt-4 pb-20">
+        <main className="flex-1 px-4 pt-4 pb-24">
           <AnimatePresence mode="wait">
             <motion.div key={activeTab} variants={pageVariants} initial="initial" animate="animate" exit="exit">
               {renderTab()}
@@ -78,6 +101,13 @@ export default function Home() {
         </main>
         <BottomNav />
       </div>
+
+      {/* Global overlays */}
+      <NotificationsSheet />
+      <DmSheet />
+      <AnimatePresence>
+        {runTrackerOpen && <RunTracker />}
+      </AnimatePresence>
     </div>
   )
 }

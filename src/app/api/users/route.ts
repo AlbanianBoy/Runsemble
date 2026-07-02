@@ -1,11 +1,25 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
-    // Return all users for feed and social features
-    // Map-visible users are filtered client-side using isAvailable && privacyVisible
+    // Return all users for feed and social features.
+    // Map-visible users are filtered client-side using isAvailable && privacyVisible.
+    const { searchParams } = new URL(request.url)
+    const viewerId = searchParams.get('viewerId')
+
+    // Hide anyone in a block relationship with the viewer (either direction).
+    let excludeIds: string[] = []
+    if (viewerId) {
+      const blocks = await db.block.findMany({
+        where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] },
+        select: { blockerId: true, blockedId: true },
+      })
+      excludeIds = blocks.map((b) => (b.blockerId === viewerId ? b.blockedId : b.blockerId))
+    }
+
     const users = await db.user.findMany({
+      where: excludeIds.length ? { id: { notIn: excludeIds } } : undefined,
       orderBy: { createdAt: 'asc' },
       include: {
         earnedBadges: true,
@@ -40,6 +54,8 @@ export async function POST(request: NextRequest) {
       preferredSport,
       paceLevel,
       schedulePreference,
+      lat,
+      lng,
     } = body
 
     if (!name || !email) {
@@ -71,6 +87,8 @@ export async function POST(request: NextRequest) {
         preferredSport: preferredSport ?? 'running',
         paceLevel: paceLevel ?? 'beginner',
         schedulePreference: schedulePreference ?? 'evening',
+        lat: typeof lat === 'number' ? lat : null,
+        lng: typeof lng === 'number' ? lng : null,
         onboardingComplete: true,
         isAvailable: false,
         privacyVisible: true,

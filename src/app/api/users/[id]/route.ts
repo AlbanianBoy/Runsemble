@@ -77,6 +77,8 @@ export async function PATCH(
       'lastActiveDate',
       'totalRuns',
       'totalPeopleRunWith',
+      'lat',
+      'lng',
     ]
 
     for (const field of allowedFields) {
@@ -143,6 +145,8 @@ export async function PUT(
       'lastActiveDate',
       'totalRuns',
       'totalPeopleRunWith',
+      'lat',
+      'lng',
     ]
 
     for (const field of allowedFields) {

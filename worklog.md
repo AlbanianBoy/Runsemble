@@ -181,3 +181,109 @@ The Runsemble app is **fully functional** with a complete onboarding flow, 5 wor
 8. **XP awards** — Auto-award XP for joining hotspots, creating posts, maintaining streaks
 9. **Invite flow** — Accept/decline run invites with notification
 10. **Search** — Search users, groups, hotspots
+---
+Task ID: 14 (Major upgrade pass — real map, geolocation, XP engine, type safety)
+Agent: Claude (Opus 4.8)
+
+Work Log:
+- **Real geographic map (was a fake CSS gradient).** Replaced the simulated map —
+  which placed markers at hardcoded screen percentages (HOTSPOT_POSITIONS /
+  RUNNER_POSITIONS) and threw away the real lat/lng already stored on hotspots —
+  with an actual Leaflet + OpenStreetMap map (CARTO Voyager tiles, no API key).
+  - New `src/components/runsemble/map-canvas.tsx` (client-only, loaded via
+    next/dynamic ssr:false because Leaflet touches `window`).
+  - Hotspots now render at their true coordinates; custom div-icon pins with
+    participant-count badges and a pulse.
+  - Nearby runners render at PRIVACY-FUZZED coordinates (~200m grid, the concept's
+    promise) with a translucent "approximate area" circle. Avatar colours match
+    the rest of the app.
+  - Current user marker + availability state; "X runners nearby" chip; distance
+    label ("~600 m away") in the runner sheet via haversine.
+- **User geolocation added to the data model.** `lat`/`lng` (Float?) added to the
+  User model in schema.prisma, and to all 8 seeded users in BOTH seed paths
+  (`seed-db.ts` and the canonical `src/app/api/seed/route.ts`). This is what makes
+  "runners near you" real instead of randomly placed.
+- **Working XP engine (was decorative).** New `src/lib/xp.ts` (server-only):
+  `awardXp()` increments XP and detects rank-ups; `grantBadge()` grants once.
+  Wired into the hotspot-join route: joining now awards +50 XP, grants a first-run
+  badge (and a 5-run badge), and returns the result. The client celebrates with a
+  sonner toast ("+50 XP", or "Rank up! You're now Pacer") and updates the store so
+  the profile reflects new XP immediately.
+- **Type-safety pass.** Removed every `: any` / `as any` from the five tab
+  components. New shared `src/lib/types.ts` (API response contracts),
+  `src/lib/api.ts` (typed apiGet/apiSend that surface server error messages),
+  `src/lib/ranks.ts` (single source of truth for ranks — de-duplicated from the
+  store), and `src/lib/geo.ts` (haversine, coordinate fuzzing, distance labels).
+- **Smaller fixes:** consolidated duplicate rank logic; made `start-server.sh`
+  portable (was hardcoded to /home/z/my-project); excluded stray `examples/`
+  scaffolding from the typecheck; cleaned 2 pre-existing shadcn lint errors.
+
+Verification:
+- `npx tsc --noEmit` → 0 errors.
+- `npx eslint .` → 0 errors.
+- NOTE: the Prisma *client* could not be generated in the build sandbox (the
+  engine binary host is network-blocked), so DB query shapes were validated
+  manually against schema.prisma rather than by the typechecker. Run
+  `npx prisma db push && npx prisma generate` locally to apply the lat/lng column
+  and fully validate.
+
+Run instructions (local):
+  1. npm install
+  2. npx prisma db push        # adds the lat/lng column
+  3. npx prisma generate
+  4. npm run dev               # then POST /api/seed (or hit the seed route) to load demo data
+
+---
+Task ID: 15 (Major feature pass — run tracking, gamification, leaderboard, social, dark mode)
+Agent: Claude (Opus 4.8)
+
+Work Log:
+- **Run tracking (marquee feature).** New `src/components/runsemble/run-tracker.tsx`:
+  a full-screen live tracker using the browser Geolocation API (watchPosition)
+  to record a real GPS track, accumulating distance via haversine and timing
+  with a 1s ticker that only advances while running. Start / pause / resume /
+  finish, live pace, a finish summary (distance, time, pace, calories), a
+  companions stepper, and a "share to feed" toggle. Degrades gracefully to
+  timing-only when GPS is denied/unavailable. Launchable solo (raised centre nav
+  button), from a hotspot (map sheet + Runs list), or from a group. Saving POSTs
+  to the new `/api/runs`, which records a `RunSession`, moves real stats
+  (totalRuns, totalDistanceKm, totalDurationSec, run buddies), computes the
+  streak, awards distance-scaled XP, unlocks badges, notifies, and optionally
+  posts to the feed.
+- **Deeper gamification.** `src/lib/xp.ts` gained `awardXpAmount` (variable XP),
+  `computeStreak` (consecutive-day streak logic — the streak system was inert
+  before), and 6 new badges (first-track, distance 10/50/100, streak 7/30).
+- **Leaderboard.** New `/api/leaderboard` + `leaderboard.tsx`: a podium plus a
+  ranked list, switchable by XP / distance / streak / runs, with the current
+  user highlighted. Reachable from the profile.
+- **Comments (were dead).** New `PostComment` model, `/api/feed/[id]/comments`,
+  and `comments-sheet.tsx`. Post counts are now real (`_count`).
+- **Likes (were broken).** Replaced the increment-only endpoint with a per-user
+  `PostLike` toggle. `/api/feed/[id]/like` now flips the like and keeps the count
+  in sync; the feed returns `likedByMe`. Unliking correctly decrements.
+- **Notifications (bell was decorative).** New `Notification` model,
+  `/api/notifications`, `notifications-sheet.tsx`, and a `notify()` helper wired
+  into joins, likes, comments, badges, rank-ups, and runs. Bell shows a live
+  unread count and marks-read on open.
+- **Dark mode.** Wired up next-themes (ThemeProvider + a CSS-driven ThemeToggle
+  in the profile). Made `.glass` and `.gradient-brand-subtle` theme-aware.
+- **Modern refresh.** Redesigned the bottom nav around a raised centre "Start"
+  action; merged the Runs timeline into Explore via a Map/Runs toggle; added an
+  ambient app background; functional header bell + avatar→profile.
+- **Curated + user hotspots (both).** Added `Hotspot.isOfficial`; the hotspots
+  route rolls official recurring spots forward so they're perpetually available,
+  and expires user-created one-offs. Official spots show a badge. Seeds mark 3.
+- **Real geolocation.** Onboarding captures the browser position (opt-in) and
+  the opening "when did you last feel good" answer now personalises the reply.
+- **Schema:** added PostLike, PostComment, Notification, RunSession, plus
+  User.totalDistanceKm/totalDurationSec and Hotspot.isOfficial. Seeds updated
+  (both seed-db.ts and /api/seed) with distances, official flags, and real likes.
+
+Verification:
+- `npx tsc --noEmit` → 0 errors. `npx eslint .` → 0 errors (strict React Compiler
+  rules). `npx next build` → success, all 19 routes compile.
+- Manually verified in-browser (mobile viewport): onboarding + geolocation card,
+  run tracker (start/pause/finish/save with graceful GPS fallback), run save →
+  XP/stats/streak/badges/feed post/notification, like toggle + unlike, comments
+  add, notifications panel + unread badge, leaderboard (XP + distance metrics,
+  you-highlight), official-spot badges, Map/Runs toggle, dark ↔ light toggle.

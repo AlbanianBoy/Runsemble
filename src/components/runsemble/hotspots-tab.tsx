@@ -3,8 +3,11 @@
 import { useState, useMemo, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, MapPin, Users, ChevronDown, ChevronUp, Flame, Plus, Loader2 } from 'lucide-react'
+import { Clock, MapPin, Users, ChevronDown, ChevronUp, Flame, Plus, Loader2, Play, BadgeCheck } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
+import { apiGet, apiSend } from '@/lib/api'
+import type { ApiHotspot, HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -29,7 +32,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog'
-import { getAvatarColor, getInitials } from './helpers'
+import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
@@ -46,6 +49,7 @@ interface FormData {
   sportType: 'running' | 'trail' | 'walking'
   distanceKm: number
   paceRange: 'any' | 'beginner' | 'intermediate' | 'advanced'
+  audience: 'all' | 'women' | 'beginner'
   startTime: string
 }
 
@@ -56,11 +60,12 @@ const INITIAL_FORM: FormData = {
   sportType: 'running',
   distanceKm: 5,
   paceRange: 'any',
+  audience: 'all',
   startTime: '',
 }
 
 export function HotspotsTab() {
-  const { currentUser } = useRunsembleStore()
+  const { currentUser, updateProfile, openRunTracker } = useRunsembleStore()
   const [expanded, setExpanded] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<FormData>(() => ({ ...INITIAL_FORM, startTime: getDefaultStartTime() }))
@@ -73,34 +78,42 @@ export function HotspotsTab() {
 
   const { data: hotspotsData, isLoading } = useQuery({
     queryKey: ['hotspots'],
-    queryFn: () => fetch('/api/hotspots').then(r => r.json()),
+    queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
   })
 
-  const hotspots = (hotspotsData as any)?.hotspots || []
+  const hotspots: ApiHotspot[] = hotspotsData?.hotspots ?? []
 
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
-      fetch(`/api/hotspots/${id}/join${action === 'leave' ? `?userId=${currentUser?.id}` : ''}`, {
-        method: action === 'join' ? 'POST' : 'DELETE',
-        headers: action === 'join' ? { 'Content-Type': 'application/json' } : undefined,
-        body: action === 'join' ? JSON.stringify({ userId: currentUser?.id }) : undefined,
-      }).then(r => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['hotspots'] }),
+      action === 'join'
+        ? apiSend<HotspotResponse>(`/api/hotspots/${id}/join`, 'POST', { userId: currentUser?.id })
+        : apiSend<HotspotResponse>(`/api/hotspots/${id}/join?userId=${currentUser?.id}`, 'DELETE'),
+    onSuccess: (data, vars) => {
+      queryClient.invalidateQueries({ queryKey: ['hotspots'] })
+      if (vars.action === 'join' && data.xp) {
+        updateProfile({ xp: data.xp.newXp })
+        if (data.xp.rankedUp) {
+          toast.success(`Rank up! You're now ${data.xp.rankAfter} ${'\u{1F389}'}`)
+        } else {
+          toast.success(`+${data.xp.awarded} XP for joining`)
+        }
+        if (data.badgeEarned) {
+          toast(`${data.badgeEarned.icon} Badge unlocked: ${data.badgeEarned.title}`)
+        }
+      }
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const createMutation = useMutation({
     mutationFn: (data: FormData) =>
-      fetch('/api/hotspots', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...data,
-          lat: 51.2194,   // Antwerp center fallback
-          lng: 4.4025,
-          recurringIntervalMin: 30,
-          createdBy: currentUser?.id,
-        }),
-      }).then(r => r.json()),
+      apiSend<HotspotResponse>('/api/hotspots', 'POST', {
+        ...data,
+        lat: currentUser?.lat ?? 51.2194, // creator's position, else Antwerp centre
+        lng: currentUser?.lng ?? 4.4025,
+        recurringIntervalMin: 30,
+        createdBy: currentUser?.id,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotspots'] })
       setDialogOpen(false)
@@ -140,8 +153,8 @@ export function HotspotsTab() {
             No upcoming runs right now. Create one!
           </CardContent></Card>
         )}
-        {hotspots.map((h: any) => {
-          const isJoined = h.participants?.some((p: any) => p.userId === currentUser?.id)
+        {hotspots.map((h) => {
+          const isJoined = h.participants?.some((p) => p.userId === currentUser?.id)
           return (
           <motion.div key={h.id} {...fadeUp}>
             <Card className="overflow-hidden hover:shadow-md transition-shadow">
@@ -154,18 +167,41 @@ export function HotspotsTab() {
                       </span>
                       <span className="text-xs text-muted-foreground">{h.distanceKm}km</span>
                     </div>
-                    <h3 className="font-semibold text-sm">{h.name}</h3>
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <h3 className="font-semibold text-sm">{h.name}</h3>
+                      {h.isOfficial && (
+                        <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-primary" title="Official Runsemble city spot">
+                          <BadgeCheck className="h-3.5 w-3.5" />Official
+                        </span>
+                      )}
+                      <AudienceBadge audience={h.audience} />
+                    </div>
                     <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-1">
                       <MapPin className="h-3 w-3" />{h.location}
                     </div>
+                    {h.scheduleLabel && (
+                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-0.5">
+                        <Clock className="h-3 w-3" />{h.scheduleLabel}
+                      </div>
+                    )}
                   </div>
-                  <Button
-                    size="sm"
-                    variant={isJoined ? 'secondary' : 'default'}
-                    onClick={() => joinMutation.mutate({ id: h.id, action: isJoined ? 'leave' : 'join' })}
-                  >
-                    {isJoined ? 'Joined' : 'Join'}
-                  </Button>
+                  <div className="flex flex-col gap-1.5">
+                    <Button
+                      size="sm"
+                      variant={isJoined ? 'secondary' : 'default'}
+                      onClick={() => joinMutation.mutate({ id: h.id, action: isJoined ? 'leave' : 'join' })}
+                    >
+                      {isJoined ? 'Joined' : 'Join'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs text-primary"
+                      onClick={() => openRunTracker({ hotspotId: h.id, label: h.name })}
+                    >
+                      <Play className="h-3 w-3 mr-1" fill="currentColor" />Start
+                    </Button>
+                  </div>
                 </div>
 
                 {/* Participants preview */}
@@ -319,6 +355,24 @@ export function HotspotsTab() {
               </Select>
             </div>
 
+            {/* Who's it for */}
+            <div className="space-y-1.5">
+              <Label>Who&apos;s it for?</Label>
+              <Select
+                value={form.audience}
+                onValueChange={(v) => updateField('audience', v as FormData['audience'])}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder="Everyone" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Everyone welcome</SelectItem>
+                  <SelectItem value="women">Women only</SelectItem>
+                  <SelectItem value="beginner">Beginners</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
             {/* Start time */}
             <div className="space-y-1.5">
               <Label htmlFor="hs-time">Start time *</Label>
@@ -340,7 +394,7 @@ export function HotspotsTab() {
                   exit={{ opacity: 0, height: 0 }}
                   className="text-sm text-destructive"
                 >
-                  {(createMutation.error as any)?.message || 'Something went wrong. Please try again.'}
+                  {createMutation.error?.message || 'Something went wrong. Please try again.'}
                 </motion.p>
               )}
             </AnimatePresence>

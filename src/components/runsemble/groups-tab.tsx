@@ -3,8 +3,10 @@
 import { useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, Trophy, ChevronRight } from 'lucide-react'
+import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
+import { apiGet } from '@/lib/api'
+import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -22,7 +24,7 @@ import { getAvatarColor, getInitials } from './helpers'
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
 export function GroupsTab() {
-  const { currentUser, selectedGroupId, setSelectedGroupId, groupView, setGroupView } = useRunsembleStore()
+  const { currentUser, selectedGroupId, setSelectedGroupId, groupView, setGroupView, openRunTracker } = useRunsembleStore()
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -31,26 +33,26 @@ export function GroupsTab() {
 
   const { data: groupsData, isLoading } = useQuery({
     queryKey: ['groups'],
-    queryFn: () => fetch(`/api/groups?userId=${currentUser?.id}`).then(r => r.json()),
+    queryFn: () => apiGet<GroupsResponse>(`/api/groups?userId=${currentUser?.id}`),
   })
 
-  const groups = (groupsData as any)?.groups || []
+  const groups: ApiGroup[] = groupsData?.groups ?? []
 
   const { data: selectedGroupData, isLoading: groupLoading } = useQuery({
     queryKey: ['group', selectedGroupId],
-    queryFn: () => fetch(`/api/groups/${selectedGroupId}`).then(r => r.json()),
+    queryFn: () => apiGet<GroupResponse>(`/api/groups/${selectedGroupId}`),
     enabled: !!selectedGroupId,
   })
 
-  const selectedGroup = (selectedGroupData as any)?.group || null
+  const selectedGroup: ApiGroup | null = selectedGroupData?.group ?? null
 
   const { data: messagesData, isLoading: chatLoading } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
-    queryFn: () => fetch(`/api/groups/${selectedGroupId}/chat`).then(r => r.json()),
+    queryFn: () => apiGet<GroupMessagesResponse>(`/api/groups/${selectedGroupId}/chat`),
     enabled: !!selectedGroupId && groupView === 'chat',
   })
 
-  const messages = (messagesData as any)?.messages || []
+  const messages: ApiGroupMessage[] = messagesData?.messages ?? []
 
   const [chatMsg, setChatMsg] = useState('')
 
@@ -93,7 +95,7 @@ export function GroupsTab() {
         </div>
       )
     }
-    const isMember = selectedGroup.members?.some((m: any) => m.userId === currentUser?.id)
+    const isMember = selectedGroup.members?.some((m) => m.userId === currentUser?.id)
     return (
       <div>
         <button onClick={() => { setGroupView('list'); setSelectedGroupId(null) }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors">
@@ -111,12 +113,18 @@ export function GroupsTab() {
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setGroupView('chat')}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button>
-            {!isMember && <Button className="flex-1 rounded-xl" onClick={() => joinMutation.mutate({ id: selectedGroup.id!, action: 'join' })}>Join Group</Button>}
+            {isMember ? (
+              <Button className="flex-1 rounded-xl gradient-brand border-0 text-white" onClick={() => openRunTracker({ groupId: selectedGroup.id, label: selectedGroup.name })}>
+                <Play className="h-4 w-4 mr-2" fill="currentColor" />Start run
+              </Button>
+            ) : (
+              <Button className="flex-1 rounded-xl" onClick={() => joinMutation.mutate({ id: selectedGroup.id!, action: 'join' })}>Join Group</Button>
+            )}
           </div>
           {/* Members */}
           <div><h3 className="font-semibold text-sm mb-2">Members</h3>
             <div className="space-y-2">
-              {selectedGroup.members?.map((m: any) => (
+              {selectedGroup.members?.map((m) => (
                 <div key={m.userId} className="flex items-center gap-3">
                   <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs text-white ${getAvatarColor(m.user?.name || 'U')}`}>{getInitials(m.user?.name || 'U')}</AvatarFallback></Avatar>
                   <span className="text-sm font-medium flex-1">{m.user?.name}</span>
@@ -143,7 +151,7 @@ export function GroupsTab() {
       <div className="flex flex-col h-[calc(100vh-140px)]">
         <button onClick={() => setGroupView('detail')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-3"><ArrowLeft className="h-4 w-4" />{selectedGroup.name}</button>
         <div className="flex-1 overflow-y-auto space-y-3 pb-3">
-          {messages?.map((msg: any) => {
+          {messages.map((msg) => {
             const isMe = msg.senderId === currentUser?.id
             return (
               <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
@@ -176,8 +184,8 @@ export function GroupsTab() {
     )
   }
 
-  const myGroups = groups?.filter((g: any) => g.isMember) || []
-  const discoverGroups = groups?.filter((g: any) => !g.isMember && g.isPublic) || []
+  const myGroups = groups.filter((g) => g.isMember)
+  const discoverGroups = groups.filter((g) => !g.isMember && g.isPublic)
 
   if (myGroups.length === 0 && discoverGroups.length === 0) {
     return (
@@ -203,7 +211,7 @@ export function GroupsTab() {
 
       {myGroups.length > 0 && (
         <div><h3 className="text-sm font-semibold text-muted-foreground mb-2">My Groups</h3><div className="space-y-2">
-          {myGroups.map((g: any) => (
+          {myGroups.map((g) => (
             <motion.div key={g.id} {...fadeUp}>
               <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}>
                 <CardContent className="p-4"><div className="flex items-start justify-between"><div className="flex-1"><div className="flex items-center gap-2"><h4 className="font-semibold text-sm">{g.name}</h4><Badge variant="secondary" className="text-[10px]">{g.memberCount}</Badge></div><p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p><p className="text-xs text-muted-foreground mt-1">{g.totalKmThisWeek?.toFixed(0)} km this week</p></div><ChevronRight className="h-4 w-4 text-muted-foreground" /></div></CardContent>
@@ -215,7 +223,7 @@ export function GroupsTab() {
 
       {discoverGroups.length > 0 && (
         <div><h3 className="text-sm font-semibold text-muted-foreground mb-2">Discover</h3><div className="space-y-2">
-          {discoverGroups.map((g: any) => (
+          {discoverGroups.map((g) => (
             <motion.div key={g.id} {...fadeUp}>
               <Card className="hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-start justify-between"><div className="flex-1 cursor-pointer" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}><div className="flex items-center gap-2"><h4 className="font-semibold text-sm">{g.name}</h4>{g.isPublic ? <Globe className="h-3 w-3 text-muted-foreground" /> : <Lock className="h-3 w-3 text-muted-foreground" />}</div><p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p><p className="text-xs text-muted-foreground mt-1">{g.memberCount} members &middot; {g.totalKmThisWeek?.toFixed(0)} km/week</p></div><Button size="sm" variant="outline" className="rounded-full text-xs" onClick={() => joinMutation.mutate({ id: g.id, action: 'join' })}>Join</Button></div></CardContent></Card>
             </motion.div>

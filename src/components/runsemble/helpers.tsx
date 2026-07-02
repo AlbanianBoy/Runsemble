@@ -1,3 +1,17 @@
+// ─── Audience badge ─────────────────────────────────────────────────────────
+// Shows who a run is for (women-only, beginner-friendly). Part of the safety /
+// inclusivity surface.
+export function AudienceBadge({ audience }: { audience?: string }) {
+  if (!audience || audience === 'all') return null
+  const map: Record<string, { label: string; cls: string }> = {
+    women: { label: '♀ Women only', cls: 'bg-pink-100 text-pink-700 dark:bg-pink-950/40 dark:text-pink-300' },
+    beginner: { label: 'Beginners', cls: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
+  }
+  const m = map[audience]
+  if (!m) return null
+  return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${m.cls}`}>{m.label}</span>
+}
+
 // ─── Avatar helpers ────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [

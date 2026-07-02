@@ -6,6 +6,15 @@ import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import { Heart, MessageCircle } from 'lucide-react'
 import { useRunsembleStore, getRankFromXP } from '@/lib/store'
+import { apiGet, apiSend } from '@/lib/api'
+import type {
+  ApiFeedPost,
+  ApiHotspot,
+  ApiUser,
+  FeedResponse,
+  HotspotsResponse,
+  UsersResponse,
+} from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -15,6 +24,7 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials } from './helpers'
+import { CommentsSheet } from './comments-sheet'
 
 const fadeUp = {
   initial: { opacity: 0, y: 12 },
@@ -31,58 +41,65 @@ export function FeedTab() {
   const { currentUser } = useRunsembleStore()
   const [postDialogOpen, setPostDialogOpen] = useState(false)
   const [newPostContent, setNewPostContent] = useState('')
-  const [likedPosts, setLikedPosts] = useState<Set<string>>(new Set())
+  const [commentsPostId, setCommentsPostId] = useState<string | null>(null)
+  const [scope, setScope] = useState<'following' | 'all'>('all')
+
+  const feedKey = ['feed', currentUser?.id, scope] as const
 
   const { data: feedData, isLoading } = useQuery({
-    queryKey: ['feed'],
-    queryFn: () => fetch('/api/feed').then(r => r.json()),
+    queryKey: feedKey,
+    queryFn: () => apiGet<FeedResponse>(`/api/feed?userId=${currentUser?.id ?? ''}&scope=${scope}`),
   })
   const { data: hotspotsData } = useQuery({
     queryKey: ['hotspots'],
-    queryFn: () => fetch('/api/hotspots').then(r => r.json()),
+    queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
   })
   const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => fetch('/api/users').then(r => r.json()),
+    queryKey: ['users', currentUser?.id],
+    queryFn: () => apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}`),
   })
 
-  const posts = (feedData as any)?.posts || []
-  const hotspots = (hotspotsData as any)?.hotspots || []
-  const users = (usersData as any)?.users || []
+  const posts: ApiFeedPost[] = feedData?.posts ?? []
+  const hotspots: ApiHotspot[] = hotspotsData?.hotspots ?? []
+  const users: ApiUser[] = usersData?.users ?? []
 
-  const nextHotspot = hotspots?.find((h: any) => h.minutesUntil > 0)
-  const availableRunners = users?.filter((u: any) => u.isAvailable && u.id !== currentUser?.id) || []
+  const nextHotspot = hotspots.find((h) => h.minutesUntil > 0)
+  const availableRunners = users.filter((u) => u.isAvailable && u.id !== currentUser?.id)
   const rank = currentUser ? getRankFromXP(currentUser.xp) : null
 
+  // Optimistically flip like state so the heart responds instantly; the server
+  // is the source of truth and reconciles on invalidation.
   const likeMutation = useMutation({
     mutationFn: (postId: string) =>
-      fetch(`/api/feed/${postId}/like`, { method: 'POST' }).then(r => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['feed'] }),
+      apiSend(`/api/feed/${postId}/like`, 'POST', { userId: currentUser?.id }),
+    onMutate: (postId: string) => {
+      queryClient.setQueryData<FeedResponse>(feedKey, (old) =>
+        old
+          ? {
+              posts: old.posts.map((p) =>
+                p.id === postId
+                  ? { ...p, likedByMe: !p.likedByMe, likes: p.likes + (p.likedByMe ? -1 : 1) }
+                  : p
+              ),
+            }
+          : old
+      )
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: feedKey }),
   })
 
   const postMutation = useMutation({
     mutationFn: (content: string) =>
-      fetch('/api/feed', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ authorId: currentUser?.id, content, postType: 'moment' }),
-      }).then(r => r.json()),
+      apiSend('/api/feed', 'POST', { authorId: currentUser?.id, content, postType: 'moment' }),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['feed'] })
+      queryClient.invalidateQueries({ queryKey: feedKey })
       setPostDialogOpen(false)
       setNewPostContent('')
     },
   })
 
   function handleLike(postId: string) {
-    const isCurrentlyLiked = likedPosts.has(postId)
-    const nextLiked = new Set(likedPosts)
-    if (isCurrentlyLiked) {
-      nextLiked.delete(postId)
-    } else {
-      nextLiked.add(postId)
-    }
-    setLikedPosts(nextLiked)
+    if (!currentUser?.id) return
     likeMutation.mutate(postId)
   }
 
@@ -96,6 +113,26 @@ export function FeedTab() {
 
   return (
     <div className="space-y-4 pb-4">
+      {/* Feed scope toggle */}
+      <div className="grid grid-cols-2 gap-1 p-1 rounded-full bg-muted">
+        {([
+          { id: 'following', label: 'For you' },
+          { id: 'all', label: 'Everyone' },
+        ] as const).map((opt) => {
+          const active = scope === opt.id
+          return (
+            <button
+              key={opt.id}
+              onClick={() => setScope(opt.id)}
+              className={`relative rounded-full py-1.5 text-sm font-medium transition-colors ${active ? 'text-primary-foreground' : 'text-muted-foreground'}`}
+            >
+              {active && <motion.span layoutId="feed-toggle" className="absolute inset-0 rounded-full gradient-brand" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />}
+              <span className="relative z-10">{opt.label}</span>
+            </button>
+          )
+        })}
+      </div>
+
       {/* Stats strip with better shadows and spacing */}
       <motion.div
         className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1"
@@ -208,8 +245,8 @@ export function FeedTab() {
         </div>
       ) : (
         <motion.div className="space-y-3" variants={staggerContainer} initial="initial" animate="animate">
-          {posts?.map((post: any) => {
-            const isLiked = likedPosts.has(post.id)
+          {posts.map((post) => {
+            const isLiked = post.likedByMe ?? false
             return (
               <motion.div key={post.id} variants={fadeUp}>
                 <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-border/60">
@@ -275,17 +312,18 @@ export function FeedTab() {
                                 strokeWidth={isLiked ? 0 : 2}
                               />
                             </motion.div>
-                            <span className="text-xs font-medium">
-                              {isLiked ? post.likes + 1 : post.likes}
+                            <span className="text-xs font-medium tabular">
+                              {post.likes}
                             </span>
                           </motion.button>
                           {/* Comment button */}
                           <motion.button
                             whileTap={{ scale: 0.9 }}
+                            onClick={() => setCommentsPostId(post.id)}
                             className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors duration-200"
                           >
                             <MessageCircle className="h-4 w-4" />
-                            <span className="text-xs font-medium">{post.comments}</span>
+                            <span className="text-xs font-medium tabular">{post.comments}</span>
                           </motion.button>
                         </div>
                       </div>
@@ -324,6 +362,13 @@ export function FeedTab() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Comments */}
+      <CommentsSheet
+        postId={commentsPostId}
+        open={!!commentsPostId}
+        onOpenChange={(open) => { if (!open) setCommentsPostId(null) }}
+      />
     </div>
   )
 }

@@ -3,8 +3,15 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, Flame, Pencil, Loader2, Check } from 'lucide-react'
+import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target } from 'lucide-react'
 import { useRunsembleStore, getRankFromXP, type PaceLevel, type SchedulePreference } from '@/lib/store'
+import { apiGet, apiSend } from '@/lib/api'
+import type { BadgesResponse } from '@/lib/types'
+import { Leaderboard } from './leaderboard'
+import { RunHistory } from './run-history'
+import { ThemeToggle } from './theme-toggle'
+import { ChallengesView } from './challenges-view'
+import { BuddiesView } from './buddies-view'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -21,7 +28,7 @@ import { getAvatarColor, getInitials } from './helpers'
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
 export function ProfileTab() {
-  const { currentUser, updateProfile } = useRunsembleStore()
+  const { currentUser, updateProfile, profileView, setProfileView } = useRunsembleStore()
   const queryClient = useQueryClient()
 
   // Edit dialog state
@@ -44,11 +51,11 @@ export function ProfileTab() {
 
   const { data: badgesData, isLoading: badgesLoading } = useQuery({
     queryKey: ['badges', currentUser?.id],
-    queryFn: () => fetch(`/api/badges?userId=${currentUser?.id}`).then(r => r.json()),
+    queryFn: () => apiGet<BadgesResponse>(`/api/badges?userId=${currentUser?.id}`),
     enabled: !!currentUser?.id,
   })
 
-  const badges = (badgesData as any)?.badges || []
+  const badges = badgesData?.badges ?? []
 
   // PUT mutation for profile updates
   const updateMutation = useMutation({
@@ -67,6 +74,9 @@ export function ProfileTab() {
   const startAvailability = useCallback(async () => {
     setAvailableMinutesLeft(45)
     updateProfile({ isAvailable: true })
+    if (currentUser?.id) {
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: true }).catch(() => {})
+    }
     if (availTimerRef.current) clearInterval(availTimerRef.current)
     availTimerRef.current = setInterval(() => {
       setAvailableMinutesLeft(prev => {
@@ -78,13 +88,16 @@ export function ProfileTab() {
         return prev - 1
       })
     }, 60000)
-  }, [updateProfile])
+  }, [updateProfile, currentUser])
 
   const stopAvailability = useCallback(() => {
     if (availTimerRef.current) { clearInterval(availTimerRef.current); availTimerRef.current = null }
     setAvailableMinutesLeft(45)
     updateProfile({ isAvailable: false })
-  }, [updateProfile])
+    if (currentUser?.id) {
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: false }).catch(() => {})
+    }
+  }, [updateProfile, currentUser])
 
   const openEditDialog = () => {
     if (!currentUser) return
@@ -109,7 +122,7 @@ export function ProfileTab() {
     }
 
     updateMutation.mutate(updates, {
-      onSuccess: (data) => {
+      onSuccess: () => {
         updateProfile(updates)
         setEditOpen(false)
       },
@@ -127,8 +140,14 @@ export function ProfileTab() {
 
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
 
+  // Sub-views reachable from the profile.
+  if (profileView === 'leaderboard') return <Leaderboard />
+  if (profileView === 'runs') return <RunHistory />
+  if (profileView === 'challenges') return <ChallengesView />
+  if (profileView === 'buddies') return <BuddiesView />
+
   const rank = getRankFromXP(currentUser.xp)
-  const xpProgress = rank.nextTierXP > 9999 ? 100 : ((currentUser.xp - rank.minXP) / (rank.nextTierXP - rank.minXP)) * 100
+  const xpProgress = rank.progress * 100
 
   return (
     <div className="space-y-5 pb-4">
@@ -249,22 +268,51 @@ export function ProfileTab() {
       </motion.div>
 
       {/* Stats row */}
-      <motion.div {...fadeUp} className="grid grid-cols-3 gap-3">
-        <Card><CardContent className="p-3 text-center">
-          <div className="flex justify-center text-primary mb-1"><Trophy className="h-5 w-5" /></div>
-          <p className="font-bold text-lg">{currentUser.totalRuns}</p>
-          <p className="text-[10px] text-muted-foreground">Total Runs</p>
+      <motion.div {...fadeUp} className="grid grid-cols-4 gap-2">
+        <Card><CardContent className="p-2.5 text-center">
+          <div className="flex justify-center text-primary mb-1"><Trophy className="h-4 w-4" /></div>
+          <p className="font-bold text-base tabular">{currentUser.totalRuns}</p>
+          <p className="text-[9px] text-muted-foreground">Runs</p>
         </CardContent></Card>
-        <Card><CardContent className="p-3 text-center">
-          <div className="flex justify-center text-primary mb-1"><Users className="h-5 w-5" /></div>
-          <p className="font-bold text-lg">{currentUser.totalPeopleRunWith}</p>
-          <p className="text-[10px] text-muted-foreground">Run Buddies</p>
+        <Card><CardContent className="p-2.5 text-center">
+          <div className="flex justify-center text-primary mb-1"><MapPin className="h-4 w-4" /></div>
+          <p className="font-bold text-base tabular">{(currentUser.totalDistanceKm ?? 0).toFixed(0)}</p>
+          <p className="text-[9px] text-muted-foreground">km</p>
         </CardContent></Card>
-        <Card><CardContent className="p-3 text-center">
-          <div className="flex justify-center text-primary mb-1"><Flame className="h-5 w-5" /></div>
-          <p className="font-bold text-lg">{currentUser.longestStreak}</p>
-          <p className="text-[10px] text-muted-foreground">Best Streak</p>
+        <Card><CardContent className="p-2.5 text-center">
+          <div className="flex justify-center text-primary mb-1"><Users className="h-4 w-4" /></div>
+          <p className="font-bold text-base tabular">{currentUser.totalPeopleRunWith}</p>
+          <p className="text-[9px] text-muted-foreground">Buddies</p>
         </CardContent></Card>
+        <Card><CardContent className="p-2.5 text-center">
+          <div className="flex justify-center text-primary mb-1"><Flame className="h-4 w-4" /></div>
+          <p className="font-bold text-base tabular">{currentUser.longestStreak}</p>
+          <p className="text-[9px] text-muted-foreground">Best</p>
+        </CardContent></Card>
+      </motion.div>
+
+      {/* Quick links */}
+      <motion.div {...fadeUp} className="grid grid-cols-2 gap-3">
+        <button onClick={() => setProfileView('leaderboard')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center"><Trophy className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Leaderboard</p><p className="text-[11px] text-muted-foreground">See the rankings</p></div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <button onClick={() => setProfileView('runs')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center"><Route className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Your Runs</p><p className="text-[11px] text-muted-foreground">Run history</p></div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <button onClick={() => setProfileView('challenges')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-violet-500/15 text-violet-600 flex items-center justify-center"><Target className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Challenges</p><p className="text-[11px] text-muted-foreground">Join & compete</p></div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <button onClick={() => setProfileView('buddies')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
+          <div className="h-9 w-9 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center"><Users className="h-5 w-5" /></div>
+          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Buddies</p><p className="text-[11px] text-muted-foreground">Friends & DMs</p></div>
+          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        </button>
       </motion.div>
 
       {/* XP Progress */}
@@ -280,7 +328,7 @@ export function ProfileTab() {
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {rank.nextTierXP > 9999 ? 'Max rank reached' : `Next: ${rank.nextTierXP} XP`}
+                {rank.isMax ? 'Max rank reached' : `Next: ${rank.nextTierXP} XP`}
               </p>
             </div>
             <Progress value={Math.min(xpProgress, 100)} className="h-2" />
@@ -319,7 +367,7 @@ export function ProfileTab() {
           </div>
         ) : badges && badges.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
-            {badges.map((b: any) => (
+            {badges.map((b) => (
               <Card key={b.id} className="text-center p-2">
                 <CardContent className="p-0">
                   <p className="text-2xl mb-1">{b.icon}</p>
@@ -336,6 +384,19 @@ export function ProfileTab() {
             </CardContent>
           </Card>
         )}
+      </motion.div>
+
+      {/* Appearance */}
+      <motion.div {...fadeUp}>
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between">
+            <div>
+              <p className="font-semibold text-sm">Appearance</p>
+              <p className="text-xs text-muted-foreground">Switch between light and dark</p>
+            </div>
+            <ThemeToggle />
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Edit Profile Dialog */}

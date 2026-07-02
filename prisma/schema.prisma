@@ -14,6 +14,10 @@ model User {
   avatar            String?
   bio               String?
   city              String    @default("Antwerp")
+  lat               Float?
+  lng               Float?
+  gender            String?   // optional, unlocks women-only runs
+  verified          Boolean   @default(false)
   preferredSport    String    @default("running")
   paceLevel         String    @default("beginner") // beginner, intermediate, advanced, any
   schedulePreference String   @default("evening") // morning, afternoon, evening
@@ -23,6 +27,8 @@ model User {
   lastActiveDate    String?
   totalRuns         Int       @default(0)
   totalPeopleRunWith Int      @default(0)
+  totalDistanceKm   Float     @default(0)
+  totalDurationSec  Int       @default(0)
   isAvailable       Boolean   @default(false)
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
@@ -40,6 +46,16 @@ model User {
   earnedBadges      UserBadge[]
   groupChats        GroupChatMessage[]
   runRatings        RunRating[]
+  postLikes         PostLike[]
+  postComments      PostComment[]
+  runSessions       RunSession[]
+  notifications     Notification[] @relation("NotificationRecipient")
+  triggeredNotifications Notification[] @relation("NotificationActor")
+  buddies           Buddy[] @relation("BuddyOwner")
+  buddyOf           Buddy[] @relation("BuddyTarget")
+  blocksMade        Block[] @relation("Blocker")
+  blockedBy         Block[] @relation("Blocked")
+  challengesJoined  ChallengeParticipant[]
 }
 
 model Hotspot {
@@ -54,13 +70,17 @@ model Hotspot {
   paceRange   String    @default("any")
   startTime   DateTime
   recurringIntervalMin Int @default(30)
+  daysOfWeek  String?   // for weekly official runs, e.g. "1,3,5" (Mon/Wed/Fri); null = continuous
+  audience    String    @default("all") // all, women, beginner
   isActive    Boolean   @default(true)
+  isOfficial  Boolean   @default(false) // curated city spot vs. user-created
   createdBy   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
 
   participants HotspotParticipant[]
   ratings     RunRating[]
+  runSessions RunSession[]
 }
 
 model HotspotParticipant {
@@ -92,6 +112,8 @@ model RunGroup {
   members     GroupMember[]
   chatMessages GroupChatMessage[]
   posts       FeedPost[]
+  runSessions RunSession[]
+  challenges  Challenge[]
 }
 
 model GroupMember {
@@ -121,6 +143,78 @@ model FeedPost {
 
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  likedBy     PostLike[]
+  commentThread PostComment[]
+}
+
+model PostLike {
+  id        String   @id @default(cuid())
+  postId    String
+  userId    String
+  createdAt DateTime @default(now())
+
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([userId])
+}
+
+model PostComment {
+  id        String   @id @default(cuid())
+  postId    String
+  authorId  String
+  content   String
+  createdAt DateTime @default(now())
+
+  post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   // recipient
+  actorId   String?  // who triggered it (if anyone)
+  type      String   // hotspot_join, run_invite, group_message, badge, rank_up, comment, like, run_complete
+  title     String
+  body      String?
+  entityId  String?  // id of the related hotspot/group/post/etc.
+  icon      String?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  user      User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([userId, read])
+}
+
+model RunSession {
+  id            String    @id @default(cuid())
+  userId        String
+  hotspotId     String?   // set when the run is tied to a hotspot
+  groupId       String?   // set when the run is tied to a group
+  sportType     String    @default("running")
+  distanceKm    Float     @default(0)
+  durationSec   Int       @default(0)
+  avgPaceSecPerKm Int     @default(0) // seconds per km; 0 when distance is 0
+  calories      Int       @default(0)
+  path          String?   // JSON-encoded array of {lat,lng} GPS samples
+  splits        String?   // JSON-encoded array of per-km split seconds
+  companions    Int       @default(0) // how many people ran together
+  xpEarned      Int       @default(0)
+  note          String?
+  startedAt     DateTime  @default(now())
+  endedAt       DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  hotspot       Hotspot?  @relation(fields: [hotspotId], references: [id], onDelete: SetNull)
+  group         RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
 }
 
 model ChatMessage {
@@ -188,4 +282,64 @@ model RunRating {
 
   hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// A running-buddy relationship, formed after running together. Directional rows
+// (one per direction) so each user sees the other in their buddy list.
+model Buddy {
+  id        String   @id @default(cuid())
+  userId    String
+  buddyId   String
+  createdAt DateTime @default(now())
+
+  user      User     @relation("BuddyOwner", fields: [userId], references: [id], onDelete: Cascade)
+  buddy     User     @relation("BuddyTarget", fields: [buddyId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, buddyId])
+  @@index([userId])
+}
+
+model Block {
+  id        String   @id @default(cuid())
+  blockerId String
+  blockedId String
+  reason    String?
+  createdAt DateTime @default(now())
+
+  blocker   User     @relation("Blocker", fields: [blockerId], references: [id], onDelete: Cascade)
+  blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
+
+  @@unique([blockerId, blockedId])
+}
+
+// Community challenges — progress is computed on read from RunSessions in range,
+// so there's no counter to keep in sync.
+model Challenge {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  metric      String   @default("distance") // distance, runs, buddies
+  goal        Float    @default(0)
+  scope       String   @default("global")   // global, group
+  groupId     String?
+  icon        String   @default("🏆")
+  startsAt    DateTime @default(now())
+  endsAt      DateTime
+  createdBy   String?
+  createdAt   DateTime @default(now())
+
+  group        RunGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  participants ChallengeParticipant[]
+}
+
+model ChallengeParticipant {
+  id          String   @id @default(cuid())
+  challengeId String
+  userId      String
+  joinedAt    DateTime @default(now())
+
+  challenge   Challenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([challengeId, userId])
 }
