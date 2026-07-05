@@ -97,6 +97,13 @@ export interface ApiFeedPost {
   createdAt: string
   author?: FeedAuthor
   group?: { id: string; name: string; coverImage: string | null } | null
+  /** Present when the post shares a tracked run — rendered as a route card. */
+  runSession?: {
+    distanceKm: number
+    durationSec: number
+    avgPaceSecPerKm: number
+    path: string | null
+  } | null
 }
 
 export interface ApiComment {

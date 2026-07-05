@@ -685,7 +685,17 @@ async function seed() {
   }
 }
 
+// Wiping and reseeding the database is a dev tool — never available in production.
+function guardProduction() {
+  if (process.env.NODE_ENV === 'production') {
+    return NextResponse.json({ error: 'Seeding is disabled in production' }, { status: 403 })
+  }
+  return null
+}
+
 export async function POST() {
+  const blocked = guardProduction()
+  if (blocked) return blocked
   try {
     const result = await seed()
     return NextResponse.json({ success: true, ...result })
@@ -699,6 +709,8 @@ export async function POST() {
 }
 
 export async function GET() {
+  const blocked = guardProduction()
+  if (blocked) return blocked
   try {
     const result = await seed()
     return NextResponse.json({ success: true, ...result })

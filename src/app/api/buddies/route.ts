@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
-// A user's run buddies — people they've actually run with.
-export async function GET(request: NextRequest) {
+// YOUR run buddies — people you've actually run with. Session only.
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     const rows = await db.buddy.findMany({
       where: { userId },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { awardXp, grantBadge, BADGES } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { getSessionUser } from '@/lib/auth'
 
 export async function POST(
   request: NextRequest,
@@ -9,15 +10,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const body = await request.json()
-    const { userId } = body
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
-      )
-    }
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     // Check hotspot exists
     const hotspot = await db.hotspot.findUnique({ where: { id } })
@@ -158,15 +153,9 @@ export async function DELETE(
 ) {
   try {
     const { id } = await params
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-
-    if (!userId) {
-      return NextResponse.json(
-        { error: 'userId query param is required' },
-        { status: 400 }
-      )
-    }
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     const participant = await db.hotspotParticipant.findUnique({
       where: {

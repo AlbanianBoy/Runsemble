@@ -38,6 +38,40 @@ type Phase = 'lobby' | 'ready' | 'running' | 'paused' | 'finished'
 interface GpsPoint { lat: number; lng: number; t: number }
 interface Candidate { id: string; name: string }
 
+// ─── GPS simulator ───────────────────────────────────────────────────────────
+// A loop around Stadspark, Antwerp. Lets the full tracking experience (trail,
+// distance, pace, splits) be demoed indoors — research interviews, desktops —
+// where there's no GPS. Clearly labelled "Demo GPS" in the UI.
+const DEMO_ROUTE: LatLng[] = [
+  { lat: 51.2119, lng: 4.4110 }, { lat: 51.2130, lng: 4.4128 }, { lat: 51.2134, lng: 4.4150 },
+  { lat: 51.2128, lng: 4.4168 }, { lat: 51.2114, lng: 4.4173 }, { lat: 51.2103, lng: 4.4160 },
+  { lat: 51.2098, lng: 4.4140 }, { lat: 51.2104, lng: 4.4120 }, { lat: 51.2119, lng: 4.4110 },
+]
+const DEMO_SPEED_MPS = 5 // ~3:20/km — brisk, so the demo moves visibly
+
+/** Point `meters` along the demo loop (wraps around). */
+function demoPointAt(meters: number): LatLng {
+  let total = 0
+  const lens: number[] = []
+  for (let i = 1; i < DEMO_ROUTE.length; i++) {
+    const len = haversineKm(DEMO_ROUTE[i - 1], DEMO_ROUTE[i]) * 1000
+    lens.push(len)
+    total += len
+  }
+  let d = total > 0 ? meters % total : 0
+  for (let i = 1; i < DEMO_ROUTE.length; i++) {
+    const len = lens[i - 1]
+    if (d <= len) {
+      const t = len === 0 ? 0 : d / len
+      const a = DEMO_ROUTE[i - 1]
+      const b = DEMO_ROUTE[i]
+      return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t }
+    }
+    d -= len
+  }
+  return DEMO_ROUTE[0]
+}
+
 export function RunTracker() {
   const { runContext, closeRunTracker, currentUser, updateProfile } = useRunsembleStore()
   const queryClient = useQueryClient()
@@ -51,9 +85,10 @@ export function RunTracker() {
   const [splits, setSplits] = useState<number[]>([])
   const [routePoints, setRoutePoints] = useState<LatLng[]>([])
   const [pos, setPos] = useState<LatLng | null>(null)
-  const [gps, setGps] = useState<'acquiring' | 'ok' | 'denied' | 'unavailable'>(() =>
+  const [gps, setGps] = useState<'acquiring' | 'ok' | 'denied' | 'unavailable' | 'demo'>(() =>
     typeof navigator !== 'undefined' && 'geolocation' in navigator ? 'acquiring' : 'unavailable'
   )
+  const [demo, setDemo] = useState(false)
 
   // Finish-step state
   const [companions, setCompanions] = useState(0)
@@ -68,9 +103,13 @@ export function RunTracker() {
   const pointsRef = useRef<GpsPoint[]>([])
   const watchIdRef = useRef<number | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const demoRef = useRef(false)
+  const demoProgressRef = useRef(0)
+  const ingestRef = useRef<(lat: number, lng: number) => void>(() => {})
 
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { elapsedRef.current = elapsedSec }, [elapsedSec])
+  useEffect(() => { demoRef.current = demo }, [demo])
 
   // 1s ticker — advances only while running.
   useEffect(() => {
@@ -80,43 +119,65 @@ export function RunTracker() {
     return () => { if (tickRef.current) clearInterval(tickRef.current) }
   }, [])
 
+  // One ingestion path for real GPS *and* the simulator: update the position,
+  // and while running, accumulate distance/route/splits with a jitter filter.
+  const ingestPosition = (lat: number, lng: number) => {
+    const p: GpsPoint = { lat, lng, t: Date.now() }
+    setPos({ lat, lng })
+    if (phaseRef.current !== 'running') return
+
+    const pts = pointsRef.current
+    const last = pts[pts.length - 1]
+    if (last) {
+      const d = haversineKm({ lat: last.lat, lng: last.lng }, { lat, lng })
+      // Ignore GPS jitter (<3m) and implausible jumps (>60m between samples).
+      if (d > 0.003 && d < 0.06) {
+        setDistanceKm((prev) => {
+          const next = prev + d
+          // Record a split each time we cross a whole km.
+          if (Math.floor(next) > Math.floor(prev)) {
+            const splitTime = elapsedRef.current - lastSplitElapsedRef.current
+            lastSplitElapsedRef.current = elapsedRef.current
+            setSplits((s) => [...s, splitTime])
+          }
+          return next
+        })
+        setRoutePoints((rp) => [...rp, { lat, lng }])
+      }
+    }
+    pts.push(p)
+  }
+  useEffect(() => { ingestRef.current = ingestPosition })
+
   // GPS watch — position updates always (so the ready screen shows where you
-  // are); distance/route recording only while running, with a jitter filter.
+  // are). Ignored while the simulator drives the position.
   useEffect(() => {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
     watchIdRef.current = navigator.geolocation.watchPosition(
       (loc) => {
+        if (demoRef.current) return
         setGps('ok')
-        const p: GpsPoint = { lat: loc.coords.latitude, lng: loc.coords.longitude, t: Date.now() }
-        setPos({ lat: p.lat, lng: p.lng })
-        if (phaseRef.current !== 'running') return
-
-        const pts = pointsRef.current
-        const last = pts[pts.length - 1]
-        if (last) {
-          const d = haversineKm({ lat: last.lat, lng: last.lng }, { lat: p.lat, lng: p.lng })
-          // Ignore GPS jitter (<3m) and implausible jumps (>60m between samples).
-          if (d > 0.003 && d < 0.06) {
-            setDistanceKm((prev) => {
-              const next = prev + d
-              // Record a split each time we cross a whole km.
-              if (Math.floor(next) > Math.floor(prev)) {
-                const splitTime = elapsedRef.current - lastSplitElapsedRef.current
-                lastSplitElapsedRef.current = elapsedRef.current
-                setSplits((s) => [...s, splitTime])
-              }
-              return next
-            })
-            setRoutePoints((rp) => [...rp, { lat: p.lat, lng: p.lng }])
-          }
-        }
-        pts.push(p)
+        ingestRef.current(loc.coords.latitude, loc.coords.longitude)
       },
       (err) => setGps(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable'),
       { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
     )
     return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current) }
   }, [])
+
+  // GPS simulator — advances along the demo loop while running, so trail,
+  // distance, pace, and splits all behave exactly like a real run.
+  useEffect(() => {
+    if (!demo) return
+    demoProgressRef.current = 0
+    const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng), 0)
+    const iv = setInterval(() => {
+      if (phaseRef.current === 'running') demoProgressRef.current += DEMO_SPEED_MPS
+      const p = demoPointAt(demoProgressRef.current)
+      ingestRef.current(p.lat, p.lng)
+    }, 1000)
+    return () => { clearTimeout(t0); clearInterval(iv) }
+  }, [demo])
 
   // Where the map focuses before GPS locks: your saved coords, else city centre.
   const fallbackCenter: LatLng =
@@ -233,7 +294,7 @@ export function RunTracker() {
   const label = runContext?.label ?? 'Solo run'
   const gpsNote =
     gps === 'acquiring' ? 'Acquiring GPS…' : gps === 'denied' ? 'Location off'
-    : gps === 'unavailable' ? 'No GPS' : 'GPS'
+    : gps === 'unavailable' ? 'No GPS' : gps === 'demo' ? 'Demo GPS' : 'GPS'
 
   return (
     <motion.div
@@ -267,7 +328,7 @@ export function RunTracker() {
               </span>
               <div className="flex items-center gap-2 pointer-events-auto">
                 <span className="glass rounded-full px-3 py-1.5 text-[11px] font-medium border shadow-sm flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${gps === 'ok' ? 'bg-emerald-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
+                  <span className={`h-2 w-2 rounded-full ${gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
                   {gpsNote}
                 </span>
                 {phase === 'ready' && (
@@ -310,6 +371,8 @@ export function RunTracker() {
                 <p className="text-sm text-muted-foreground text-center">
                   {gps === 'ok'
                     ? 'GPS locked — ready when you are.'
+                    : gps === 'demo'
+                    ? 'Demo GPS active — START and watch a simulated run.'
                     : gps === 'acquiring'
                     ? 'Getting a GPS fix… you can start anyway.'
                     : 'No GPS here — your time will still be tracked.'}
@@ -320,6 +383,14 @@ export function RunTracker() {
                 >
                   START
                 </button>
+                {gps !== 'ok' && !demo && (
+                  <button
+                    onClick={() => { setDemo(true); setGps('demo') }}
+                    className="text-xs text-muted-foreground underline underline-offset-4 hover:text-foreground transition-colors"
+                  >
+                    or simulate a run (demo mode)
+                  </button>
+                )}
               </div>
             ) : (
               <>

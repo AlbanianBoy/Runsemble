@@ -32,6 +32,7 @@ model User {
   totalDistanceKm   Float     @default(0)
   totalDurationSec  Int       @default(0)
   isAvailable       Boolean   @default(false)
+  availableFrom     DateTime? // planned availability ("free to run at 18:30")
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
   onboardingComplete Boolean  @default(false)
@@ -154,6 +155,7 @@ model FeedPost {
   content     String
   imageUrl    String?
   postType    String   @default("moment") // moment, milestone, question, challenge
+  runSessionId String? // set when the post shares a tracked run (route card)
   likes       Int      @default(0)
   comments    Int      @default(0)
   createdAt   DateTime @default(now())
@@ -161,6 +163,7 @@ model FeedPost {
 
   author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  runSession  RunSession? @relation(fields: [runSessionId], references: [id], onDelete: SetNull)
   likedBy     PostLike[]
   commentThread PostComment[]
 }
@@ -231,6 +234,7 @@ model RunSession {
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   hotspot       Hotspot?  @relation(fields: [hotspotId], references: [id], onDelete: SetNull)
   group         RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
+  posts         FeedPost[]
 
   @@index([userId])
 }

@@ -142,7 +142,7 @@ export function ProfileTab() {
   const handleExportData = async () => {
     if (!currentUser) return
     try {
-      const res = await fetch(`/api/auth/export?userId=${currentUser.id}`)
+      const res = await fetch('/api/auth/export')
       if (!res.ok) throw new Error('Export failed')
       const blob = await res.blob()
       const url = URL.createObjectURL(blob)
@@ -165,7 +165,7 @@ export function ProfileTab() {
   const handleDeleteAccount = async () => {
     if (!currentUser) return
     if (!confirm('Delete your account and ALL your data (runs, posts, messages, buddies)? This cannot be undone.')) return
-    const res = await fetch(`/api/auth/account?userId=${currentUser.id}`, { method: 'DELETE' }).catch(() => null)
+    const res = await fetch('/api/auth/account', { method: 'DELETE' }).catch(() => null)
     if (!res?.ok) {
       alert('Could not delete your account right now — try again in a moment.')
       return

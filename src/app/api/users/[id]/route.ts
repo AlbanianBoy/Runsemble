@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 export async function GET(
   _request: NextRequest,
@@ -50,6 +51,9 @@ export async function PATCH(
 ) {
   try {
     const { id } = await params
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
     const body = await request.json()
 
     const user = await db.user.findUnique({ where: { id } })
@@ -119,6 +123,9 @@ export async function PUT(
 ) {
   try {
     const { id } = await params
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
     const body = await request.json()
 
     const user = await db.user.findUnique({ where: { id } })

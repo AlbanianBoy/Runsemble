@@ -6,29 +6,13 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, MapPin, Clock, Zap, Flame, Play } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet } from '@/lib/api'
-import { formatClock, formatPaceLabel, shortDate } from '@/lib/run'
+import { formatClock, formatPaceLabel, shortDate, parsePath, parseSplits } from '@/lib/run'
 import type { RunsResponse, ApiRunSession } from '@/lib/types'
-import type { LatLng } from '@/lib/geo'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
-
-function parsePath(path?: string | null): LatLng[] {
-  if (!path) return []
-  try {
-    const arr = JSON.parse(path)
-    return Array.isArray(arr) ? arr.filter((p) => typeof p?.lat === 'number' && typeof p?.lng === 'number') : []
-  } catch { return [] }
-}
-function parseSplits(splits?: string | null): number[] {
-  if (!splits) return []
-  try {
-    const arr = JSON.parse(splits)
-    return Array.isArray(arr) ? arr.filter((n) => typeof n === 'number') : []
-  } catch { return [] }
-}
 
 export function RunHistory() {
   const { currentUser, setProfileView, openRunTracker } = useRunsembleStore()

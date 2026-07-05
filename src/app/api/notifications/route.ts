@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
-// List a user's notifications (newest first) plus the unread count.
-export async function GET(request: NextRequest) {
+// List YOUR notifications (newest first) plus the unread count. Session only.
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 })
-    }
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     const [notifications, unread] = await Promise.all([
       db.notification.findMany({
@@ -27,18 +26,26 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// Mark notifications read. Pass { userId } to mark all, or { ids: [...] }.
+// Mark YOUR notifications read: all of them, or { ids: [...] } (own only).
 export async function PATCH(request: NextRequest) {
   try {
-    const body = await request.json()
-    const { userId, ids } = body
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+
+    const body = await request.json().catch(() => ({}))
+    const { ids } = body
 
     if (Array.isArray(ids) && ids.length > 0) {
-      await db.notification.updateMany({ where: { id: { in: ids } }, data: { read: true } })
-    } else if (userId) {
-      await db.notification.updateMany({ where: { userId, read: false }, data: { read: true } })
+      // Scoped to the session user so nobody can mark someone else's read.
+      await db.notification.updateMany({
+        where: { id: { in: ids }, userId: me.id },
+        data: { read: true },
+      })
     } else {
-      return NextResponse.json({ error: 'userId or ids required' }, { status: 400 })
+      await db.notification.updateMany({
+        where: { userId: me.id, read: false },
+        data: { read: true },
+      })
     }
 
     return NextResponse.json({ ok: true })

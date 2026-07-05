@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
     // Return all users for feed and social features.
     // Map-visible users are filtered client-side using isAvailable && privacyVisible.
-    const { searchParams } = new URL(request.url)
-    const viewerId = searchParams.get('viewerId')
+    // Block filtering is based on the session, not a client-claimed viewer id.
+    const viewerId = (await getSessionUser())?.id ?? null
 
     // Hide anyone in a block relationship with the viewer (either direction).
     let excludeIds: string[] = []
@@ -41,66 +42,11 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
-  try {
-    const body = await request.json()
-
-    const {
-      name,
-      email,
-      avatar,
-      bio,
-      city,
-      preferredSport,
-      paceLevel,
-      schedulePreference,
-      lat,
-      lng,
-    } = body
-
-    if (!name || !email) {
-      return NextResponse.json(
-        { error: 'Name and email are required' },
-        { status: 400 }
-      )
-    }
-
-    // Check if user with email already exists
-    const existingUser = await db.user.findUnique({
-      where: { email },
-    })
-
-    if (existingUser) {
-      return NextResponse.json(
-        { error: 'A user with this email already exists' },
-        { status: 409 }
-      )
-    }
-
-    const user = await db.user.create({
-      data: {
-        name,
-        email,
-        avatar: avatar ?? null,
-        bio: bio ?? null,
-        city: city ?? 'Antwerp',
-        preferredSport: preferredSport ?? 'running',
-        paceLevel: paceLevel ?? 'beginner',
-        schedulePreference: schedulePreference ?? 'evening',
-        lat: typeof lat === 'number' ? lat : null,
-        lng: typeof lng === 'number' ? lng : null,
-        onboardingComplete: true,
-        isAvailable: false,
-        privacyVisible: true,
-      },
-    })
-
-    return NextResponse.json({ user }, { status: 201 })
-  } catch (error) {
-    console.error('Error creating user:', error)
-    return NextResponse.json(
-      { error: 'Failed to create user' },
-      { status: 500 }
-    )
-  }
+// Account creation moved to /api/auth/signup (password + consent + session).
+// This unauthenticated path stays closed so it can't be used to mint profiles.
+export async function POST(_request: NextRequest) {
+  return NextResponse.json(
+    { error: 'Account creation moved to /api/auth/signup' },
+    { status: 410 }
+  )
 }

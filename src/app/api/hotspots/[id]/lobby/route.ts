@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { haversineKm } from '@/lib/geo'
 import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { getSessionUser } from '@/lib/auth'
 
 // ─── Run lobby ────────────────────────────────────────────────────────────────
 // The pre-run gathering screen for a hotspot run. Participants check in
@@ -73,9 +74,13 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const { userId, action, lat, lng } = await request.json()
-    if (!userId || !action) {
-      return NextResponse.json({ error: 'userId and action are required' }, { status: 400 })
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
+
+    const { action, lat, lng } = await request.json()
+    if (!action) {
+      return NextResponse.json({ error: 'action is required' }, { status: 400 })
     }
 
     const hotspot = await db.hotspot.findUnique({ where: { id } })
@@ -113,10 +118,10 @@ export async function POST(
         xp = await awardXpAmount(userId, CHECKIN_XP).catch(() => null)
       }
     } else if (action === 'start') {
-      const me = await db.hotspotParticipant.findUnique({
+      const participant = await db.hotspotParticipant.findUnique({
         where: { hotspotId_userId: { hotspotId: id, userId } },
       })
-      if (!me || me.status !== 'here') {
+      if (!participant || participant.status !== 'here') {
         return NextResponse.json({ error: 'Check in first, then start the run' }, { status: 400 })
       }
 

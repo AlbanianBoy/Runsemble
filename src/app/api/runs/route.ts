@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { awardXpAmount, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { getSessionUser } from '@/lib/auth'
 
-// List a user's tracked runs (newest first).
-export async function GET(request: NextRequest) {
+// List YOUR tracked runs (newest first). GPS traces are private — session only.
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 })
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     const runs = await db.runSession.findMany({
       where: { userId },
@@ -31,9 +32,12 @@ export async function GET(request: NextRequest) {
 // awards distance-scaled XP, unlocks badges, and optionally shares to the feed.
 export async function POST(request: NextRequest) {
   try {
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
+
     const body = await request.json()
     const {
-      userId,
       distanceKm = 0,
       durationSec = 0,
       hotspotId = null,
@@ -48,10 +52,8 @@ export async function POST(request: NextRequest) {
       rating = null,
     } = body
 
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 })
-
-    const user = await db.user.findUnique({ where: { id: userId } })
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    // Session already resolved the full user row — no extra lookup needed.
+    const user = me
 
     const dist = Math.max(0, Number(distanceKm) || 0)
     const dur = Math.max(0, Math.round(Number(durationSec) || 0))
@@ -197,6 +199,7 @@ export async function POST(request: NextRequest) {
           authorId: userId,
           groupId: groupId ?? null,
           postType: 'milestone',
+          runSessionId: session.id, // the feed renders this as a route card
           content:
             note?.trim() ||
             `Just tracked a ${dist.toFixed(2)} km run in ${mins} min${withPart}! 🏃`,

@@ -1,12 +1,13 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 // Community challenges. Progress is computed on read from RunSessions/Buddies in
 // the challenge window, so there is never a counter to keep in sync.
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
+    // "joined"/"myProgress" personalisation comes from the session.
+    const userId = (await getSessionUser())?.id ?? null
     const now = new Date()
 
     const challenges = await db.challenge.findMany({

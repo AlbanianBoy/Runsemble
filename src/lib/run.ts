@@ -1,5 +1,31 @@
 // ─── Run formatting helpers ───────────────────────────────────────────────────
-// Shared between the live run tracker and the run history views.
+// Shared between the live run tracker, run history, and feed route cards.
+
+import type { LatLng } from './geo'
+
+/** Parse a stored JSON GPS path into coordinates (defensive against bad data). */
+export function parsePath(path?: string | null): LatLng[] {
+  if (!path) return []
+  try {
+    const arr = JSON.parse(path)
+    return Array.isArray(arr)
+      ? arr.filter((p) => typeof p?.lat === 'number' && typeof p?.lng === 'number')
+      : []
+  } catch {
+    return []
+  }
+}
+
+/** Parse stored JSON per-km splits (seconds). */
+export function parseSplits(splits?: string | null): number[] {
+  if (!splits) return []
+  try {
+    const arr = JSON.parse(splits)
+    return Array.isArray(arr) ? arr.filter((n) => typeof n === 'number') : []
+  } catch {
+    return []
+  }
+}
 
 /** Seconds → "H:MM:SS" or "M:SS". */
 export function formatClock(totalSec: number): string {

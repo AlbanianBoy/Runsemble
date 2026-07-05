@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
+    // Personalisation (likedByMe, For-you scope) comes from the session, never
+    // from a client-claimed id. Anonymous readers get the plain feed.
+    const userId = (await getSessionUser())?.id ?? null
     const scope = searchParams.get('scope') ?? 'all' // all | following
 
     // Build the author/group filter.
@@ -56,6 +59,10 @@ export async function GET(request: NextRequest) {
           },
         },
         _count: { select: { likedBy: true, commentThread: true } },
+        // Shared runs render as route cards in the feed.
+        runSession: {
+          select: { distanceKm: true, durationSec: true, avgPaceSecPerKm: true, path: true },
+        },
         // Only pull the current user's like row so we can flag likedByMe.
         likedBy: userId ? { where: { userId }, select: { id: true } } : false,
       },
@@ -84,20 +91,23 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
+    // Identity comes from the session — the client cannot post as someone else.
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+
     const body = await request.json()
+    const { groupId, content, imageUrl, postType } = body
 
-    const { authorId, groupId, content, imageUrl, postType } = body
-
-    if (!authorId || !content) {
+    if (!content) {
       return NextResponse.json(
-        { error: 'authorId and content are required' },
+        { error: 'content is required' },
         { status: 400 }
       )
     }
 
     const post = await db.feedPost.create({
       data: {
-        authorId,
+        authorId: me.id,
         groupId: groupId ?? null,
         content,
         imageUrl: imageUrl ?? null,

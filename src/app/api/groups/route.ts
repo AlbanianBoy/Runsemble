@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
+    // Membership flags come from the session, not a client-claimed id.
+    const userId = (await getSessionUser())?.id ?? null
 
     const groups = await db.runGroup.findMany({
       include: {
@@ -48,27 +49,16 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json()
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const createdBy = me.id
 
-    const {
-      name,
-      description,
-      isPublic,
-      coverImage,
-      city,
-      createdBy,
-    } = body
+    const body = await request.json()
+    const { name, description, isPublic, coverImage, city } = body
 
     if (!name) {
       return NextResponse.json(
         { error: 'Group name is required' },
-        { status: 400 }
-      )
-    }
-
-    if (!createdBy) {
-      return NextResponse.json(
-        { error: 'createdBy userId is required' },
         { status: 400 }
       )
     }

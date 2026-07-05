@@ -1,19 +1,14 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 
 // GDPR data portability: everything we hold about you, as one JSON document.
-// Session-first; falls back to an explicit userId for pre-auth demo profiles.
-// TODO(hardening): drop the fallback once every account has a session.
-export async function GET(request: NextRequest) {
+// Session only — your data is only ever handed to *you*.
+export async function GET() {
   try {
-    const sessionUser = await getSessionUser()
-    const { searchParams } = new URL(request.url)
-    const userId = sessionUser?.id ?? searchParams.get('userId')
-    if (!userId) return NextResponse.json({ error: 'Not logged in' }, { status: 401 })
-
-    const user = await db.user.findUnique({ where: { id: userId } })
-    if (!user) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    const user = await getSessionUser()
+    if (!user) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = user.id
 
     const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges] =
       await Promise.all([

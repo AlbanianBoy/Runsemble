@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 export async function GET(
   _request: NextRequest,
@@ -47,12 +48,15 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const body = await request.json()
-    const { senderId, content } = body
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const senderId = me.id
 
-    if (!senderId || !content) {
+    const body = await request.json()
+    const { content } = body
+    if (!content) {
       return NextResponse.json(
-        { error: 'senderId and content are required' },
+        { error: 'content is required' },
         { status: 400 }
       )
     }

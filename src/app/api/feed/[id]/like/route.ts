@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { getSessionUser } from '@/lib/auth'
 
 // Toggle a like for a post on behalf of a user. Idempotent per (post, user):
 // calling it flips the like on/off and keeps the denormalised `likes` count in
@@ -12,12 +13,9 @@ export async function POST(
 ) {
   try {
     const { id } = await params
-    const body = await request.json().catch(() => ({}))
-    const userId: string | undefined = body?.userId
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 })
-    }
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
 
     const post = await db.feedPost.findUnique({ where: { id } })
     if (!post) {

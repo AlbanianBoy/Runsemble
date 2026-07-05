@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { getSessionUser } from '@/lib/auth'
 
-// 1:1 direct messages.
-//   GET ?userId=&withId=  → the conversation between two people (marks read)
-//   GET ?userId=          → conversation list (latest message per partner + unread)
-//   POST { senderId, recipientId, content }
+// 1:1 direct messages. Private — identity always comes from the session.
+//   GET ?withId=  → the conversation with that person (marks read)
+//   GET           → conversation list (latest message per partner + unread)
+//   POST { recipientId, content }
 export async function GET(request: NextRequest) {
   try {
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const userId = me.id
     const { searchParams } = new URL(request.url)
-    const userId = searchParams.get('userId')
     const withId = searchParams.get('withId')
-    if (!userId) return NextResponse.json({ error: 'userId is required' }, { status: 400 })
 
     if (withId) {
       const messages = await db.chatMessage.findMany({
@@ -79,9 +81,13 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const { senderId, recipientId, content } = await request.json()
-    if (!senderId || !recipientId || !content?.trim()) {
-      return NextResponse.json({ error: 'senderId, recipientId and content are required' }, { status: 400 })
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    const senderId = me.id
+
+    const { recipientId, content } = await request.json()
+    if (!recipientId || !content?.trim()) {
+      return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 })
     }
 
     // Respect blocks in either direction.

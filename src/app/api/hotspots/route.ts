@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 export async function GET() {
   try {
@@ -103,6 +104,9 @@ export async function GET() {
 
 export async function POST(request: NextRequest) {
   try {
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+
     const body = await request.json()
 
     const {
@@ -117,7 +121,6 @@ export async function POST(request: NextRequest) {
       startTime,
       recurringIntervalMin,
       audience,
-      createdBy,
     } = body
 
     if (!name || !location || lat === undefined || lng === undefined || !startTime) {
@@ -141,7 +144,7 @@ export async function POST(request: NextRequest) {
         recurringIntervalMin: recurringIntervalMin ?? 30,
         audience: audience ?? 'all',
         isActive: true,
-        createdBy: createdBy ?? null,
+        createdBy: me.id,
       },
       include: {
         participants: {

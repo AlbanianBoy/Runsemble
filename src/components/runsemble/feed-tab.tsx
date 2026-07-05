@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import dynamic from 'next/dynamic'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
@@ -24,7 +25,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials, formatDuration } from './helpers'
+import { parsePath, formatClock, formatPaceLabel } from '@/lib/run'
 import { CommentsSheet } from './comments-sheet'
+
+const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
 const fadeUp = {
   initial: { opacity: 0, y: 12 },
@@ -289,6 +293,26 @@ export function FeedTab() {
                         <p className="text-sm mt-1.5 leading-relaxed whitespace-pre-wrap">
                           {post.content}
                         </p>
+                        {/* Route card for shared runs — the map IS the story */}
+                        {post.runSession && (() => {
+                          const pts = parsePath(post.runSession.path)
+                          return (
+                            <div className="mt-2.5">
+                              {pts.length >= 2 && (
+                                <div className="h-32 rounded-xl overflow-hidden border mb-2">
+                                  <RouteMap points={pts} />
+                                </div>
+                              )}
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground tabular">
+                                <span className="font-semibold text-foreground">
+                                  {post.runSession.distanceKm.toFixed(2)} km
+                                </span>
+                                <span>{formatClock(post.runSession.durationSec)}</span>
+                                <span>{formatPaceLabel(post.runSession.avgPaceSecPerKm)}</span>
+                              </div>
+                            </div>
+                          )
+                        })()}
                         <div className="flex items-center gap-6 mt-3">
                           {/* Like button with toggle state */}
                           <motion.button
