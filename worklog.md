@@ -346,3 +346,28 @@ tsc/eslint/next build green; zero console errors.
 
 Still infrastructure-gated (not code): native wrapper build (Capacitor +
 app-store accounts) for background GPS + push, and Postgres hosting.
+
+---
+Task ID: 19 (No-launch-needed pass: auth hardening, GPS demo mode, route cards)
+Agent: Claude (Fable 5) — commit be001db
+
+Work Log:
+- **Auth hardening complete.** All writes + private reads (posts, likes,
+  comments, joins, lobby, chats, DMs, runs, notifications, blocks, challenges,
+  profile edits, export, delete) now derive identity from the session cookie;
+  spoofed ids are ignored. Personalised reads fall back to anonymous.
+  /api/users POST → 410; /api/seed disabled in production; client auto-resets
+  to login on 401. Verified: spoofed authorId overridden; unauth curl → 401.
+- **GPS demo mode.** "Simulate a run" on the tracker ready screen feeds a fake
+  runner around Stadspark through the real ingestion pipeline (trail, distance,
+  splits). For indoor research demos. Verified: 0.36 km simulated, trail drawn.
+- **Feed route cards.** Shared runs attach RunSession; feed renders route map +
+  distance/time/pace. Verified end-to-end on a real authenticated account.
+- **Research kit** at docs/research-pilot.md: 4-week concierge pilot plan,
+  interview script, launch-readiness metrics.
+- Schema: FeedPost.runSessionId, User.availableFrom (reserved for availability
+  windows — NOT yet built).
+
+Remaining from the agreed backlog (not done): availability-windows UI, photos
+on posts, onboarding follow-runs step, moderation view, group lobby for
+RunGroups, zod validation, automated tests, live-share link, Dutch i18n.
