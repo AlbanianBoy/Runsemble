@@ -453,3 +453,26 @@ Agent: Claude (Fable 5)
 
 Backlog: group lobby for RunGroups, zod validation, live-share link,
 Dutch i18n. Deploy + native wrapper remain account-gated.
+
+---
+Task ID: 24 (Group lobby + weekly km chart)
+Agent: Claude (Fable 5)
+
+- **Group lobby**: start-together now works for RunGroups. Schema:
+  GroupMember.checkedInAt + RunGroup.lobbyStartedAt. New
+  /api/groups/[id]/lobby (GET/POST) mirrors the hotspot lobby contract;
+  presence = check-in within a 2h freshness window (no geofence — groups
+  have no fixed start point); members-only; start notifies the group.
+  RunLobby component generalized (hotspotId | groupId); group "Start run"
+  opens the lobby. Verified live: check-in → "Start together (2)" →
+  recording with "Running with Jonas" strip. Freshness expiry verified
+  accidentally-for-real: a 5h-old staged check-in correctly showed as
+  not-here.
+- **Weekly km chart**: run history's summary card gains a last-7-days
+  bar chart (recharts, first use). Verified: 7 bars, locale weekday
+  labels.
+- Ops note: `next build` while the dev server runs can corrupt .next —
+  if / starts returning 404, stop the server, `rm -rf .next`, restart.
+
+All gates green (tsc, eslint, 42/42 tests, build). Backlog: zod
+validation, live-share link, Dutch i18n; deploy + wrapper account-gated.

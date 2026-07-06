@@ -6,6 +6,7 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, MapPin, Clock, Zap, Flame, Play } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet } from '@/lib/api'
+import { ResponsiveContainer, BarChart, Bar, XAxis } from 'recharts'
 import { formatClock, formatPaceLabel, shortDate, parsePath, parseSplits } from '@/lib/run'
 import type { RunsResponse, ApiRunSession } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
@@ -26,6 +27,25 @@ export function RunHistory() {
 
   const runs: ApiRunSession[] = data?.runs ?? []
   const totalDist = runs.reduce((s, r) => s + r.distanceKm, 0)
+
+  // Km per day over the last 7 days, for the little bar chart.
+  const chartData: { day: string; km: number }[] = []
+  for (let i = 6; i >= 0; i--) {
+    const dayStart = new Date()
+    dayStart.setHours(0, 0, 0, 0)
+    dayStart.setDate(dayStart.getDate() - i)
+    const dayEnd = dayStart.getTime() + 86_400_000
+    const km = runs
+      .filter((r) => {
+        const t = new Date(r.endedAt).getTime()
+        return t >= dayStart.getTime() && t < dayEnd
+      })
+      .reduce((s, r) => s + r.distanceKm, 0)
+    chartData.push({
+      day: dayStart.toLocaleDateString(undefined, { weekday: 'short' }),
+      km: Math.round(km * 10) / 10,
+    })
+  }
 
   return (
     <div className="space-y-4 pb-4">
@@ -54,6 +74,27 @@ export function RunHistory() {
               <div><p className="text-lg font-bold tabular">{runs.length}</p><p className="text-[11px] text-muted-foreground">runs</p></div>
               <div><p className="text-lg font-bold tabular">{totalDist.toFixed(1)}</p><p className="text-[11px] text-muted-foreground">km logged</p></div>
               <div><p className="text-lg font-bold tabular">{Math.round(runs.reduce((s, r) => s + r.durationSec, 0) / 60)}</p><p className="text-[11px] text-muted-foreground">minutes</p></div>
+            </div>
+            {/* Last 7 days */}
+            <div className="px-3 pt-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground px-1">
+                Last 7 days (km)
+              </p>
+            </div>
+            <div className="h-28 px-2 pb-2">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData} margin={{ top: 10, right: 8, left: 8, bottom: 0 }}>
+                  <XAxis
+                    dataKey="day"
+                    tickLine={false}
+                    axisLine={false}
+                    fontSize={10}
+                    stroke="currentColor"
+                    opacity={0.5}
+                  />
+                  <Bar dataKey="km" fill="#f97316" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
             </div>
           </Card>
 
