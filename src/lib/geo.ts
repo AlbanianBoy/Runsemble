@@ -35,10 +35,14 @@ export function haversineKm(a: LatLng, b: LatLng): number {
  */
 export function fuzzCoord(point: LatLng, meters = 200): LatLng {
   const latStep = meters / 111_320
-  const cosLat = Math.cos(toRad(point.lat)) || 1
+  // Derive the longitude grid from the SNAPPED latitude, so every point inside
+  // a cell shares exactly the same grid — otherwise two neighbours a couple of
+  // metres apart could snap to microscopically different longitudes.
+  const snappedLat = Math.round(point.lat / latStep) * latStep
+  const cosLat = Math.cos(toRad(snappedLat)) || 1
   const lngStep = meters / (111_320 * cosLat)
   return {
-    lat: Math.round(point.lat / latStep) * latStep,
+    lat: snappedLat,
     lng: Math.round(point.lng / lngStep) * lngStep,
   }
 }
