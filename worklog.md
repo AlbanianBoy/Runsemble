@@ -439,3 +439,17 @@ Work Log:
 All gates green: tsc, eslint, 42/42 tests, production build, no console
 errors. Backlog still open: moderation view, group lobby for RunGroups,
 zod validation, live-share link, Dutch i18n.
+
+---
+Task ID: 23 (/admin ops dashboard) — commit 1b916d5
+Agent: Claude (Fable 5)
+
+- Server-rendered founder tool at /admin: reports (blocks with reasons),
+  weekly vital signs (users / signups / runs / check-ins / posts since
+  Monday), recent signups with consent status. Access via ADMIN_EMAILS
+  in .env (founder's email pre-configured + admin@runsemble.dev test
+  account — remove the test entry before the pilot). Verified live:
+  no-cookie → Not authorized; admin session → real computed stats.
+
+Backlog: group lobby for RunGroups, zod validation, live-share link,
+Dutch i18n. Deploy + native wrapper remain account-gated.
