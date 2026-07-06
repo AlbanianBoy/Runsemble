@@ -242,7 +242,15 @@ export interface LobbyParticipant {
   user: { id: string; name: string; avatar: string | null; paceLevel: string }
 }
 export interface LobbyResponse {
-  hotspot: { id: string; name: string; location: string; startTime: string; lat: number; lng: number }
+  /** The run context — a hotspot, or a group (then startTime/lat/lng are null). */
+  hotspot: {
+    id: string
+    name: string
+    location: string
+    startTime: string | null
+    lat: number | null
+    lng: number | null
+  }
   participants: LobbyParticipant[]
   lobbyStartedAt: string | null
 }

@@ -22,8 +22,10 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { getAvatarColor, getInitials } from './helpers'
 
 export interface RunLobbyProps {
-  hotspotId: string
-  /** Latest GPS fix from the tracker, for the geofenced check-in. */
+  /** Exactly one of these: the hotspot or the group whose lobby this is. */
+  hotspotId?: string
+  groupId?: string
+  /** Latest GPS fix from the tracker, for the geofenced hotspot check-in. */
   pos: LatLng | null
   onClose: () => void
   /** Fired when the run starts (by you or anyone) with the other checked-in runners. */
@@ -36,14 +38,20 @@ function othersHere(lobby: LobbyResponse, myId: string | undefined) {
     .map((p) => ({ id: p.userId, name: p.user.name }))
 }
 
-export function RunLobby({ hotspotId, pos, onClose, onStarted }: RunLobbyProps) {
+export function RunLobby({ hotspotId, groupId, pos, onClose, onStarted }: RunLobbyProps) {
   const { currentUser } = useRunsembleStore()
   const queryClient = useQueryClient()
   const myId = currentUser?.id
 
+  // One lobby component, two backends with the same contract.
+  const lobbyUrl = hotspotId
+    ? `/api/hotspots/${hotspotId}/lobby`
+    : `/api/groups/${groupId}/lobby`
+  const lobbyKey = ['lobby', hotspotId ?? groupId]
+
   const { data, isLoading } = useQuery({
-    queryKey: ['lobby', hotspotId],
-    queryFn: () => apiGet<LobbyResponse>(`/api/hotspots/${hotspotId}/lobby`),
+    queryKey: lobbyKey,
+    queryFn: () => apiGet<LobbyResponse>(lobbyUrl),
     refetchInterval: 3000,
   })
 
@@ -53,14 +61,13 @@ export function RunLobby({ hotspotId, pos, onClose, onStarted }: RunLobbyProps) 
 
   const act = useMutation({
     mutationFn: (action: 'checkin' | 'start') =>
-      apiSend<LobbyActionResponse>(`/api/hotspots/${hotspotId}/lobby`, 'POST', {
-        userId: myId,
+      apiSend<LobbyActionResponse>(lobbyUrl, 'POST', {
         action,
         lat: pos?.lat,
         lng: pos?.lng,
       }),
     onSuccess: (res, action) => {
-      queryClient.setQueryData(['lobby', hotspotId], res.lobby)
+      queryClient.setQueryData(lobbyKey, res.lobby)
       if (action === 'checkin' && res.xp) {
         toast.success(`+${res.xp.awarded} XP for showing up ✅`)
       }
@@ -82,9 +89,10 @@ export function RunLobby({ hotspotId, pos, onClose, onStarted }: RunLobbyProps) 
     return () => clearTimeout(t)
   }, [data, myId])
 
-  const startLabel = data
+  // Groups have no fixed start time — only show the clock for hotspot runs.
+  const startLabel = data?.hotspot.startTime
     ? new Date(data.hotspot.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : ''
+    : null
 
   return (
     <div className="flex-1 flex flex-col overflow-y-auto">
@@ -111,7 +119,9 @@ export function RunLobby({ hotspotId, pos, onClose, onStarted }: RunLobbyProps) 
             <h2 className="text-2xl font-bold tracking-tight">{data.hotspot.name}</h2>
             <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
               <span className="flex items-center gap-1"><MapPin className="h-3.5 w-3.5" />{data.hotspot.location}</span>
-              <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{startLabel}</span>
+              {startLabel && (
+                <span className="flex items-center gap-1"><Clock className="h-3.5 w-3.5" />{startLabel}</span>
+              )}
             </div>
 
             {/* Who's in */}
@@ -169,7 +179,9 @@ export function RunLobby({ hotspotId, pos, onClose, onStarted }: RunLobbyProps) 
               {!checkedIn ? (
                 <>
                   <p className="text-xs text-muted-foreground text-center mb-3">
-                    {pos
+                    {groupId
+                      ? "Check in when you're with the group."
+                      : pos
                       ? 'Check in when you reach the start point.'
                       : 'No GPS here — you can still check in.'}
                   </p>

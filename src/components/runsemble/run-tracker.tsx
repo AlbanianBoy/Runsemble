@@ -76,9 +76,11 @@ export function RunTracker() {
   const { runContext, closeRunTracker, currentUser, updateProfile } = useRunsembleStore()
   const queryClient = useQueryClient()
 
-  // Group (hotspot) runs open in the lobby — you gather, check in, and start
-  // together. Solo and group-context runs go straight to the ready screen.
-  const [phase, setPhase] = useState<Phase>(() => (runContext?.hotspotId ? 'lobby' : 'ready'))
+  // Hotspot AND group runs open in the lobby — you gather, check in, and start
+  // together. Only solo runs go straight to the ready screen.
+  const [phase, setPhase] = useState<Phase>(() =>
+    runContext?.hotspotId || runContext?.groupId ? 'lobby' : 'ready'
+  )
   const [runningWith, setRunningWith] = useState<Candidate[]>([])
   const [elapsedSec, setElapsedSec] = useState(0)
   const [distanceKm, setDistanceKm] = useState(0)
@@ -319,9 +321,10 @@ export function RunTracker() {
       className="fixed inset-0 z-[1500] flex flex-col bg-background text-foreground"
       initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }}
     >
-      {phase === 'lobby' && runContext?.hotspotId ? (
+      {phase === 'lobby' && (runContext?.hotspotId || runContext?.groupId) ? (
         <RunLobby
           hotspotId={runContext.hotspotId}
+          groupId={runContext.groupId}
           pos={pos}
           onClose={closeRunTracker}
           onStarted={handleLobbyStart}

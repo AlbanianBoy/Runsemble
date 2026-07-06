@@ -122,8 +122,9 @@ model RunGroup {
   isPublic    Boolean  @default(true)
   coverImage  String?
   city        String   @default("Antwerp")
-  totalKmThisWeek Float @default(0)
+  totalKmThisWeek Float @default(0) // legacy — km/week is computed from RunSessions
   memberCount Int      @default(0)
+  lobbyStartedAt DateTime? // set when someone taps "Start together" in the group lobby
   createdBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -141,6 +142,7 @@ model GroupMember {
   userId      String
   role        String   @default("member") // member, admin, owner
   joinedAt    DateTime @default(now())
+  checkedInAt DateTime? // lobby presence; fresh within 2h counts as "here"
 
   group       RunGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
