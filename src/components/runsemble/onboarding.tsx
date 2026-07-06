@@ -2,14 +2,19 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useQuery, useMutation } from '@tanstack/react-query'
 import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore, type UserProfile, type PaceLevel, type SchedulePreference } from '@/lib/store'
+import { apiGet, apiSend } from '@/lib/api'
+import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Checkbox } from '@/components/ui/checkbox'
+import { AudienceBadge, formatDuration } from './helpers'
 
 // ─── API → store mapping ─────────────────────────────────────────────────────
 // One place that turns a user object from any auth endpoint into the store's
@@ -59,9 +64,9 @@ const fadeUp = {
   transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
 }
 
-/** Step indicator dots used on the welcome & profile screens */
+/** Step indicator dots used across the onboarding screens */
 function StepDots({ current }: { current: number }) {
-  const steps = 2 // welcome=0, profile=1
+  const steps = 3 // welcome=0, profile=1, first runs=2
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: steps }).map((_, i) => (
@@ -293,7 +298,9 @@ export function OnboardingProfile() {
         return
       }
       setCurrentUser(toUserProfile(data.user))
-      setOnboardingStep('done')
+      // New accounts pick their first runs next — nobody should leave
+      // onboarding without a run on the calendar.
+      setOnboardingStep('runs')
     } catch {
       setErrorMsg('Network error — please try again')
     }
@@ -478,6 +485,110 @@ export function OnboardingProfile() {
         >
           Already have an account? Log in
         </button>
+      </motion.div>
+    </div>
+  )
+}
+
+// Step 3: nobody leaves onboarding without a run on the calendar. Shows the
+// official recurring runs (falls back to any upcoming) with one-tap Join.
+export function OnboardingRuns() {
+  const { setOnboardingStep, updateProfile } = useRunsembleStore()
+  const [joined, setJoined] = useState<Set<string>>(new Set())
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['hotspots'],
+    queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
+  })
+  const all = data?.hotspots ?? []
+  const official = all.filter((h) => h.isOfficial)
+  const picks = (official.length >= 2 ? official : all).slice(0, 3)
+
+  const joinMutation = useMutation({
+    mutationFn: (id: string) => apiSend<HotspotResponse>(`/api/hotspots/${id}/join`, 'POST'),
+    onSuccess: (res, id) => {
+      setJoined((prev) => new Set(prev).add(id))
+      if (res.xp) {
+        updateProfile({ xp: res.xp.newXp })
+        toast.success(`+${res.xp.awarded} XP — see you there!`)
+      }
+    },
+    onError: (e: Error, id) => {
+      // "Already joined" during onboarding just means: mark it joined.
+      if (e.message.toLowerCase().includes('already')) {
+        setJoined((prev) => new Set(prev).add(id))
+        return
+      }
+      toast.error(e.message)
+    },
+  })
+
+  return (
+    <div className="min-h-screen flex flex-col p-6 bg-background">
+      <motion.div {...fadeUp} className="flex-1 max-w-md mx-auto w-full flex flex-col">
+        <div className="mb-6">
+          <StepDots current={2} />
+        </div>
+
+        <h2 className="text-2xl font-bold mb-1">Your first runs are waiting</h2>
+        <p className="text-muted-foreground mb-6">
+          These runs happen every week near you. Join one — showing up is the whole point.
+        </p>
+
+        <div className="space-y-3">
+          {isLoading &&
+            [1, 2, 3].map((i) => <div key={i} className="h-24 rounded-2xl bg-muted animate-pulse" />)}
+          {!isLoading && picks.length === 0 && (
+            <p className="text-sm text-muted-foreground">
+              No upcoming runs yet — you can create one from the Explore tab.
+            </p>
+          )}
+          {picks.map((h) => {
+            const isJoined = joined.has(h.id)
+            return (
+              <div key={h.id} className="rounded-2xl border bg-card p-4 flex items-center gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <p className="font-semibold text-sm">{h.name}</p>
+                    <AudienceBadge audience={h.audience} />
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {h.scheduleLabel ?? `in ${formatDuration(h.minutesUntil)}`} · {h.location}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">{h.participantCount} joining</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant={isJoined ? 'secondary' : 'default'}
+                  className="rounded-full shrink-0"
+                  disabled={joinMutation.isPending && !isJoined}
+                  onClick={() => !isJoined && joinMutation.mutate(h.id)}
+                >
+                  {isJoined ? (
+                    <>
+                      <Check className="h-4 w-4 mr-1" />
+                      Joined
+                    </>
+                  ) : (
+                    'Join'
+                  )}
+                </Button>
+              </div>
+            )
+          })}
+        </div>
+
+        <div className="mt-auto pt-8 pb-2">
+          <Button
+            size="lg"
+            className="w-full rounded-full font-semibold"
+            onClick={() => setOnboardingStep('done')}
+          >
+            {joined.size > 0
+              ? `Let's go — ${joined.size} run${joined.size > 1 ? 's' : ''} planned`
+              : "Continue — I'll find runs later"}
+          </Button>
+        </div>
       </motion.div>
     </div>
   )
