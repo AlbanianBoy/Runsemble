@@ -371,3 +371,24 @@ Work Log:
 Remaining from the agreed backlog (not done): availability-windows UI, photos
 on posts, onboarding follow-runs step, moderation view, group lobby for
 RunGroups, zod validation, automated tests, live-share link, Dutch i18n.
+
+---
+Task ID: 20 (Tests + photos on posts)
+Agent: Claude (Fable 5) — commits 1d151f7, ad27e5d
+
+Work Log:
+- **Vitest suite (33 tests, all green; `npm test`).** Covers streak rules,
+  rank tiers/boundaries/garbage XP, haversine, privacy fuzzing, distance
+  labels, clock/pace formatting, defensive path/split parsing.
+  The suite immediately caught a real bug: fuzzCoord derived the longitude
+  grid from the exact latitude, so neighbours metres apart could snap to
+  different privacy cells — grid now derives from the snapped latitude.
+- **Photos on posts.** Composer photo picker; client-side downscale to
+  1024px + JPEG compression (src/lib/image.ts); removable preview; feed
+  renders photo cards. Server accepts only data:image/* under 700KB
+  (prototype storage — move to blob storage before production).
+  Verified live: 201 + rendered in feed; oversize/non-data-URL → 400.
+
+Backlog still open: availability-windows UI (schema ready), onboarding
+follow-runs step, moderation view, group lobby for RunGroups, zod
+validation on routes, live-share link, Dutch i18n.
