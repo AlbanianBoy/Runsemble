@@ -415,3 +415,27 @@ Verified live: Coming-up chip (Emma), Jonas auto-activated from a started
 slot (nearby count 3→4, marker on map), schedule 18:30 → persisted +
 button label, remove slot → cleared. Sheet renders above the map.
 tsc/eslint green, 42/42 tests, production build green, no console errors.
+
+---
+Task ID: 22 (Onboarding first-runs step · honest group km · audio pace cues)
+Agent: Claude (Fable 5)
+
+Work Log:
+- **Onboarding step 3 "Your first runs are waiting"**: after signup, new
+  accounts see up to 3 official recurring runs (schedule, audience badge,
+  joining count) with one-tap Join (+XP toast); CTA becomes "Let's go —
+  N runs planned". Login/session-restore skip it. StepDots now 3 steps.
+  Verified live: render, join → Joined, CTA label, lands in app.
+- **Honest group stats**: group "km this week" now computed from members'
+  real RunSessions since Monday in both /api/groups and /api/groups/[id]
+  (legacy totalKmThisWeek column ignored). Seed adds a few current-week
+  sessions. Verified live: fossil values (15/35/28/42.5) replaced by real
+  ones (5.2 for Emma's two groups on a Monday morning — truthful).
+- **Audio pace cues**: each completed km is announced via speech synthesis
+  ("Kilometer 2. 5 minutes 42 seconds."), with a mute toggle chip next to
+  the GPS chip while recording. Works in demo mode too. Code-verified
+  (gates green); audio itself not machine-verifiable — test on device.
+
+All gates green: tsc, eslint, 42/42 tests, production build, no console
+errors. Backlog still open: moderation view, group lobby for RunGroups,
+zod validation, live-share link, Dutch i18n.

@@ -173,6 +173,15 @@ async function main() {
     })
   }
 
+  // A few tracked runs this week so the computed group "km this week" stat
+  // has life out of the box.
+  await db.runSession.createMany({ data: [
+    { userId:'u1', distanceKm:8.4, durationSec:2940, avgPaceSecPerKm:350, calories:504, endedAt:new Date(now.getTime()-20*60*60*1000), xpEarned:104 },
+    { userId:'u2', distanceKm:12.1, durationSec:3630, avgPaceSecPerKm:300, calories:726, endedAt:new Date(now.getTime()-44*60*60*1000), xpEarned:141 },
+    { userId:'u5', distanceKm:5.2, durationSec:1820, avgPaceSecPerKm:350, calories:312, endedAt:new Date(now.getTime()-3*60*60*1000), xpEarned:72 },
+    { userId:'u3', distanceKm:4.0, durationSec:1560, avgPaceSecPerKm:390, calories:240, endedAt:new Date(now.getTime()-26*60*60*1000), xpEarned:60 },
+  ]})
+
   // Emma is free later today — demos the "Coming up" availability window.
   await db.user.update({ where: { id: 'u5' }, data: { isAvailable: false, availableFrom: new Date(now.getTime() + 2*60*60*1000) } })
 

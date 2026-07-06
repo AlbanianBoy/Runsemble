@@ -29,10 +29,24 @@ export async function GET() {
       orderBy: { createdAt: 'desc' },
     })
 
+    // Honest stat: "km this week" is computed from members' real tracked runs
+    // since Monday (the stored totalKmThisWeek column is legacy seed data).
+    const weekStart = new Date()
+    weekStart.setHours(0, 0, 0, 0)
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+    const weekly = await db.runSession.groupBy({
+      by: ['userId'],
+      where: { endedAt: { gte: weekStart } },
+      _sum: { distanceKm: true },
+    })
+    const kmByUser = new Map(weekly.map((w) => [w.userId, w._sum.distanceKm ?? 0]))
+
     const groupsWithMeta = groups.map((group) => ({
       ...group,
       memberCount: group.members.length,
       messageCount: group._count.chatMessages,
+      totalKmThisWeek:
+        Math.round(group.members.reduce((s, m) => s + (kmByUser.get(m.userId) ?? 0), 0) * 10) / 10,
       isMember: userId ? group.members.some((m: any) => m.userId === userId) : false,
       _count: undefined,
     }))

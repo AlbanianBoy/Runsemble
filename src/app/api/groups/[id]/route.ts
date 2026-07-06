@@ -57,11 +57,24 @@ export async function GET(
       )
     }
 
+    // Same honest weekly-km computation as the list endpoint.
+    const weekStart = new Date()
+    weekStart.setHours(0, 0, 0, 0)
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
+    const weekly = await db.runSession.groupBy({
+      by: ['userId'],
+      where: { userId: { in: group.members.map((m) => m.userId) }, endedAt: { gte: weekStart } },
+      _sum: { distanceKm: true },
+    })
+    const totalKmThisWeek =
+      Math.round(weekly.reduce((s, w) => s + (w._sum.distanceKm ?? 0), 0) * 10) / 10
+
     return NextResponse.json({
       group: {
         ...group,
         memberCount: group.members.length,
         totalMessages: group._count.chatMessages,
+        totalKmThisWeek,
       },
     })
   } catch (error) {

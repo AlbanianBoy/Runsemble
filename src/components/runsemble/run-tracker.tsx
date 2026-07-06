@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
-import { Pause, Play, Flame, MapPin, Zap, Clock, X, Minus, Plus, Loader2, Trophy, Star, Check } from 'lucide-react'
+import { Pause, Play, Flame, MapPin, Zap, Clock, X, Minus, Plus, Loader2, Trophy, Star, Check, Volume2, VolumeX } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
@@ -89,6 +89,8 @@ export function RunTracker() {
     typeof navigator !== 'undefined' && 'geolocation' in navigator ? 'acquiring' : 'unavailable'
   )
   const [demo, setDemo] = useState(false)
+  const [voiceOn, setVoiceOn] = useState(true)
+  const spokenRef = useRef(0)
 
   // Finish-step state
   const [companions, setCompanions] = useState(0)
@@ -164,6 +166,22 @@ export function RunTracker() {
     )
     return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current) }
   }, [])
+
+  // Audio pace cues — announce each completed kilometre, Nike Run Club style.
+  // Speech is an external system, so driving it from an effect is the right shape.
+  useEffect(() => {
+    if (splits.length === 0 || splits.length <= spokenRef.current) return
+    spokenRef.current = splits.length
+    if (!voiceOn || typeof window === 'undefined' || !('speechSynthesis' in window)) return
+    const s = splits[splits.length - 1]
+    const mins = Math.floor(s / 60)
+    const secs = Math.round(s % 60)
+    const u = new SpeechSynthesisUtterance(
+      `Kilometer ${splits.length}. ${mins} ${mins === 1 ? 'minute' : 'minutes'} ${secs} seconds.`
+    )
+    u.lang = 'en-US'
+    window.speechSynthesis.speak(u)
+  }, [splits, voiceOn])
 
   // GPS simulator — advances along the demo loop while running, so trail,
   // distance, pace, and splits all behave exactly like a real run.
@@ -331,6 +349,15 @@ export function RunTracker() {
                   <span className={`h-2 w-2 rounded-full ${gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
                   {gpsNote}
                 </span>
+                {phase !== 'ready' && (
+                  <button
+                    onClick={() => setVoiceOn((v) => !v)}
+                    className="glass h-8 w-8 rounded-full border shadow-sm flex items-center justify-center"
+                    aria-label={voiceOn ? 'Mute voice cues' : 'Unmute voice cues'}
+                  >
+                    {voiceOn ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4 text-muted-foreground" />}
+                  </button>
+                )}
                 {phase === 'ready' && (
                   <button
                     onClick={closeRunTracker}
