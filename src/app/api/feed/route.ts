@@ -105,6 +105,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Photos arrive as client-compressed JPEG data URLs (prototype storage —
+    // move to blob storage before production scale). Cap the size regardless.
+    if (imageUrl !== undefined && imageUrl !== null) {
+      if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:image/')) {
+        return NextResponse.json({ error: 'Invalid image' }, { status: 400 })
+      }
+      if (imageUrl.length > 700_000) {
+        return NextResponse.json({ error: 'Image too large — try a smaller photo' }, { status: 400 })
+      }
+    }
+
     const post = await db.feedPost.create({
       data: {
         authorId: me.id,

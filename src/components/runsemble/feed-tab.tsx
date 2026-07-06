@@ -1,11 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock } from 'lucide-react'
+import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type {
@@ -26,6 +27,7 @@ import { Textarea } from '@/components/ui/textarea'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials, formatDuration } from './helpers'
 import { parsePath, formatClock, formatPaceLabel } from '@/lib/run'
+import { fileToCompressedDataUrl } from '@/lib/image'
 import { CommentsSheet } from './comments-sheet'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
@@ -45,6 +47,9 @@ export function FeedTab() {
   const { currentUser, setActiveTab } = useRunsembleStore()
   const [postDialogOpen, setPostDialogOpen] = useState(false)
   const [newPostContent, setNewPostContent] = useState('')
+  const [newPostImage, setNewPostImage] = useState<string | null>(null)
+  const [imageBusy, setImageBusy] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [commentsPostId, setCommentsPostId] = useState<string | null>(null)
   const [scope, setScope] = useState<'following' | 'all'>('all')
 
@@ -93,13 +98,34 @@ export function FeedTab() {
 
   const postMutation = useMutation({
     mutationFn: (content: string) =>
-      apiSend('/api/feed', 'POST', { authorId: currentUser?.id, content, postType: 'moment' }),
+      apiSend('/api/feed', 'POST', {
+        content,
+        postType: 'moment',
+        imageUrl: newPostImage ?? undefined,
+      }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: feedKey })
       setPostDialogOpen(false)
       setNewPostContent('')
+      setNewPostImage(null)
     },
+    onError: (e: Error) => toast.error(e.message),
   })
+
+  // Downscale + compress the chosen photo in the browser before it ever
+  // leaves the device.
+  const handlePickImage = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    e.target.value = '' // allow re-picking the same file
+    if (!file) return
+    setImageBusy(true)
+    try {
+      setNewPostImage(await fileToCompressedDataUrl(file))
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not read that image')
+    }
+    setImageBusy(false)
+  }
 
   function handleLike(postId: string) {
     if (!currentUser?.id) return
@@ -293,6 +319,15 @@ export function FeedTab() {
                         <p className="text-sm mt-1.5 leading-relaxed whitespace-pre-wrap">
                           {post.content}
                         </p>
+                        {/* Photo */}
+                        {post.imageUrl && (
+                          <img
+                            src={post.imageUrl}
+                            alt=""
+                            loading="lazy"
+                            className="mt-2.5 w-full max-h-80 object-cover rounded-xl border"
+                          />
+                        )}
                         {/* Route card for shared runs — the map IS the story */}
                         {post.runSession && (() => {
                           const pts = parsePath(post.runSession.path)
@@ -374,17 +409,52 @@ export function FeedTab() {
             placeholder="Share a run, a milestone, or ask a question…"
             rows={4}
           />
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setPostDialogOpen(false)}>
-              Cancel
-            </Button>
+
+          {/* Photo preview */}
+          {newPostImage && (
+            <div className="relative">
+              <img src={newPostImage} alt="Photo to share" className="w-full max-h-56 object-cover rounded-xl border" />
+              <button
+                onClick={() => setNewPostImage(null)}
+                className="absolute top-2 right-2 h-7 w-7 rounded-full bg-black/60 text-white flex items-center justify-center"
+                aria-label="Remove photo"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handlePickImage}
+          />
+
+          <DialogFooter className="sm:justify-between gap-2">
             <Button
+              variant="outline"
+              size="icon"
               className="rounded-full"
-              disabled={!newPostContent.trim()}
-              onClick={() => postMutation.mutate(newPostContent)}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={imageBusy}
+              aria-label="Add a photo"
             >
-              Post
+              {imageBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImagePlus className="h-4 w-4" />}
             </Button>
+            <div className="flex gap-2">
+              <Button variant="ghost" onClick={() => setPostDialogOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                className="rounded-full"
+                disabled={!newPostContent.trim() || imageBusy || postMutation.isPending}
+                onClick={() => postMutation.mutate(newPostContent)}
+              >
+                Post
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
