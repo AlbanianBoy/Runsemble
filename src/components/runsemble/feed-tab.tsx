@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { getAvatarColor, getInitials, formatDuration } from './helpers'
 import { parsePath, formatClock, formatPaceLabel } from '@/lib/run'
 import { fileToCompressedDataUrl } from '@/lib/image'
+import { isAvailableNow } from '@/lib/availability'
 import { CommentsSheet } from './comments-sheet'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
@@ -73,7 +74,7 @@ export function FeedTab() {
   const users: ApiUser[] = usersData?.users ?? []
 
   const nextHotspot = hotspots.find((h) => h.minutesUntil > 0)
-  const availableRunners = users.filter((u) => u.isAvailable && u.id !== currentUser?.id)
+  const availableRunners = users.filter((u) => isAvailableNow(u) && u.id !== currentUser?.id)
 
   // Optimistically flip like state so the heart responds instantly; the server
   // is the source of truth and reconciles on invalidation.

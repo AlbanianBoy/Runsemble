@@ -72,6 +72,7 @@ export async function PATCH(
       'paceLevel',
       'schedulePreference',
       'isAvailable',
+      'availableFrom',
       'availableUntil',
       'privacyVisible',
       'onboardingComplete',
@@ -91,9 +92,12 @@ export async function PATCH(
       }
     }
 
-    // Handle availableUntil as a Date
-    if (body.availableUntil) {
-      updateData.availableUntil = new Date(body.availableUntil)
+    // Handle availability timestamps as Dates (null clears them)
+    if (body.availableUntil !== undefined) {
+      updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
+    }
+    if (body.availableFrom !== undefined) {
+      updateData.availableFrom = body.availableFrom ? new Date(body.availableFrom) : null
     }
 
     const updatedUser = await db.user.update({
@@ -143,6 +147,7 @@ export async function PUT(
       'paceLevel',
       'schedulePreference',
       'isAvailable',
+      'availableFrom',
       'availableUntil',
       'privacyVisible',
       'onboardingComplete',
@@ -162,10 +167,16 @@ export async function PUT(
       }
     }
 
-    if (body.availableUntil) {
-      updateData.availableUntil = new Date(body.availableUntil)
+    // Availability timestamps as Dates (null clears them). Turning availability
+    // off clears everything — unless the request is *setting* a future slot.
+    if (body.availableUntil !== undefined) {
+      updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
     }
-    if (body.isAvailable === false) {
+    if (body.availableFrom !== undefined) {
+      updateData.availableFrom = body.availableFrom ? new Date(body.availableFrom) : null
+    }
+    if (body.isAvailable === false && body.availableFrom === undefined) {
+      updateData.availableFrom = null
       updateData.availableUntil = null
     }
 

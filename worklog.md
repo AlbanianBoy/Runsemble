@@ -392,3 +392,26 @@ Work Log:
 Backlog still open: availability-windows UI (schema ready), onboarding
 follow-runs step, moderation view, group lobby for RunGroups, zod
 validation on routes, live-share link, Dutch i18n.
+
+---
+Task ID: 21 (Availability windows — "free to run at 18:30")
+Agent: Claude (Fable 5)
+
+Work Log:
+- New src/lib/availability.ts (pure, tested — 9 new tests, suite now 42):
+  isAvailableNow (explicit OR a scheduled slot that started, auto-active for
+  60 min — no cron), isComingUp, availableFromLabel.
+- Map: "I'm free to run" now opens a sheet — "Now (45 min)" or a time picker
+  "Set for later". Button states: Available · tap to stop / Free at 18:30 ·
+  change / I'm free to run. "Coming up: Emma 18:30" chip on the map; runner
+  cards show "Free to run at 18:30"; remove-slot option in the sheet.
+- Feed "runners nearby" + map markers use isAvailableNow (scheduled runners
+  appear automatically when their slot starts).
+- API: users PUT/PATCH accept availableFrom (null clears); turning
+  availability off clears the schedule unless a new slot is being set.
+- Seed: Emma gets a +2h slot so the Coming-up strip demos out of the box.
+
+Verified live: Coming-up chip (Emma), Jonas auto-activated from a started
+slot (nearby count 3→4, marker on map), schedule 18:30 → persisted +
+button label, remove slot → cleared. Sheet renders above the map.
+tsc/eslint green, 42/42 tests, production build green, no console errors.

@@ -173,6 +173,9 @@ async function main() {
     })
   }
 
+  // Emma is free later today — demos the "Coming up" availability window.
+  await db.user.update({ where: { id: 'u5' }, data: { isAvailable: false, availableFrom: new Date(now.getTime() + 2*60*60*1000) } })
+
   // Genders (optional) so women-only runs have members to show.
   await db.user.updateMany({ where: { id: { in: ['u1','u3','u5','u7'] } }, data: { gender: 'female' } })
   await db.user.updateMany({ where: { id: { in: ['u2','u4','u6','u8'] } }, data: { gender: 'male' } })

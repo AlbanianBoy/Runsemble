@@ -25,6 +25,8 @@ export interface ApiUser {
   totalDistanceKm: number
   totalDurationSec: number
   isAvailable: boolean
+  availableFrom?: string | null // scheduled "free later today" slot
+  availableUntil?: string | null
   privacyVisible: boolean
   lat: number | null
   lng: number | null

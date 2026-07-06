@@ -22,7 +22,7 @@ interface DbUser {
   xp?: number; streak?: number; longestStreak?: number
   totalRuns?: number; totalPeopleRunWith?: number
   totalDistanceKm?: number; totalDurationSec?: number
-  isAvailable?: boolean; privacyVisible?: boolean
+  isAvailable?: boolean; availableFrom?: string | null; privacyVisible?: boolean
 }
 
 export function toUserProfile(u: DbUser): UserProfile {
@@ -46,6 +46,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     totalDistanceKm: u.totalDistanceKm ?? 0,
     totalDurationSec: u.totalDurationSec ?? 0,
     isAvailable: u.isAvailable ?? false,
+    availableFrom: u.availableFrom ?? null,
     privacyVisible: u.privacyVisible ?? true,
     onboardingComplete: true,
   }

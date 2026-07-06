@@ -9,6 +9,7 @@ import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { ANTWERP_CENTER, haversineKm, distanceLabel, type LatLng } from '@/lib/geo'
+import { isAvailableNow, isComingUp, availableFromLabel, AVAILABLE_NOW_MINUTES } from '@/lib/availability'
 import type {
   ApiHotspot,
   ApiUser,
@@ -18,6 +19,7 @@ import type {
 } from '@/lib/types'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
@@ -52,6 +54,11 @@ export function MapTab() {
   const [view, setView] = useState<'map' | 'runs'>('map')
   const [paceFilter, setPaceFilter] = useState<PaceFilter>('any')
   const [radiusKm, setRadiusKm] = useState<number | null>(null)
+  const [availSheetOpen, setAvailSheetOpen] = useState(false)
+  const [laterTime, setLaterTime] = useState(() => {
+    const d = new Date(Date.now() + 90 * 60_000)
+    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  })
   const queryClient = useQueryClient()
 
   const { data: hotspotsData } = useQuery({
@@ -78,14 +85,14 @@ export function MapTab() {
     [myLat, myLng]
   )
 
-  // Runners who are available, visible, located, not me, and match the active
-  // pace/distance filters — sorted by distance.
+  // Runners live on the map right now (explicitly available OR their scheduled
+  // slot has started), visible, located, not me, matching the filters.
   const availableRunners = useMemo(
     () =>
       users
         .filter(
           (u) =>
-            u.isAvailable &&
+            isAvailableNow(u) &&
             u.privacyVisible &&
             u.lat != null &&
             u.lng != null &&
@@ -99,6 +106,19 @@ export function MapTab() {
             haversineKm(me, { lat: b.lat!, lng: b.lng! })
         ),
     [users, myId, me, paceFilter, radiusKm]
+  )
+
+  // Runners free later today — the reason to plan instead of hoping.
+  const comingUp = useMemo(
+    () =>
+      users
+        .filter((u) => u.id !== myId && u.privacyVisible && isComingUp(u))
+        .sort(
+          (a, b) =>
+            new Date(a.availableFrom!).getTime() - new Date(b.availableFrom!).getTime()
+        )
+        .slice(0, 4),
+    [users, myId]
   )
 
   // Hotspot pins that match the same filters.
@@ -132,13 +152,53 @@ export function MapTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  const toggleAvailability = () => {
-    const next = !isAvailable
-    setAvailability(next, 45)
-    updateProfile({ isAvailable: next })
+  // ── Availability: now, later today, or off ─────────────────────────────────
+  const myScheduled =
+    currentUser?.availableFrom && new Date(currentUser.availableFrom).getTime() > Date.now()
+      ? new Date(currentUser.availableFrom)
+      : null
+
+  const goAvailableNow = () => {
+    setAvailability(true, AVAILABLE_NOW_MINUTES)
+    updateProfile({ isAvailable: true, availableFrom: null })
     if (currentUser?.id) {
-      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: next }).catch(() => {})
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', {
+        isAvailable: true,
+        availableFrom: null,
+        availableUntil: new Date(Date.now() + AVAILABLE_NOW_MINUTES * 60_000).toISOString(),
+      }).catch(() => {})
     }
+    setAvailSheetOpen(false)
+  }
+
+  const stopAvailability = () => {
+    setAvailability(false)
+    updateProfile({ isAvailable: false, availableFrom: null })
+    if (currentUser?.id) {
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: false }).catch(() => {})
+    }
+    setAvailSheetOpen(false)
+  }
+
+  const scheduleLater = () => {
+    const [h, m] = laterTime.split(':').map(Number)
+    if (Number.isNaN(h) || Number.isNaN(m)) return
+    const when = new Date()
+    when.setHours(h, m, 0, 0)
+    if (when.getTime() <= Date.now()) {
+      toast.error('Pick a time later today')
+      return
+    }
+    setAvailability(false)
+    updateProfile({ isAvailable: false, availableFrom: when.toISOString() })
+    if (currentUser?.id) {
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', {
+        isAvailable: false,
+        availableFrom: when.toISOString(),
+      }).catch(() => {})
+    }
+    setAvailSheetOpen(false)
+    toast.success(`You're on the map for ${laterTime} — runners nearby will see you coming up`)
   }
 
   const isLoading = !hotspotsData && !usersData
@@ -232,17 +292,36 @@ export function MapTab() {
           : 'No runners nearby yet'}
       </div>
 
-      {/* Availability toggle */}
+      {/* Coming up — who's free later today */}
+      {comingUp.length > 0 && (
+        <div className="absolute top-12 left-3 right-3 z-[500]">
+          <div className="glass rounded-full px-3 py-1.5 text-[11px] font-medium shadow-sm border border-border/50 inline-flex items-center gap-1.5 max-w-full">
+            <Clock className="h-3 w-3 text-primary shrink-0" />
+            <span className="truncate">
+              Coming up:{' '}
+              {comingUp
+                .map((u) => `${u.name.split(' ')[0]} ${availableFromLabel(u.availableFrom!)}`)
+                .join(' · ')}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* Availability control */}
       <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500]">
         <Button
           size="lg"
           className={`rounded-full shadow-xl font-semibold px-6 ${
             isAvailable ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-primary hover:bg-primary/90'
           }`}
-          onClick={toggleAvailability}
+          onClick={() => (isAvailable ? stopAvailability() : setAvailSheetOpen(true))}
         >
           <Navigation className={`h-4 w-4 mr-2 ${isAvailable ? 'animate-pulse' : ''}`} />
-          {isAvailable ? 'Available · tap to stop' : "I'm free to run"}
+          {isAvailable
+            ? 'Available · tap to stop'
+            : myScheduled
+            ? `Free at ${availableFromLabel(myScheduled.toISOString())} · change`
+            : "I'm free to run"}
         </Button>
       </div>
 
@@ -323,6 +402,11 @@ export function MapTab() {
                   {selectedRunner.city} &middot; {selectedRunner.paceLevel}
                   {runnerDistance ? ` \u00B7 ${runnerDistance}` : ''}
                 </p>
+                {isComingUp(selectedRunner) && (
+                  <p className="text-xs font-semibold text-primary mt-1">
+                    \uD83D\uDD52 Free to run at {availableFromLabel(selectedRunner.availableFrom!)}
+                  </p>
+                )}
               </div>
               {selectedRunner.bio && <p className="text-sm">{selectedRunner.bio}</p>}
               <div className="flex justify-center gap-4 text-sm">
@@ -362,6 +446,44 @@ export function MapTab() {
               </button>
             </div>
           )}
+        </SheetContent>
+      </Sheet>
+
+      {/* When are you free? */}
+      <Sheet open={availSheetOpen} onOpenChange={setAvailSheetOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <div className="p-4 space-y-4">
+            <SheetHeader>
+              <SheetTitle>When are you free to run?</SheetTitle>
+              <SheetDescription>
+                Nearby runners see you on the map and can plan around you.
+              </SheetDescription>
+            </SheetHeader>
+            <Button className="w-full h-12 rounded-full font-semibold" onClick={goAvailableNow}>
+              <Navigation className="h-4 w-4 mr-2" />
+              Now — visible for {AVAILABLE_NOW_MINUTES} min
+            </Button>
+            <div className="flex items-center gap-2">
+              <Input
+                type="time"
+                value={laterTime}
+                onChange={(e) => setLaterTime(e.target.value)}
+                className="flex-1"
+                aria-label="Free later today at"
+              />
+              <Button variant="outline" className="rounded-full px-5" onClick={scheduleLater}>
+                Set for later
+              </Button>
+            </div>
+            {myScheduled && (
+              <button
+                onClick={stopAvailability}
+                className="block w-full text-center text-xs text-muted-foreground hover:text-destructive transition-colors"
+              >
+                Remove my {availableFromLabel(myScheduled.toISOString())} slot
+              </button>
+            )}
+          </div>
         </SheetContent>
       </Sheet>
       </div>

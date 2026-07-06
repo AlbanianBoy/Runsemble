@@ -32,6 +32,7 @@ export interface UserProfile {
   totalDistanceKm: number
   totalDurationSec: number
   isAvailable: boolean
+  availableFrom?: string | null // scheduled "free later today" slot
   privacyVisible: boolean
   onboardingComplete: boolean
 }
