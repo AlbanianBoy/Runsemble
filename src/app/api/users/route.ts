@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { toPublicUser } from '@/lib/public-user'
 
 export async function GET() {
   try {
@@ -32,7 +33,9 @@ export async function GET() {
       },
     })
 
-    return NextResponse.json({ users })
+    // Public projection: no email/passwordHash/consent, coordinates snapped to
+    // the ~200m privacy grid (exact coords must never reach another client).
+    return NextResponse.json({ users: users.map(toPublicUser) })
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json(

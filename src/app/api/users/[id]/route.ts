@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getSessionUser } from '@/lib/auth'
+import { getSessionUser, toSafeUser } from '@/lib/auth'
+import { toPublicUser } from '@/lib/public-user'
 
 export async function GET(
   _request: NextRequest,
@@ -35,7 +36,11 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    return NextResponse.json({ user })
+    // Own profile: everything except the hash. Anyone else: public fields only,
+    // with coordinates snapped to the privacy grid.
+    const me = await getSessionUser()
+    const payload = me?.id === user.id ? toSafeUser(user) : toPublicUser(user)
+    return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)
     return NextResponse.json(
@@ -111,7 +116,7 @@ export async function PATCH(
       },
     })
 
-    return NextResponse.json({ user: updatedUser })
+    return NextResponse.json({ user: toSafeUser(updatedUser) })
   } catch (error) {
     console.error('Error updating user:', error)
     return NextResponse.json(
@@ -191,7 +196,7 @@ export async function PUT(
       },
     })
 
-    return NextResponse.json({ user: updatedUser })
+    return NextResponse.json({ user: toSafeUser(updatedUser) })
   } catch (error) {
     console.error('Error updating user:', error)
     return NextResponse.json(
