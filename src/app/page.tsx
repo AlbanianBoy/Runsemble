@@ -88,7 +88,7 @@ export default function Home() {
   return (
     <div className="min-h-screen rs-app-bg">
       <div className="max-w-md mx-auto min-h-screen flex flex-col relative">
-        <header className="sticky top-0 z-40 glass border-b px-4 py-3">
+        <header className="sticky top-0 z-40 glass border-b px-4 pb-3 pt-[calc(env(safe-area-inset-top,0px)+0.75rem)]">
           <div className="flex items-center justify-between">
             <h1 className="text-lg font-extrabold tracking-tight text-primary">Runsemble</h1>
             <div className="flex items-center gap-2">

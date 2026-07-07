@@ -209,6 +209,11 @@ html {
   scroll-behavior: smooth;
 }
 
+/* Native-app feel: no gray flash on tap (mobile browsers). */
+html, body {
+  -webkit-tap-highlight-color: transparent;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

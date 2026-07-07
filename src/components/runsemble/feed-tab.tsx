@@ -197,8 +197,18 @@ export function FeedTab() {
               <Flame className="h-4 w-4" />
             </div>
             <div className="min-w-0">
-              <p className="font-bold text-base leading-none tabular">{currentUser?.streak ?? 0} days</p>
-              <p className="text-[11px] text-muted-foreground mt-1">current streak</p>
+              {(currentUser?.streak ?? 0) > 0 ? (
+                <>
+                  <p className="font-bold text-base leading-none tabular">{currentUser?.streak} {currentUser?.streak === 1 ? 'day' : 'days'}</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">current streak</p>
+                </>
+              ) : (
+                <>
+                  {/* A dead zero invites nobody — make the empty state a nudge. */}
+                  <p className="font-bold text-base leading-none">Run today</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">start your streak</p>
+                </>
+              )}
             </div>
           </CardContent>
         </Card>

@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
@@ -21,6 +21,19 @@ export const metadata: Metadata = {
     icon: "/logo.svg",
   },
   manifest: "/manifest.webmanifest",
+};
+
+// viewportFit: "cover" lets the app draw edge-to-edge on phones (required for
+// the safe-area insets the header/nav use); themeColor tints the browser
+// chrome to match the app instead of default white/black.
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#faf8f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#1a1613" },
+  ],
 };
 
 export default function RootLayout({
