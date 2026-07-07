@@ -4,8 +4,9 @@ import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
-import { apiGet } from '@/lib/api'
+import { apiGet, apiSend } from '@/lib/api'
 import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -64,30 +65,37 @@ export function GroupsTab() {
     }
   }, [messages, groupView])
 
+  // Identity comes from the session cookie server-side, so these calls send no
+  // user id. They go through apiSend, which checks res.ok, surfaces the error,
+  // and bounces to login on 401 (instead of silently swallowing it).
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
-      fetch(`/api/groups/${id}/join${action === 'leave' ? `?userId=${currentUser?.id}` : ''}`, {
-        method: action === 'join' ? 'POST' : 'DELETE',
-        headers: action === 'join' ? { 'Content-Type': 'application/json' } : undefined,
-        body: action === 'join' ? JSON.stringify({ userId: currentUser?.id }) : undefined,
-      }).then(r => r.json()),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['groups'] }),
+      apiSend<GroupResponse>(`/api/groups/${id}/join`, action === 'join' ? 'POST' : 'DELETE'),
+    onSuccess: (_res, { id }) => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      queryClient.invalidateQueries({ queryKey: ['group', id] })
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const createMutation = useMutation({
-    mutationFn: () => fetch('/api/groups', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: newName, description: newDesc, isPublic: newPublic, city: 'Antwerp', createdBy: currentUser?.id }),
-    }).then(r => r.json()),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['groups'] }); setCreateOpen(false); setNewName(''); setNewDesc('') },
+    mutationFn: () =>
+      apiSend<GroupResponse>('/api/groups', 'POST', {
+        name: newName, description: newDesc, isPublic: newPublic, city: 'Antwerp',
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      setCreateOpen(false); setNewName(''); setNewDesc('')
+      toast.success('Group created 🎉')
+    },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const sendMsgMutation = useMutation({
-    mutationFn: (content: string) => fetch(`/api/groups/${selectedGroupId}/chat`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ senderId: currentUser?.id, content }),
-    }).then(r => r.json()),
+    mutationFn: (content: string) =>
+      apiSend<{ message: ApiGroupMessage }>(`/api/groups/${selectedGroupId}/chat`, 'POST', { content }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['group-chat', selectedGroupId] }); setChatMsg('') },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   // Detail view
