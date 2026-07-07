@@ -476,3 +476,34 @@ Agent: Claude (Fable 5)
 
 All gates green (tsc, eslint, 42/42 tests, build). Backlog: zod
 validation, live-share link, Dutch i18n; deploy + wrapper account-gated.
+
+## Task 25 — Deploy day: production fixes + auth hardening (2026-07-07)
+
+Agent: Claude (Opus 4.8 → Fable 5)
+
+App went LIVE: Neon Postgres + Vercel at https://runsemble.vercel.app,
+deploys from `main`. Real users arrived same day (9 accounts, first
+community group + feed posts).
+
+- **Group create/join/chat hardening**: those mutations used raw fetch
+  with no res.ok check — a 401 (stale session) was silently swallowed
+  and the UI pretended success. Now routed through apiSend (error
+  toasts + re-login on 401), redundant client-sent ids dropped.
+- **Password reset + email verification**: 6-digit codes (sha256-hashed,
+  single-use, 15-min TTL, 5-attempt cap) via Resend (src/lib/email.ts,
+  fetch-only). VerificationToken model; forgot/reset/send/verify routes;
+  skippable verify step in onboarding; "Forgot password?" flow in login.
+  Reset drops all sessions. forgot-password always 200 (no email-exists
+  oracle). Resend constraint: until a domain is verified, only the
+  account owner receives mail — verification stays skippable.
+- **SECURITY: /api/users leaked passwordHash + exact coords** of every
+  user (include-without-select returned raw rows; the map only fuzzed
+  client-side). New toPublicUser() projection strips credentials/PII
+  and snaps coords to the ~200m grid server-side; privacyVisible=false
+  shares no location. Own profile via toSafeUser. 5 new tests pin the
+  contract. Verified on production post-deploy: no sensitive keys in
+  responses, coords grid-snapped, all endpoints 200, writes clean.
+
+All gates green (tsc, eslint, 47/47 tests). Ops: Vercel env changes
+need a redeploy; `prisma generate` added to build. Backlog unchanged
+(zod, live-share, Dutch i18n) + domain for real outbound email.
