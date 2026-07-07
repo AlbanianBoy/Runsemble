@@ -6,7 +6,7 @@ import { Bell } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { OnboardingWelcome, OnboardingProfile, OnboardingLogin, OnboardingRuns, toUserProfile } from '@/components/runsemble/onboarding'
+import { OnboardingWelcome, OnboardingProfile, OnboardingVerifyEmail, OnboardingLogin, OnboardingRuns, toUserProfile } from '@/components/runsemble/onboarding'
 import { FeedTab } from '@/components/runsemble/feed-tab'
 import { MapTab } from '@/components/runsemble/map-tab'
 import { GroupsTab } from '@/components/runsemble/groups-tab'
@@ -69,6 +69,7 @@ export default function Home() {
 
   if (onboardingStep === 'welcome') return <OnboardingWelcome />
   if (onboardingStep === 'profile') return <OnboardingProfile />
+  if (onboardingStep === 'verify' && currentUser) return <OnboardingVerifyEmail />
   if (onboardingStep === 'login') return <OnboardingLogin />
   if (onboardingStep === 'runs' && currentUser) return <OnboardingRuns />
   if (!currentUser) return <OnboardingWelcome />

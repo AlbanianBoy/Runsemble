@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/password'
 import { createSession, toSafeUser } from '@/lib/auth'
+import { createVerificationCode } from '@/lib/verification'
+import { sendVerificationEmail } from '@/lib/email'
 
 // Create an account with a real password and start a session.
 export async function POST(request: NextRequest) {
@@ -60,6 +62,15 @@ export async function POST(request: NextRequest) {
     })
 
     await createSession(user.id)
+
+    // Fire off an email-verification code — best-effort, never block signup.
+    try {
+      const code = await createVerificationCode(user.id, 'email_verify')
+      await sendVerificationEmail(user.email, code)
+    } catch (err) {
+      console.error('Error sending verification email:', err)
+    }
+
     return NextResponse.json({ user: toSafeUser(user) }, { status: 201 })
   } catch (error) {
     console.error('Error signing up:', error)

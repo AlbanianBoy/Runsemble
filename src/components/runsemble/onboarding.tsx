@@ -20,7 +20,7 @@ import { AudienceBadge, formatDuration } from './helpers'
 // One place that turns a user object from any auth endpoint into the store's
 // profile shape, with safe defaults.
 interface DbUser {
-  id: string; name: string; email: string
+  id: string; name: string; email: string; emailVerified?: boolean
   avatar?: string | null; bio?: string | null; city?: string
   lat?: number | null; lng?: number | null
   preferredSport?: string; paceLevel?: string; schedulePreference?: string
@@ -35,6 +35,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     id: u.id,
     name: u.name,
     email: u.email,
+    emailVerified: u.emailVerified ?? false,
     avatar: u.avatar ?? null,
     bio: u.bio ?? null,
     city: u.city ?? 'Antwerp',
@@ -298,9 +299,9 @@ export function OnboardingProfile() {
         return
       }
       setCurrentUser(toUserProfile(data.user))
-      // New accounts pick their first runs next — nobody should leave
-      // onboarding without a run on the calendar.
-      setOnboardingStep('runs')
+      // Confirm the email first (skippable), then pick first runs — nobody
+      // should leave onboarding without a run on the calendar.
+      setOnboardingStep('verify')
     } catch {
       setErrorMsg('Network error — please try again')
     }
@@ -594,8 +595,102 @@ export function OnboardingRuns() {
   )
 }
 
+// After signup we email a 6-digit code. Confirming is skippable so a user is
+// never blocked (e.g. before the sending domain is verified in Resend).
+export function OnboardingVerifyEmail() {
+  const { currentUser, updateProfile, setOnboardingStep } = useRunsembleStore()
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [resending, setResending] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const verify = async () => {
+    if (code.trim().length < 6 || loading) return
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      await apiSend<{ ok: boolean }>('/api/auth/verify-email', 'POST', { code: code.trim() })
+      updateProfile({ emailVerified: true })
+      toast.success('Email verified ✅')
+      setOnboardingStep('runs')
+    } catch (e) {
+      setErrorMsg((e as Error).message)
+    }
+    setLoading(false)
+  }
+
+  const resend = async () => {
+    if (resending) return
+    setResending(true)
+    setErrorMsg(null)
+    try {
+      await apiSend<{ ok: boolean }>('/api/auth/send-verification', 'POST')
+      toast.success('New code sent — check your inbox')
+    } catch (e) {
+      toast.error((e as Error).message)
+    }
+    setResending(false)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col justify-center p-6 bg-background">
+      <motion.div {...fadeUp} className="max-w-md mx-auto w-full">
+        <h2 className="text-2xl font-bold mb-1">Confirm your email</h2>
+        <p className="text-muted-foreground mb-6">
+          We sent a 6-digit code to{' '}
+          <span className="font-medium text-foreground">{currentUser?.email}</span>. Enter it below.
+        </p>
+
+        <Label htmlFor="verify-code">Verification code</Label>
+        <Input
+          id="verify-code"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          maxLength={6}
+          value={code}
+          onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+          placeholder="123456"
+          className="mt-1.5 text-center text-2xl tracking-[0.4em] font-semibold"
+          onKeyDown={(e) => e.key === 'Enter' && verify()}
+        />
+
+        {errorMsg && (
+          <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>
+        )}
+
+        <Button
+          size="lg"
+          className="w-full rounded-full font-semibold mt-6"
+          onClick={verify}
+          disabled={code.trim().length < 6 || loading}
+        >
+          {loading ? 'Verifying…' : 'Verify email'}
+        </Button>
+
+        <div className="mt-4 flex items-center justify-center gap-4 text-sm">
+          <button
+            onClick={resend}
+            disabled={resending}
+            className="text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline disabled:opacity-50"
+          >
+            {resending ? 'Sending…' : 'Resend code'}
+          </button>
+          <span className="text-muted-foreground/40">·</span>
+          <button
+            onClick={() => setOnboardingStep('runs')}
+            className="text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+          >
+            Skip for now
+          </button>
+        </div>
+      </motion.div>
+    </div>
+  )
+}
+
 export function OnboardingLogin() {
   const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
+  const [mode, setMode] = useState<'login' | 'forgot'>('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
@@ -623,6 +718,10 @@ export function OnboardingLogin() {
       setErrorMsg('Network error — please try again')
     }
     setLoading(false)
+  }
+
+  if (mode === 'forgot') {
+    return <ForgotPasswordForm initialEmail={email} onBack={() => setMode('login')} />
   }
 
   return (
@@ -656,6 +755,13 @@ export function OnboardingLogin() {
               className="mt-1.5"
               onKeyDown={(e) => e.key === 'Enter' && submit()}
             />
+            <button
+              type="button"
+              onClick={() => { setErrorMsg(null); setMode('forgot') }}
+              className="mt-2 block ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+            >
+              Forgot password?
+            </button>
           </div>
         </div>
 
@@ -678,6 +784,146 @@ export function OnboardingLogin() {
         >
           New here? Create a profile
         </button>
+      </motion.div>
+    </div>
+  )
+}
+
+// Two-step reset: enter your email to get a code, then enter the code + a new
+// password. Reached from the login screen's "Forgot password?" link.
+function ForgotPasswordForm({
+  initialEmail,
+  onBack,
+}: {
+  initialEmail: string
+  onBack: () => void
+}) {
+  const [stage, setStage] = useState<'email' | 'reset'>('email')
+  const [email, setEmail] = useState(initialEmail)
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const sendCode = async () => {
+    if (!email.trim() || loading) return
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      await apiSend<{ ok: boolean }>('/api/auth/forgot-password', 'POST', { email: email.trim() })
+      toast.success('If that email has an account, a code is on the way.')
+      setStage('reset')
+    } catch (e) {
+      setErrorMsg((e as Error).message)
+    }
+    setLoading(false)
+  }
+
+  const reset = async () => {
+    if (code.trim().length < 6 || password.length < 8 || loading) return
+    setLoading(true)
+    setErrorMsg(null)
+    try {
+      await apiSend<{ ok: boolean }>('/api/auth/reset-password', 'POST', {
+        email: email.trim(),
+        code: code.trim(),
+        password,
+      })
+      toast.success('Password updated — log in with your new password.')
+      onBack()
+    } catch (e) {
+      setErrorMsg((e as Error).message)
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col justify-center p-6 bg-background">
+      <motion.div {...fadeUp} className="max-w-md mx-auto w-full">
+        <button
+          onClick={onBack}
+          className="mb-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          ← Back to log in
+        </button>
+        <h2 className="text-2xl font-bold mb-1">Reset password</h2>
+
+        {stage === 'email' ? (
+          <>
+            <p className="text-muted-foreground mb-6">
+              Enter your email and we&apos;ll send you a 6-digit code.
+            </p>
+            <Label htmlFor="forgot-email">Email</Label>
+            <Input
+              id="forgot-email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@email.com"
+              className="mt-1.5"
+              onKeyDown={(e) => e.key === 'Enter' && sendCode()}
+            />
+            {errorMsg && <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>}
+            <Button
+              size="lg"
+              className="w-full rounded-full font-semibold mt-6"
+              onClick={sendCode}
+              disabled={!email.trim() || loading}
+            >
+              {loading ? 'Sending…' : 'Send reset code'}
+            </Button>
+          </>
+        ) : (
+          <>
+            <p className="text-muted-foreground mb-6">
+              Enter the code sent to{' '}
+              <span className="font-medium text-foreground">{email}</span> and choose a new password.
+            </p>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="reset-code">Code</Label>
+                <Input
+                  id="reset-code"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
+                  className="mt-1.5 text-center text-xl tracking-[0.3em] font-semibold"
+                />
+              </div>
+              <div>
+                <Label htmlFor="reset-password">New password</Label>
+                <Input
+                  id="reset-password"
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="At least 8 characters"
+                  className="mt-1.5"
+                  onKeyDown={(e) => e.key === 'Enter' && reset()}
+                />
+              </div>
+            </div>
+            {errorMsg && <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>}
+            <Button
+              size="lg"
+              className="w-full rounded-full font-semibold mt-6"
+              onClick={reset}
+              disabled={code.trim().length < 6 || password.length < 8 || loading}
+            >
+              {loading ? 'Resetting…' : 'Reset password'}
+            </Button>
+            <button
+              onClick={sendCode}
+              disabled={loading}
+              className="block mx-auto mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline disabled:opacity-50"
+            >
+              Resend code
+            </button>
+          </>
+        )}
       </motion.div>
     </div>
   )

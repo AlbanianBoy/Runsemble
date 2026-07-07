@@ -20,6 +20,8 @@ model User {
   verified          Boolean   @default(false)
   passwordHash      String?   // scrypt salt:hash; null for seed/demo profiles
   consentAt         DateTime? // when the user accepted data processing (GDPR)
+  emailVerified     Boolean   @default(false) // confirmed via 6-digit code
+  emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
   paceLevel         String    @default("beginner") // beginner, intermediate, advanced, any
   schedulePreference String   @default("evening") // morning, afternoon, evening
@@ -60,6 +62,7 @@ model User {
   blockedBy         Block[] @relation("Blocked")
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
+  verificationTokens VerificationToken[]
 }
 
 // Login sessions — token lives in an httpOnly cookie.
@@ -73,6 +76,23 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
+}
+
+// Short-lived 6-digit codes for email verification and password reset.
+// Stored as a SHA-256 hash; single-use (consumedAt) with an attempt cap.
+model VerificationToken {
+  id         String    @id @default(cuid())
+  userId     String
+  type       String    // "email_verify" | "password_reset"
+  codeHash   String    // sha256 hex of the 6-digit code
+  expiresAt  DateTime
+  attempts   Int       @default(0)
+  consumedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  user       User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, type])
 }
 
 model Hotspot {
