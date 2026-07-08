@@ -21,6 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
+import { startPositionWatch } from '@/lib/geo-watch'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -105,7 +106,6 @@ export function RunTracker() {
   const elapsedRef = useRef(0)
   const lastSplitElapsedRef = useRef(0)
   const pointsRef = useRef<GpsPoint[]>([])
-  const watchIdRef = useRef<number | null>(null)
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const demoRef = useRef(false)
   const demoProgressRef = useRef(0)
@@ -154,19 +154,18 @@ export function RunTracker() {
   useEffect(() => { ingestRef.current = ingestPosition })
 
   // GPS watch — position updates always (so the ready screen shows where you
-  // are). Ignored while the simulator drives the position.
+  // are). On the web this is the browser Geolocation API; in the native app it's
+  // the background-geolocation plugin, so a run keeps recording with the screen
+  // off. Updates are ignored while the simulator drives the position.
   useEffect(() => {
-    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (loc) => {
+    return startPositionWatch({
+      onPosition: (lat, lng) => {
         if (demoRef.current) return
         setGps('ok')
-        ingestRef.current(loc.coords.latitude, loc.coords.longitude)
+        ingestRef.current(lat, lng)
       },
-      (err) => setGps(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable'),
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
-    )
-    return () => { if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current) }
+      onError: (kind) => setGps(kind),
+    })
   }, [])
 
   // Audio pace cues — announce each completed kilometre, Nike Run Club style.
