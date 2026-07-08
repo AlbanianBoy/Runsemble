@@ -59,7 +59,7 @@
   --card-foreground: oklch(0.18 0.02 50);
   --popover: oklch(1 0 0);
   --popover-foreground: oklch(0.18 0.02 50);
-  --primary: oklch(0.65 0.2 35);
+  --primary: oklch(0.66 0.12 186);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.96 0.008 90);
   --secondary-foreground: oklch(0.25 0.02 50);
@@ -70,21 +70,21 @@
   --destructive: oklch(0.577 0.245 27.325);
   --border: oklch(0.92 0.005 90);
   --input: oklch(0.92 0.005 90);
-  --ring: oklch(0.65 0.2 35);
-  --chart-1: oklch(0.65 0.2 35);
+  --ring: oklch(0.66 0.12 186);
+  --chart-1: oklch(0.66 0.12 186);
   --chart-2: oklch(0.7 0.15 145);
   --chart-3: oklch(0.75 0.18 85);
   --chart-4: oklch(0.6 0.2 25);
   --chart-5: oklch(0.8 0.12 160);
   --sidebar: oklch(0.985 0.002 90);
   --sidebar-foreground: oklch(0.18 0.02 50);
-  --sidebar-primary: oklch(0.65 0.2 35);
+  --sidebar-primary: oklch(0.66 0.12 186);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.96 0.008 90);
   --sidebar-accent-foreground: oklch(0.25 0.02 50);
   --sidebar-border: oklch(0.92 0.005 90);
-  --sidebar-ring: oklch(0.65 0.2 35);
-  --brand: oklch(0.65 0.2 35);
+  --sidebar-ring: oklch(0.66 0.12 186);
+  --brand: oklch(0.66 0.12 186);
   --brand-foreground: oklch(1 0 0);
   --success: oklch(0.7 0.15 145);
   --success-foreground: oklch(1 0 0);
@@ -103,7 +103,7 @@
   --card-foreground: oklch(0.95 0.005 90);
   --popover: oklch(0.2 0.01 50);
   --popover-foreground: oklch(0.95 0.005 90);
-  --primary: oklch(0.7 0.2 35);
+  --primary: oklch(0.72 0.12 186);
   --primary-foreground: oklch(1 0 0);
   --secondary: oklch(0.25 0.01 50);
   --secondary-foreground: oklch(0.9 0.005 90);
@@ -114,21 +114,21 @@
   --destructive: oklch(0.704 0.191 22.216);
   --border: oklch(0.3 0.01 50);
   --input: oklch(0.3 0.01 50);
-  --ring: oklch(0.7 0.2 35);
-  --chart-1: oklch(0.7 0.2 35);
+  --ring: oklch(0.72 0.12 186);
+  --chart-1: oklch(0.72 0.12 186);
   --chart-2: oklch(0.7 0.15 145);
   --chart-3: oklch(0.75 0.18 85);
   --chart-4: oklch(0.65 0.2 25);
   --chart-5: oklch(0.75 0.12 160);
   --sidebar: oklch(0.14 0.01 50);
   --sidebar-foreground: oklch(0.95 0.005 90);
-  --sidebar-primary: oklch(0.7 0.2 35);
+  --sidebar-primary: oklch(0.72 0.12 186);
   --sidebar-primary-foreground: oklch(1 0 0);
   --sidebar-accent: oklch(0.25 0.01 50);
   --sidebar-accent-foreground: oklch(0.9 0.005 90);
   --sidebar-border: oklch(0.3 0.01 50);
-  --sidebar-ring: oklch(0.7 0.2 35);
-  --brand: oklch(0.7 0.2 35);
+  --sidebar-ring: oklch(0.72 0.12 186);
+  --brand: oklch(0.72 0.12 186);
   --brand-foreground: oklch(1 0 0);
   --success: oklch(0.7 0.15 145);
   --success-foreground: oklch(1 0 0);
@@ -152,19 +152,19 @@
 /* Runsemble brand utilities */
 @layer utilities {
   .gradient-brand {
-    background: linear-gradient(135deg, oklch(0.65 0.2 35), oklch(0.7 0.22 30));
+    background: linear-gradient(135deg, oklch(0.68 0.13 186), oklch(0.62 0.13 200));
   }
   .gradient-brand-subtle {
-    background: linear-gradient(135deg, oklch(0.95 0.03 35), oklch(0.96 0.04 60));
+    background: linear-gradient(135deg, oklch(0.95 0.03 186), oklch(0.96 0.04 200));
   }
   .dark .gradient-brand-subtle {
-    background: linear-gradient(135deg, oklch(0.32 0.08 35), oklch(0.3 0.06 60));
+    background: linear-gradient(135deg, oklch(0.32 0.06 186), oklch(0.3 0.05 200));
   }
   .gradient-success {
     background: linear-gradient(135deg, oklch(0.7 0.15 145), oklch(0.75 0.18 160));
   }
   .text-gradient-brand {
-    background: linear-gradient(135deg, oklch(0.55 0.22 30), oklch(0.65 0.18 45));
+    background: linear-gradient(135deg, oklch(0.55 0.12 190), oklch(0.63 0.12 178));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
@@ -183,8 +183,8 @@
   /* Soft ambient app background — subtle warm glow behind everything. */
   .rs-app-bg {
     background:
-      radial-gradient(120% 80% at 100% 0%, oklch(0.7 0.2 35 / 8%), transparent 60%),
-      radial-gradient(100% 70% at 0% 100%, oklch(0.7 0.15 60 / 6%), transparent 55%),
+      radial-gradient(120% 80% at 100% 0%, oklch(0.7 0.12 186 / 8%), transparent 60%),
+      radial-gradient(100% 70% at 0% 100%, oklch(0.72 0.1 200 / 6%), transparent 55%),
       var(--background);
   }
   /* Number-heavy stat readouts use tabular figures so they don't jitter. */

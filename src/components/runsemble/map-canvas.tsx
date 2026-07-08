@@ -22,7 +22,7 @@ import type { ApiHotspot, ApiUser } from '@/lib/types'
 // the map matches their colour everywhere else in the app. (Tailwind utility
 // classes aren't reliable inside Leaflet-injected markup, so we use hex here.)
 const HEX_COLORS = [
-  '#f97316', '#d97706', '#059669', '#f43f5e', '#8b5cf6',
+  '#14b8a6', '#d97706', '#059669', '#f43f5e', '#8b5cf6',
   '#14b8a6', '#ec4899', '#ca8a04', '#ef4444', '#0891b2',
 ]
 
@@ -46,7 +46,7 @@ function hotspotIcon(count: number): L.DivIcon {
     html: `
       <div style="position:relative;width:30px;height:30px;">
         <span class="rs-pulse" style="position:absolute;inset:-9px;border-radius:999px;background:rgba(249,115,22,.25);"></span>
-        <div style="position:relative;width:30px;height:30px;border-radius:999px;background:#f97316;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;">
+        <div style="position:relative;width:30px;height:30px;border-radius:999px;background:#14b8a6;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
         </div>
         ${badge}

@@ -92,7 +92,7 @@ export function RunHistory() {
                     stroke="currentColor"
                     opacity={0.5}
                   />
-                  <Bar dataKey="km" fill="#f97316" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="km" fill="#14b8a6" radius={[4, 4, 0, 0]} />
                 </BarChart>
               </ResponsiveContainer>
             </div>

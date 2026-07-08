@@ -32,7 +32,7 @@ export function BottomNav() {
               onClick={() => openRunTracker({ label: 'Solo run' })}
               whileTap={{ scale: 0.9 }}
               whileHover={{ scale: 1.05 }}
-              className="absolute -top-6 h-14 w-14 rounded-full gradient-brand text-white shadow-lg shadow-orange-500/40 flex items-center justify-center ring-4 ring-background"
+              className="absolute -top-6 h-14 w-14 rounded-full gradient-brand text-white shadow-lg shadow-teal-500/40 flex items-center justify-center ring-4 ring-background"
               aria-label="Start a run"
             >
               <Play className="h-6 w-6" fill="currentColor" />

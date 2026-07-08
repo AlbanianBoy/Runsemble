@@ -60,7 +60,7 @@ function codeEmailHtml(opts: {
 }): string {
   return `
   <div style="font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;max-width:480px;margin:0 auto;padding:32px 24px;color:#1b1b19">
-    <h1 style="font-size:22px;font-weight:800;color:#f97316;margin:0 0 4px">Runsemble</h1>
+    <h1 style="font-size:22px;font-weight:800;color:#14b8a6;margin:0 0 4px">Runsemble</h1>
     <h2 style="font-size:18px;font-weight:700;margin:16px 0 8px">${opts.heading}</h2>
     <p style="font-size:14px;line-height:1.6;color:#4b4b46;margin:0 0 20px">${opts.intro}</p>
     <div style="font-size:34px;font-weight:800;letter-spacing:10px;text-align:center;background:#fff7ed;border:1px solid #f59e0b;border-radius:12px;padding:18px 0;color:#1b1b19">${opts.code}</div>

@@ -26,7 +26,7 @@ const currentDot = L.divIcon({
   html: `
     <div style="position:relative;width:22px;height:22px;">
       <span class="rs-pulse" style="position:absolute;inset:-8px;border-radius:999px;background:rgba(249,115,22,.25);"></span>
-      <div style="position:relative;width:22px;height:22px;border-radius:999px;background:#f97316;border:3.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);"></div>
+      <div style="position:relative;width:22px;height:22px;border-radius:999px;background:#14b8a6;border:3.5px solid #fff;box-shadow:0 1px 5px rgba(0,0,0,.35);"></div>
     </div>`,
   iconSize: [22, 22],
   iconAnchor: [11, 11],
@@ -64,7 +64,7 @@ export default function LiveRunMap({ center, current, path }: LiveRunMapProps) {
       {path.length >= 2 && (
         <Polyline
           positions={path.map((p) => [p.lat, p.lng] as [number, number])}
-          pathOptions={{ color: '#f97316', weight: 5, opacity: 0.95 }}
+          pathOptions={{ color: '#14b8a6', weight: 5, opacity: 0.95 }}
         />
       )}
 

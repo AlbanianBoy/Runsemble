@@ -50,7 +50,7 @@ export default function RouteMap({ points }: RouteMapProps) {
         maxZoom={19}
       />
       {latlngs.length >= 2 && (
-        <Polyline positions={latlngs} pathOptions={{ color: '#f97316', weight: 5, opacity: 0.9 }} />
+        <Polyline positions={latlngs} pathOptions={{ color: '#14b8a6', weight: 5, opacity: 0.9 }} />
       )}
       {start && <CircleMarker center={[start.lat, start.lng]} radius={6} pathOptions={{ color: '#fff', weight: 2, fillColor: '#10b981', fillOpacity: 1 }} />}
       {end && points.length > 1 && <CircleMarker center={[end.lat, end.lng]} radius={6} pathOptions={{ color: '#fff', weight: 2, fillColor: '#ef4444', fillOpacity: 1 }} />}

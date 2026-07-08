@@ -408,7 +408,7 @@ export function RunTracker() {
                 </p>
                 <button
                   onClick={startRun}
-                  className="h-20 w-20 rounded-full bg-primary text-primary-foreground font-bold text-sm tracking-wide shadow-lg shadow-orange-500/40 active:scale-95 transition-transform"
+                  className="h-20 w-20 rounded-full bg-primary text-primary-foreground font-bold text-sm tracking-wide shadow-lg shadow-teal-500/40 active:scale-95 transition-transform"
                 >
                   START
                 </button>
@@ -441,7 +441,7 @@ export function RunTracker() {
                   {phase === 'running' ? (
                     <button
                       onClick={() => setPhase('paused')}
-                      className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-orange-500/30 active:scale-95 transition-transform"
+                      className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-teal-500/30 active:scale-95 transition-transform"
                       aria-label="Pause"
                     >
                       <Pause className="h-7 w-7" fill="currentColor" />
@@ -456,7 +456,7 @@ export function RunTracker() {
                       </button>
                       <button
                         onClick={() => setPhase('running')}
-                        className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-orange-500/30 active:scale-95 transition-transform"
+                        className="h-16 w-16 rounded-full bg-primary text-primary-foreground flex items-center justify-center shadow-lg shadow-teal-500/30 active:scale-95 transition-transform"
                         aria-label="Resume"
                       >
                         <Play className="h-7 w-7 ml-0.5" fill="currentColor" />
