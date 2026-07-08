@@ -245,6 +245,12 @@ html, body {
 .leaflet-container {
   font-family: inherit;
   background: oklch(0.96 0.01 220);
+  /* Contain Leaflet's internal high z-indexes (panes ~400-700, controls ~1000)
+     in their own stacking context, so a route map in the feed can't paint over
+     dialogs/sheets like the post composer. */
+  position: relative;
+  z-index: 0;
+  isolation: isolate;
 }
 .leaflet-control-attribution {
   font-size: 9px;
