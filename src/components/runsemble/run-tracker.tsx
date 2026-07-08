@@ -22,6 +22,7 @@ import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import { startPositionWatch } from '@/lib/geo-watch'
+import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -77,16 +78,27 @@ export function RunTracker() {
   const { runContext, closeRunTracker, currentUser, updateProfile } = useRunsembleStore()
   const queryClient = useQueryClient()
 
+  // Crash recovery: if a run was interrupted (app killed mid-run), pick it back
+  // up from the copy we persist to the device as it records.
+  const [restored] = useState<PersistedRun | null>(() =>
+    typeof window !== 'undefined' ? loadActiveRun() : null
+  )
+  const startedAtRef = useRef(restored?.startedAt ?? Date.now())
+
   // Hotspot AND group runs open in the lobby — you gather, check in, and start
   // together. Only solo runs go straight to the ready screen.
   const [phase, setPhase] = useState<Phase>(() =>
-    runContext?.hotspotId || runContext?.groupId ? 'lobby' : 'ready'
+    restored
+      ? 'paused'
+      : runContext?.hotspotId || runContext?.groupId
+      ? 'lobby'
+      : 'ready'
   )
   const [runningWith, setRunningWith] = useState<Candidate[]>([])
-  const [elapsedSec, setElapsedSec] = useState(0)
-  const [distanceKm, setDistanceKm] = useState(0)
-  const [splits, setSplits] = useState<number[]>([])
-  const [routePoints, setRoutePoints] = useState<LatLng[]>([])
+  const [elapsedSec, setElapsedSec] = useState(() => restored?.elapsedSec ?? 0)
+  const [distanceKm, setDistanceKm] = useState(() => restored?.distanceKm ?? 0)
+  const [splits, setSplits] = useState<number[]>(() => restored?.splits ?? [])
+  const [routePoints, setRoutePoints] = useState<LatLng[]>(() => restored?.routePoints ?? [])
   const [pos, setPos] = useState<LatLng | null>(null)
   const [gps, setGps] = useState<'acquiring' | 'ok' | 'denied' | 'unavailable' | 'demo'>(() =>
     typeof navigator !== 'undefined' && 'geolocation' in navigator ? 'acquiring' : 'unavailable'
@@ -104,8 +116,8 @@ export function RunTracker() {
 
   const phaseRef = useRef<Phase>('ready')
   const elapsedRef = useRef(0)
-  const lastSplitElapsedRef = useRef(0)
-  const pointsRef = useRef<GpsPoint[]>([])
+  const lastSplitElapsedRef = useRef(restored?.lastSplitElapsed ?? 0)
+  const pointsRef = useRef<GpsPoint[]>(restored?.points ?? [])
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const demoRef = useRef(false)
   const demoProgressRef = useRef(0)
@@ -152,6 +164,26 @@ export function RunTracker() {
     pts.push(p)
   }
   useEffect(() => { ingestRef.current = ingestPosition })
+
+  // Persist the in-progress run to the device so an app-kill mid-run doesn't
+  // lose it (recovered on next open via `restored`). Cleared once finished.
+  useEffect(() => {
+    if (phase === 'running' || phase === 'paused') {
+      saveActiveRun({
+        startedAt: startedAtRef.current,
+        updatedAt: Date.now(),
+        elapsedSec: elapsedRef.current,
+        distanceKm,
+        splits,
+        routePoints,
+        points: pointsRef.current,
+        lastSplitElapsed: lastSplitElapsedRef.current,
+        context: runContext ?? null,
+      })
+    } else if (phase === 'finished') {
+      clearActiveRun()
+    }
+  }, [phase, routePoints, splits, distanceKm, runContext])
 
   // GPS watch — position updates always (so the ready screen shows where you
   // are). On the web this is the browser Geolocation API; in the native app it's
