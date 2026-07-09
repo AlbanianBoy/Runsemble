@@ -26,10 +26,20 @@ export function RunSyncRegister() {
 
     drain()
     const onOnline = () => drain()
+    // Returning to the app (foreground) is the reliable signal in the native
+    // WebView: when the phone regains signal it's usually backgrounded, so the
+    // `online` event is missed while the WebView sleeps. Draining on
+    // visibility/focus means a queued run uploads as soon as you reopen the app,
+    // with no need to fully close and relaunch it.
+    const onVisible = () => { if (document.visibilityState === 'visible') drain() }
     window.addEventListener('online', onOnline)
+    window.addEventListener('focus', onOnline)
+    document.addEventListener('visibilitychange', onVisible)
     return () => {
       cancelled = true
       window.removeEventListener('online', onOnline)
+      window.removeEventListener('focus', onOnline)
+      document.removeEventListener('visibilitychange', onVisible)
     }
   }, [queryClient])
 
