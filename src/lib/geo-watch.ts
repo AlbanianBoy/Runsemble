@@ -15,6 +15,22 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('Backg
 
 export type GpsError = 'denied' | 'unavailable'
 
+/** True inside the Capacitor app (real background GPS), false on the plain web. */
+export function isNativeApp(): boolean {
+  try { return Capacitor.isNativePlatform() } catch { return false }
+}
+
+// Open this app's system settings page, where the user grants "Allow all the
+// time" location and notifications — the two things Android won't let us request
+// from an in-app prompt but that background run tracking needs.
+export async function openAppSettings(): Promise<void> {
+  try {
+    await (BackgroundGeolocation as unknown as { openSettings: () => Promise<void> }).openSettings()
+  } catch {
+    // web / unavailable — no-op
+  }
+}
+
 export interface PositionWatchHandlers {
   // accuracy is the reported horizontal accuracy in metres (null if unknown).
   // The caller uses it to reject drifty readings so standing still doesn't

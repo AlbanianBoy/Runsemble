@@ -31,6 +31,7 @@ import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { getAvatarColor, getInitials } from './helpers'
 import { RunLobby } from './run-lobby'
+import { BackgroundPermissionNudge } from './background-permission-nudge'
 
 const LiveRunMap = dynamic(() => import('./live-run-map'), {
   ssr: false,
@@ -482,6 +483,7 @@ export function RunTracker() {
           <div className="border-t bg-background px-6 pt-4 pb-[calc(env(safe-area-inset-bottom,0px)+1.25rem)]">
             {phase === 'ready' ? (
               <div className="flex flex-col items-center gap-4">
+                <BackgroundPermissionNudge />
                 <p className="text-sm text-muted-foreground text-center">
                   {gps === 'ok'
                     ? 'GPS locked — ready when you are.'
@@ -522,6 +524,11 @@ export function RunTracker() {
                     <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">Avg pace /km</p>
                   </div>
                 </div>
+                {weakGps && phase === 'running' && (
+                  <p className="mt-3 text-center text-[11px] text-amber-600 dark:text-amber-500">
+                    Weak GPS signal — distance resumes once it sharpens
+                  </p>
+                )}
                 <div className="mt-4 flex items-center justify-center gap-5">
                   {phase === 'running' ? (
                     <button
