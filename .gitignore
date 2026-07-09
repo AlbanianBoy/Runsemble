@@ -1,5 +1,9 @@
 # See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
+# Android signing keys — NEVER commit these. Losing/leaking them compromises releases.
+*.jks
+*.keystore
+
 # dependencies
 node_modules
 /.pnp
