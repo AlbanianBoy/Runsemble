@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 // Leaderboard, rankable by different metrics. Participation-first by design —
 // the default board is XP (which rewards showing up), not raw speed.
@@ -20,7 +21,16 @@ export async function GET(request: NextRequest) {
     const metric: Metric = metricParam in METRICS ? metricParam : 'xp'
     const field = METRICS[metric]
 
+    // Hidden users (privacyVisible=false) opt out of discovery — and the
+    // leaderboard, where name + city would otherwise expose them to strangers.
+    // You always see yourself though, so hiding never makes your own rank vanish.
+    const viewerId = (await getSessionUser())?.id ?? null
+    const where = viewerId
+      ? { OR: [{ privacyVisible: true }, { id: viewerId }] }
+      : { privacyVisible: true }
+
     const users = await db.user.findMany({
+      where,
       orderBy: { [field]: 'desc' },
       take: 50,
       select: {
