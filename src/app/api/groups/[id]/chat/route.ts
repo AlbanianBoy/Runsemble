@@ -8,6 +8,8 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
 
     const group = await db.runGroup.findUnique({ where: { id } })
     if (!group) {
@@ -15,6 +17,15 @@ export async function GET(
         { error: 'Group not found' },
         { status: 404 }
       )
+    }
+
+    // Chat is members-only — the same rule the POST handler enforces. Without
+    // this, anyone could read a private group's messages by id.
+    const membership = await db.groupMember.findUnique({
+      where: { groupId_userId: { groupId: id, userId: me.id } },
+    })
+    if (!membership) {
+      return NextResponse.json({ error: 'Must be a group member to view chat' }, { status: 403 })
     }
 
     const messages = await db.groupChatMessage.findMany({

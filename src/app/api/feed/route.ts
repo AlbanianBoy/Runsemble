@@ -105,6 +105,15 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    // Posting into a group requires membership — otherwise a non-member could
+    // drop posts into any group (including private ones) by passing its id.
+    if (groupId) {
+      const member = await db.groupMember.findUnique({
+        where: { groupId_userId: { groupId, userId: me.id } },
+      })
+      if (!member) return NextResponse.json({ error: 'Join the group to post in it' }, { status: 403 })
+    }
+
     // Photos arrive as client-compressed JPEG data URLs (prototype storage —
     // move to blob storage before production scale). Cap the size regardless.
     if (imageUrl !== undefined && imageUrl !== null) {

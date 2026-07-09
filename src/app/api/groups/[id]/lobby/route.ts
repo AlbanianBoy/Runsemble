@@ -53,6 +53,18 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+
+    // Private groups are visible to members only.
+    const group = await db.runGroup.findUnique({ where: { id }, select: { isPublic: true } })
+    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+    if (!group.isPublic) {
+      const me = await getSessionUser()
+      const member = me
+        ? await db.groupMember.findUnique({ where: { groupId_userId: { groupId: id, userId: me.id } } })
+        : null
+      if (!member) return NextResponse.json({ error: 'This group is private' }, { status: 403 })
+    }
+
     const lobby = await loadLobby(id)
     if (!lobby) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
     return NextResponse.json(lobby)

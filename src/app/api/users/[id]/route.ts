@@ -81,14 +81,13 @@ export async function PATCH(
       'availableUntil',
       'privacyVisible',
       'onboardingComplete',
-      'xp',
-      'streak',
-      'longestStreak',
       'lastActiveDate',
-      'totalRuns',
-      'totalPeopleRunWith',
       'lat',
       'lng',
+      // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
+      // deliberately NOT here. They are moved only by the server (in /api/runs);
+      // letting a client PATCH them would let anyone set xp: 999999 and top the
+      // leaderboard.
     ]
 
     for (const field of allowedFields) {
@@ -156,14 +155,13 @@ export async function PUT(
       'availableUntil',
       'privacyVisible',
       'onboardingComplete',
-      'xp',
-      'streak',
-      'longestStreak',
       'lastActiveDate',
-      'totalRuns',
-      'totalPeopleRunWith',
       'lat',
       'lng',
+      // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
+      // deliberately NOT here. They are moved only by the server (in /api/runs);
+      // letting a client PATCH them would let anyone set xp: 999999 and top the
+      // leaderboard.
     ]
 
     for (const field of allowedFields) {

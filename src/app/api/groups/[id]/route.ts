@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
 
 export async function GET(
   _request: NextRequest,
@@ -55,6 +56,16 @@ export async function GET(
         { error: 'Group not found' },
         { status: 404 }
       )
+    }
+
+    // Private groups are visible to members only — otherwise their member list
+    // and posts would be readable by anyone with the group id.
+    if (!group.isPublic) {
+      const me = await getSessionUser()
+      const member = me
+        ? await db.groupMember.findUnique({ where: { groupId_userId: { groupId: id, userId: me.id } } })
+        : null
+      if (!member) return NextResponse.json({ error: 'This group is private' }, { status: 403 })
     }
 
     // Same honest weekly-km computation as the list endpoint.
