@@ -22,6 +22,7 @@ import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import { startPositionWatch } from '@/lib/geo-watch'
+import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
@@ -51,6 +52,7 @@ const DEMO_ROUTE: LatLng[] = [
   { lat: 51.2098, lng: 4.4140 }, { lat: 51.2104, lng: 4.4120 }, { lat: 51.2119, lng: 4.4110 },
 ]
 const DEMO_SPEED_MPS = 5 // ~3:20/km — brisk, so the demo moves visibly
+const ACCURACY_GATE_M = 25 // ignore fixes worse than this for distance (drift guard)
 
 /** Point `meters` along the demo loop (wraps around). */
 function demoPointAt(meters: number): LatLng {
@@ -107,6 +109,12 @@ export function RunTracker() {
     typeof navigator !== 'undefined' && 'geolocation' in navigator ? 'acquiring' : 'unavailable'
   )
   const [demo, setDemo] = useState(false)
+  const [accuracyM, setAccuracyM] = useState<number | null>(null)
+  // Whether we're in the native app (real background GPS) or the browser
+  // (foreground-only). Shown on the GPS chip so we can tell them apart on-device.
+  const [isNative] = useState(() => {
+    try { return Capacitor.isNativePlatform() } catch { return false }
+  })
   const [voiceOn, setVoiceOn] = useState(true)
   const spokenRef = useRef(0)
 
@@ -131,7 +139,7 @@ export function RunTracker() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const demoRef = useRef(false)
   const demoProgressRef = useRef(0)
-  const ingestRef = useRef<(lat: number, lng: number) => void>(() => {})
+  const ingestRef = useRef<(lat: number, lng: number, accuracy: number | null) => void>(() => {})
 
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { elapsedRef.current = elapsedSec }, [elapsedSec])
@@ -147,16 +155,26 @@ export function RunTracker() {
 
   // One ingestion path for real GPS *and* the simulator: update the position,
   // and while running, accumulate distance/route/splits with a jitter filter.
-  const ingestPosition = (lat: number, lng: number) => {
+  const ingestPosition = (lat: number, lng: number, accuracy: number | null) => {
     const p: GpsPoint = { lat, lng, t: Date.now() }
     setPos({ lat, lng })
+    if (accuracy != null) setAccuracyM(accuracy)
     if (phaseRef.current !== 'running') return
+
+    // Reject readings too uncertain to trust. Indoors / urban canyons the fix
+    // drifts tens of metres while you stand still; counting those piles up fake
+    // distance (a run "moving" while you sit). Only points accurate to ~25m
+    // contribute to distance and the route.
+    if (accuracy != null && accuracy > ACCURACY_GATE_M) return
 
     const pts = pointsRef.current
     const last = pts[pts.length - 1]
     if (last) {
       const d = haversineKm({ lat: last.lat, lng: last.lng }, { lat, lng })
       // Ignore GPS jitter (<3m) and implausible jumps (>60m between samples).
+      // The accuracy gate above is the real drift guard; this floor only trims
+      // sub-step noise, and must stay below the native 5m distanceFilter so real
+      // movement is never dropped.
       if (d > 0.003 && d < 0.06) {
         setDistanceKm((prev) => {
           const next = prev + d
@@ -201,10 +219,10 @@ export function RunTracker() {
   // off. Updates are ignored while the simulator drives the position.
   useEffect(() => {
     return startPositionWatch({
-      onPosition: (lat, lng) => {
+      onPosition: (lat, lng, accuracy) => {
         if (demoRef.current) return
         setGps('ok')
-        ingestRef.current(lat, lng)
+        ingestRef.current(lat, lng, accuracy)
       },
       onError: (kind) => setGps(kind),
     })
@@ -231,11 +249,11 @@ export function RunTracker() {
   useEffect(() => {
     if (!demo) return
     demoProgressRef.current = 0
-    const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng), 0)
+    const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng, 5), 0)
     const iv = setInterval(() => {
       if (phaseRef.current === 'running') demoProgressRef.current += DEMO_SPEED_MPS
       const p = demoPointAt(demoProgressRef.current)
-      ingestRef.current(p.lat, p.lng)
+      ingestRef.current(p.lat, p.lng, 5)
     }, 1000)
     return () => { clearTimeout(t0); clearInterval(iv) }
   }, [demo])
@@ -371,9 +389,16 @@ export function RunTracker() {
   }, [currentUser, clientRunId, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
 
   const label = runContext?.label ?? 'Solo run'
+  // Live accuracy + which GPS engine is driving (native background service vs
+  // the browser's foreground-only geolocation) — surfaced so weak signal and a
+  // web fallback are visible on the phone instead of silent.
+  const accSuffix = gps === 'ok' && accuracyM != null ? ` ±${Math.round(accuracyM)}m` : ''
+  const modeSuffix = gps === 'ok' || gps === 'acquiring' ? (isNative ? ' · native' : ' · web') : ''
+  const weakGps = gps === 'ok' && accuracyM != null && accuracyM > ACCURACY_GATE_M
   const gpsNote =
     gps === 'acquiring' ? 'Acquiring GPS…' : gps === 'denied' ? 'Location off'
-    : gps === 'unavailable' ? 'No GPS' : gps === 'demo' ? 'Demo GPS' : 'GPS'
+    : gps === 'unavailable' ? 'No GPS' : gps === 'demo' ? 'Demo GPS'
+    : `GPS${accSuffix}${modeSuffix}`
 
   return (
     <motion.div
@@ -408,7 +433,7 @@ export function RunTracker() {
               </span>
               <div className="flex items-center gap-2 pointer-events-auto">
                 <span className="glass rounded-full px-3 py-1.5 text-[11px] font-medium border shadow-sm flex items-center gap-1.5">
-                  <span className={`h-2 w-2 rounded-full ${gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
+                  <span className={`h-2 w-2 rounded-full ${weakGps ? 'bg-amber-500' : gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
                   {gpsNote}
                 </span>
                 {phase !== 'ready' && (

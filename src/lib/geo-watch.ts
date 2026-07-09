@@ -16,7 +16,10 @@ const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('Backg
 export type GpsError = 'denied' | 'unavailable'
 
 export interface PositionWatchHandlers {
-  onPosition: (lat: number, lng: number) => void
+  // accuracy is the reported horizontal accuracy in metres (null if unknown).
+  // The caller uses it to reject drifty readings so standing still doesn't
+  // accumulate fake distance.
+  onPosition: (lat: number, lng: number, accuracy: number | null) => void
   onError: (kind: GpsError) => void
 }
 
@@ -31,7 +34,7 @@ function startWebWatch({ onPosition, onError }: PositionWatchHandlers): () => vo
     return () => {}
   }
   const id = navigator.geolocation.watchPosition(
-    (loc) => onPosition(loc.coords.latitude, loc.coords.longitude),
+    (loc) => onPosition(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy ?? null),
     (err) => onError(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable'),
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
   )
@@ -57,7 +60,7 @@ function startNativeWatch({ onPosition, onError }: PositionWatchHandlers): () =>
         onError(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'unavailable')
         return
       }
-      if (location) onPosition(location.latitude, location.longitude)
+      if (location) onPosition(location.latitude, location.longitude, location.accuracy ?? null)
     }
   )
     .then((id) => {
