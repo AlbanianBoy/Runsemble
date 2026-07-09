@@ -7,7 +7,7 @@ import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight,
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
-import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse } from '@/lib/types'
+import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -98,6 +98,34 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // Guard against double-send: while a message is in flight the input still
+  // holds the text (it clears on success), so a second tap during lag would
+  // fire the same message again. Ignore sends while one is pending.
+  const handleSendMsg = () => {
+    const content = chatMsg.trim()
+    if (!content || sendMsgMutation.isPending) return
+    sendMsgMutation.mutate(content)
+  }
+
+  // ── Add people to a group (invite) ──
+  // Buddies (people you've run with) are the natural pool to add. This is what
+  // makes a private group usable instead of a dead end.
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const { data: buddiesData } = useQuery({
+    queryKey: ['buddies', currentUser?.id],
+    queryFn: () => apiGet<BuddiesResponse>(`/api/buddies?userId=${currentUser?.id}`),
+    enabled: inviteOpen && !!currentUser?.id,
+  })
+  const addMemberMutation = useMutation({
+    mutationFn: (userId: string) => apiSend(`/api/groups/${selectedGroupId}/members`, 'POST', { userId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', selectedGroupId] })
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      toast.success('Added to the group')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Detail view
   if (groupView === 'detail') {
     if (groupLoading || !selectedGroup) {
@@ -112,6 +140,8 @@ export function GroupsTab() {
       )
     }
     const isMember = selectedGroup.members?.some((m) => m.userId === currentUser?.id)
+    const memberIds = new Set(selectedGroup.members?.map((m) => m.userId) ?? [])
+    const inviteCandidates = (buddiesData?.buddies ?? []).filter((b) => !memberIds.has(b.id))
     return (
       <div>
         <button onClick={() => { setGroupView('list'); setSelectedGroupId(null) }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors">
@@ -138,7 +168,15 @@ export function GroupsTab() {
             )}
           </div>
           {/* Members */}
-          <div><h3 className="font-semibold text-sm mb-2">Members</h3>
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-sm">Members</h3>
+              {isMember && (
+                <button onClick={() => setInviteOpen(true)} className="text-xs text-primary font-medium flex items-center gap-1 hover:opacity-80 transition-opacity">
+                  <Plus className="h-3.5 w-3.5" />Add people
+                </button>
+              )}
+            </div>
             <div className="space-y-2">
               {selectedGroup.members?.map((m) => (
                 <div key={m.userId} className="flex items-center gap-3">
@@ -150,6 +188,27 @@ export function GroupsTab() {
             </div>
           </div>
         </div>
+
+        <Sheet open={inviteOpen} onOpenChange={setInviteOpen}>
+          <SheetContent side="bottom" className="rounded-t-2xl">
+            <SheetHeader><SheetTitle>Add people to {selectedGroup.name}</SheetTitle></SheetHeader>
+            <div className="mt-4 space-y-2 max-h-[55vh] overflow-y-auto pb-6">
+              {inviteCandidates.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-8">
+                  No one to add yet — your run buddies show up here. Run with people to add them to groups.
+                </p>
+              ) : (
+                inviteCandidates.map((b) => (
+                  <div key={b.id} className="flex items-center gap-3">
+                    <Avatar className="h-9 w-9"><AvatarFallback className={`text-xs text-white ${getAvatarColor(b.name)}`}>{getInitials(b.name)}</AvatarFallback></Avatar>
+                    <span className="text-sm font-medium flex-1">{b.name}</span>
+                    <Button size="sm" variant="outline" className="rounded-full" disabled={addMemberMutation.isPending} onClick={() => addMemberMutation.mutate(b.id)}>Add</Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
     )
   }
@@ -184,8 +243,8 @@ export function GroupsTab() {
           <div ref={chatEndRef} />
         </div>
         <div className="flex gap-2 pt-2 border-t">
-          <Input value={chatMsg} onChange={e => setChatMsg(e.target.value)} placeholder="Type a message..." className="rounded-full" onKeyDown={e => e.key === 'Enter' && chatMsg.trim() && sendMsgMutation.mutate(chatMsg)} />
-          <Button size="icon" className="rounded-full flex-shrink-0" onClick={() => chatMsg.trim() && sendMsgMutation.mutate(chatMsg)}><Send className="h-4 w-4" /></Button>
+          <Input value={chatMsg} onChange={e => setChatMsg(e.target.value)} placeholder="Type a message..." className="rounded-full" onKeyDown={e => { if (e.key === 'Enter') handleSendMsg() }} />
+          <Button size="icon" disabled={sendMsgMutation.isPending || !chatMsg.trim()} className="rounded-full flex-shrink-0" onClick={handleSendMsg}><Send className="h-4 w-4" /></Button>
         </div>
       </div>
     )

@@ -45,7 +45,7 @@ export function DmSheet() {
     onError: (e: Error) => { /* surfaced inline; keep text */ void e },
   })
 
-  const submit = () => { if (text.trim() && me && partnerId) send.mutate(text.trim()) }
+  const submit = () => { if (text.trim() && me && partnerId && !send.isPending) send.mutate(text.trim()) }
 
   return (
     <Sheet open={!!dmPartner} onOpenChange={(o) => { if (!o) closeDm() }}>
