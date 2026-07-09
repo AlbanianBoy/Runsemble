@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
+import { loadActiveRun } from '@/lib/run-persist'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { OnboardingWelcome, OnboardingProfile, OnboardingVerifyEmail, OnboardingLogin, OnboardingRuns, toUserProfile } from '@/components/runsemble/onboarding'
@@ -35,6 +36,7 @@ export default function Home() {
     setCurrentUser,
     setOnboardingStep,
     runTrackerOpen,
+    openRunTracker,
   } = useRunsembleStore()
 
   // Restore a login session: if local state has no user but a valid session
@@ -54,6 +56,20 @@ export default function Home() {
       .catch(() => {})
     return () => { cancelled = true }
   }, [_hydrated, currentUser, setCurrentUser, setOnboardingStep])
+
+  // Crash recovery on cold launch: if the app was killed mid-run, the tracker
+  // isn't reopened on its own (runTrackerOpen is intentionally not persisted),
+  // so a saved in-progress run would sit invisible until you happened to open
+  // the tracker again. Once hydrated and signed in, reopen it here so the
+  // tracker's own recovery can resume (running if <2min old, else paused). Runs
+  // at most once per launch so closing it doesn't immediately reopen it.
+  const recoveredRef = useRef(false)
+  useEffect(() => {
+    if (recoveredRef.current || !_hydrated || onboardingStep !== 'done') return
+    recoveredRef.current = true
+    const active = loadActiveRun()
+    if (active) openRunTracker(active.context ?? {})
+  }, [_hydrated, onboardingStep, openRunTracker])
 
   // Don't render until Zustand has rehydrated from localStorage
   if (!_hydrated) {
