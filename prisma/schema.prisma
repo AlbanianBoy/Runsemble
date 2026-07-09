@@ -236,6 +236,7 @@ model Notification {
 
 model RunSession {
   id            String    @id @default(cuid())
+  clientRunId   String?   @unique // client-generated id; makes offline re-uploads idempotent
   userId        String
   hotspotId     String?   // set when the run is tied to a hotspot
   groupId       String?   // set when the run is tied to a group

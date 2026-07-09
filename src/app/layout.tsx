@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
 import { ServiceWorkerRegister } from "@/components/sw-register";
+import { RunSyncRegister } from "@/components/run-sync-register";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,6 +50,7 @@ export default function RootLayout({
       >
         <Providers>
           {children}
+          <RunSyncRegister />
         </Providers>
         <ServiceWorkerRegister />
       </body>

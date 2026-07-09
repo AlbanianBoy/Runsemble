@@ -23,6 +23,7 @@ import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import { startPositionWatch } from '@/lib/geo-watch'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
+import { queuePendingRun } from '@/lib/run-sync'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -108,6 +109,13 @@ export function RunTracker() {
   const [demo, setDemo] = useState(false)
   const [voiceOn, setVoiceOn] = useState(true)
   const spokenRef = useRef(0)
+
+  // A stable id for this run, generated once. It rides along with the save so a
+  // reconnect retry (or an offline queue drain) is idempotent server-side — the
+  // same run never lands twice.
+  const [clientRunId] = useState(() =>
+    typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
+  )
 
   // Finish-step state
   const [companions, setCompanions] = useState(0)
@@ -302,23 +310,23 @@ export function RunTracker() {
   const handleSave = useCallback(async () => {
     if (!currentUser?.id) { toast.error('Sign in to save runs'); return }
     setSaving(true)
+    const peopleAdded = buddyIds.length + companions
+    const payload = {
+      clientRunId,
+      distanceKm: +distanceKm.toFixed(3),
+      durationSec: elapsedSec,
+      hotspotId: runContext?.hotspotId ?? null,
+      groupId: runContext?.groupId ?? null,
+      companions,
+      buddyIds,
+      path: pointsRef.current.filter((_, i) => i % 3 === 0).map((p) => ({ lat: +p.lat.toFixed(5), lng: +p.lng.toFixed(5) })),
+      splits,
+      rating: rating || null,
+      shareToFeed,
+    }
     try {
-      const path = pointsRef.current.filter((_, i) => i % 3 === 0).map((p) => ({ lat: +p.lat.toFixed(5), lng: +p.lng.toFixed(5) }))
-      const res = await apiSend<RunSaveResponse>('/api/runs', 'POST', {
-        userId: currentUser.id,
-        distanceKm: +distanceKm.toFixed(3),
-        durationSec: elapsedSec,
-        hotspotId: runContext?.hotspotId ?? null,
-        groupId: runContext?.groupId ?? null,
-        companions,
-        buddyIds,
-        path,
-        splits,
-        rating: rating || null,
-        shareToFeed,
-      })
+      const res = await apiSend<RunSaveResponse>('/api/runs', 'POST', { userId: currentUser.id, ...payload })
 
-      const peopleAdded = buddyIds.length + companions
       updateProfile({
         xp: res.xp?.newXp ?? currentUser.xp,
         totalRuns: currentUser.totalRuns + 1,
@@ -339,10 +347,28 @@ export function RunTracker() {
 
       closeRunTracker()
     } catch (e) {
+      // No signal to reach the server? Don't lose the run. Stash it on the device
+      // and let RunSyncRegister upload it when the connection is back — the
+      // clientRunId keeps that upload idempotent. A real server error (while
+      // online) is shown so the runner can retry.
+      const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || e instanceof TypeError
+      if (offline) {
+        queuePendingRun({ ...payload, queuedAt: Date.now() })
+        // Optimistically move the profile so it feels saved; the server reconciles
+        // exact XP/streak on the next load once the queued run uploads.
+        updateProfile({
+          totalRuns: currentUser.totalRuns + 1,
+          totalDistanceKm: +(currentUser.totalDistanceKm + distanceKm).toFixed(2),
+          totalPeopleRunWith: currentUser.totalPeopleRunWith + peopleAdded,
+        })
+        toast.success("Saved on your phone — it'll upload when you're back online 📶")
+        closeRunTracker()
+        return
+      }
       toast.error(e instanceof Error ? e.message : 'Failed to save run')
       setSaving(false)
     }
-  }, [currentUser, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
+  }, [currentUser, clientRunId, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
 
   const label = runContext?.label ?? 'Solo run'
   const gpsNote =

@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
 
     const body = await request.json()
     const {
+      clientRunId = null,
       distanceKm = 0,
       durationSec = 0,
       hotspotId = null,
@@ -51,6 +52,22 @@ export async function POST(request: NextRequest) {
       shareToFeed = false,
       rating = null,
     } = body
+
+    // Idempotency for offline sync: a run saved offline is re-POSTed when signal
+    // returns, possibly more than once. If we've already recorded this exact run
+    // (matched by the client-generated id), return it without re-running any of
+    // the side effects below (XP, streak, badges, buddies, feed post). Without
+    // this a reconnect could award XP twice and post duplicate runs to the feed.
+    const cid = typeof clientRunId === 'string' && clientRunId.length > 0 ? clientRunId : null
+    if (cid) {
+      const existing = await db.runSession.findUnique({ where: { clientRunId: cid } })
+      if (existing) {
+        if (existing.userId !== userId) {
+          return NextResponse.json({ error: 'Run belongs to another account' }, { status: 409 })
+        }
+        return NextResponse.json({ session: existing, duplicate: true }, { status: 200 })
+      }
+    }
 
     // Session already resolved the full user row — no extra lookup needed.
     const user = me
@@ -109,24 +126,37 @@ export async function POST(request: NextRequest) {
     // ── Streak ──
     const streakRes = computeStreak(user.lastActiveDate, user.streak, user.longestStreak)
 
-    const session = await db.runSession.create({
-      data: {
-        userId,
-        hotspotId,
-        groupId,
-        sportType,
-        distanceKm: dist,
-        durationSec: dur,
-        avgPaceSecPerKm,
-        calories,
-        companions: companionCount,
-        path: path ? JSON.stringify(path).slice(0, 100_000) : null,
-        splits: Array.isArray(splits) && splits.length ? JSON.stringify(splits).slice(0, 10_000) : null,
-        note,
-        xpEarned,
-        endedAt: new Date(),
-      },
-    })
+    let session
+    try {
+      session = await db.runSession.create({
+        data: {
+          userId,
+          clientRunId: cid,
+          hotspotId,
+          groupId,
+          sportType,
+          distanceKm: dist,
+          durationSec: dur,
+          avgPaceSecPerKm,
+          calories,
+          companions: companionCount,
+          path: path ? JSON.stringify(path).slice(0, 100_000) : null,
+          splits: Array.isArray(splits) && splits.length ? JSON.stringify(splits).slice(0, 10_000) : null,
+          note,
+          xpEarned,
+          endedAt: new Date(),
+        },
+      })
+    } catch (e) {
+      // A concurrent duplicate (two reconnect retries racing) trips the
+      // clientRunId unique constraint. Treat it as the idempotent case: return
+      // the row the winning request created rather than erroring.
+      if (cid && e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
+        const existing = await db.runSession.findUnique({ where: { clientRunId: cid } })
+        if (existing) return NextResponse.json({ session: existing, duplicate: true }, { status: 200 })
+      }
+      throw e
+    }
 
     const newTotalDistance = user.totalDistanceKm + dist
 
