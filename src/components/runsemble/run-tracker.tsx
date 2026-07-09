@@ -87,13 +87,15 @@ export function RunTracker() {
 
   // Hotspot AND group runs open in the lobby — you gather, check in, and start
   // together. Only solo runs go straight to the ready screen.
-  const [phase, setPhase] = useState<Phase>(() =>
-    restored
-      ? 'paused'
-      : runContext?.hotspotId || runContext?.groupId
-      ? 'lobby'
-      : 'ready'
-  )
+  const [phase, setPhase] = useState<Phase>(() => {
+    if (restored) {
+      // A very recent snapshot means the app dropped mid-run — resume tracking
+      // straight away (the runner isn't looking at the phone). An older snapshot
+      // is a recovered run the user should confirm, so keep it paused.
+      return Date.now() - restored.updatedAt < 120_000 ? 'running' : 'paused'
+    }
+    return runContext?.hotspotId || runContext?.groupId ? 'lobby' : 'ready'
+  })
   const [runningWith, setRunningWith] = useState<Candidate[]>([])
   const [elapsedSec, setElapsedSec] = useState(() => restored?.elapsedSec ?? 0)
   const [distanceKm, setDistanceKm] = useState(() => restored?.distanceKm ?? 0)
