@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET(request: NextRequest) {
   try {
@@ -116,6 +117,9 @@ export async function POST(request: NextRequest) {
         { error: 'content is required' },
         { status: 400 }
       )
+    }
+    if (overLimit(content, LIMITS.post)) {
+      return NextResponse.json({ error: 'Post is too long' }, { status: 400 })
     }
 
     // Posting into a group requires membership — otherwise a non-member could

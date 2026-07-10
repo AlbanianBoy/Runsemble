@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { canViewPost } from '@/lib/feed-access'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 // List comments for a post, oldest first.
 export async function GET(
@@ -45,6 +46,9 @@ export async function POST(
     const { content } = body
     if (!content?.trim()) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 })
+    }
+    if (overLimit(content, LIMITS.comment)) {
+      return NextResponse.json({ error: 'Comment is too long' }, { status: 400 })
     }
 
     const post = await db.feedPost.findUnique({ where: { id } })

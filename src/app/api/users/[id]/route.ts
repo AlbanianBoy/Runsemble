@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET(
   _request: NextRequest,
@@ -60,6 +61,9 @@ export async function PATCH(
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
     const body = await request.json()
+    if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
+      return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
+    }
 
     const user = await db.user.findUnique({ where: { id } })
     if (!user) {
@@ -135,6 +139,9 @@ export async function PUT(
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
     const body = await request.json()
+    if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
+      return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
+    }
 
     const user = await db.user.findUnique({ where: { id } })
     if (!user) {

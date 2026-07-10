@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET(
   _request: NextRequest,
@@ -70,6 +71,9 @@ export async function POST(
         { error: 'content is required' },
         { status: 400 }
       )
+    }
+    if (overLimit(content, LIMITS.message)) {
+      return NextResponse.json({ error: 'Message is too long' }, { status: 400 })
     }
 
     const group = await db.runGroup.findUnique({ where: { id } })

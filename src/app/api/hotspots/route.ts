@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET() {
   try {
@@ -128,6 +129,9 @@ export async function POST(request: NextRequest) {
         { error: 'name, location, lat, lng, and startTime are required' },
         { status: 400 }
       )
+    }
+    if (overLimit(name, LIMITS.groupName) || overLimit(description, LIMITS.groupDesc) || overLimit(location, LIMITS.place)) {
+      return NextResponse.json({ error: 'A field is too long' }, { status: 400 })
     }
 
     const hotspot = await db.hotspot.create({

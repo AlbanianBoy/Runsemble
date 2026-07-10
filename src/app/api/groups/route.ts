@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET() {
   try {
@@ -51,7 +52,11 @@ export async function GET() {
       _count: undefined,
     }))
 
-    return NextResponse.json({ groups: groupsWithMeta })
+    // Private groups only appear in the list for their members — mirrors the
+    // members-only detail/chat/lobby so a private group isn't discoverable
+    // (name + members) by everyone.
+    const visible = groupsWithMeta.filter((g) => g.isPublic || g.isMember)
+    return NextResponse.json({ groups: visible })
   } catch (error) {
     console.error('Error fetching groups:', error)
     return NextResponse.json(
@@ -75,6 +80,9 @@ export async function POST(request: NextRequest) {
         { error: 'Group name is required' },
         { status: 400 }
       )
+    }
+    if (overLimit(name, LIMITS.groupName) || overLimit(description, LIMITS.groupDesc)) {
+      return NextResponse.json({ error: 'Group name or description is too long' }, { status: 400 })
     }
 
     const group = await db.runGroup.create({

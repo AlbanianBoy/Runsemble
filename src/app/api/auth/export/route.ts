@@ -10,7 +10,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const userId = user.id
 
-    const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges] =
+    const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges, groupChats, invites] =
       await Promise.all([
         db.runSession.findMany({ where: { userId } }),
         db.feedPost.findMany({ where: { authorId: userId } }),
@@ -24,6 +24,8 @@ export async function GET() {
         db.groupMember.findMany({ where: { userId } }),
         db.runRating.findMany({ where: { userId } }),
         db.challengeParticipant.findMany({ where: { userId } }),
+        db.groupChatMessage.findMany({ where: { senderId: userId } }),
+        db.runInvite.findMany({ where: { OR: [{ senderId: userId }, { recipientId: userId }] } }),
       ])
 
     return new NextResponse(
@@ -33,6 +35,7 @@ export async function GET() {
           profile: toSafeUser(user),
           runs, posts, comments, likes, badges, buddies,
           notifications, messages, participations, memberships, ratings, challenges,
+          groupChats, invites,
         },
         null,
         2

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { LIMITS, overLimit } from '@/lib/limits'
 
 // 1:1 direct messages. Private — identity always comes from the session.
 //   GET ?withId=  → the conversation with that person (marks read)
@@ -88,6 +89,9 @@ export async function POST(request: NextRequest) {
     const { recipientId, content } = await request.json()
     if (!recipientId || !content?.trim()) {
       return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 })
+    }
+    if (overLimit(content, LIMITS.message)) {
+      return NextResponse.json({ error: 'Message is too long' }, { status: 400 })
     }
 
     // Respect blocks in either direction.
