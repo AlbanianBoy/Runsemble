@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { canViewPost } from '@/lib/feed-access'
 
 // Toggle a like for a post on behalf of a user. Idempotent per (post, user):
 // calling it flips the like on/off and keeps the denormalised `likes` count in
@@ -20,6 +21,9 @@ export async function POST(
     const post = await db.feedPost.findUnique({ where: { id } })
     if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+    if (!(await canViewPost(post.groupId, userId))) {
+      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
     }
 
     const existing = await db.postLike.findUnique({

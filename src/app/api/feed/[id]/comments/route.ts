@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { canViewPost } from '@/lib/feed-access'
 
 // List comments for a post, oldest first.
 export async function GET(
@@ -10,6 +11,12 @@ export async function GET(
 ) {
   try {
     const { id } = await params
+    const post = await db.feedPost.findUnique({ where: { id }, select: { groupId: true } })
+    if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    const me = await getSessionUser()
+    if (!(await canViewPost(post.groupId, me?.id ?? null))) {
+      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
+    }
     const comments = await db.postComment.findMany({
       where: { postId: id },
       include: { author: { select: { id: true, name: true, avatar: true } } },
@@ -43,6 +50,9 @@ export async function POST(
     const post = await db.feedPost.findUnique({ where: { id } })
     if (!post) {
       return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    }
+    if (!(await canViewPost(post.groupId, authorId))) {
+      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
     }
 
     const comment = await db.postComment.create({

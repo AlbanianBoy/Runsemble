@@ -20,6 +20,15 @@ export async function POST(
       )
     }
 
+    // Private groups are invite-only — a member adds you via /members. Anyone
+    // with the id could otherwise self-join a private group.
+    if (!group.isPublic) {
+      return NextResponse.json(
+        { error: 'This group is private — a member needs to add you' },
+        { status: 403 }
+      )
+    }
+
     const existing = await db.groupMember.findUnique({
       where: {
         groupId_userId: { groupId: id, userId },

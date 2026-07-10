@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
     const userId = (await getSessionUser())?.id ?? null
     const scope = searchParams.get('scope') ?? 'all' // all | following
 
-    // Build the author/group filter.
-    let where: import('@prisma/client').Prisma.FeedPostWhereInput = {}
+    // Compose the filter as ANDed clauses (block + visibility + scope).
+    const and: import('@prisma/client').Prisma.FeedPostWhereInput[] = []
 
     // Never show posts from people you've blocked (or who blocked you).
     if (userId) {
@@ -21,22 +21,35 @@ export async function GET(request: NextRequest) {
       })
       const hiddenIds = new Set<string>()
       for (const b of blocks) hiddenIds.add(b.blockerId === userId ? b.blockedId : b.blockerId)
-      if (hiddenIds.size > 0) where.authorId = { notIn: [...hiddenIds] }
+      if (hiddenIds.size > 0) and.push({ authorId: { notIn: [...hiddenIds] } })
     }
+
+    // Groups this viewer belongs to — used for both post visibility and "for you".
+    const myGroupIds = userId
+      ? (await db.groupMember.findMany({ where: { userId }, select: { groupId: true } })).map((m) => m.groupId)
+      : []
+
+    // Group visibility: a post shows only if it's personal, in a public group, or
+    // in a group the viewer belongs to. Without this, private-group posts leak
+    // into everyone's feed (and via a buddy's post into the "for you" feed too).
+    and.push({
+      OR: [
+        { groupId: null },
+        { group: { isPublic: true } },
+        ...(myGroupIds.length ? [{ groupId: { in: myGroupIds } }] : []),
+      ],
+    })
 
     // "For you" — only buddies, your groups, and yourself.
     if (scope === 'following' && userId) {
-      const [buddies, memberships] = await Promise.all([
-        db.buddy.findMany({ where: { userId }, select: { buddyId: true } }),
-        db.groupMember.findMany({ where: { userId }, select: { groupId: true } }),
-      ])
+      const buddies = await db.buddy.findMany({ where: { userId }, select: { buddyId: true } })
       const authorIds = [userId, ...buddies.map((b) => b.buddyId)]
-      const groupIds = memberships.map((m) => m.groupId)
-      where = {
-        ...where,
-        OR: [{ authorId: { in: authorIds } }, ...(groupIds.length ? [{ groupId: { in: groupIds } }] : [])],
-      }
+      and.push({
+        OR: [{ authorId: { in: authorIds } }, ...(myGroupIds.length ? [{ groupId: { in: myGroupIds } }] : [])],
+      })
     }
+
+    const where: import('@prisma/client').Prisma.FeedPostWhereInput = and.length ? { AND: and } : {}
 
     const posts = await db.feedPost.findMany({
       where,
