@@ -1,17 +1,12 @@
 // ─── Position watching (web + native) ────────────────────────────────────────
 // One place that watches the device's location. On the web it uses the browser
-// Geolocation API (foreground only). Inside the Capacitor app it uses the native
-// background-geolocation plugin, which runs a foreground service so a run keeps
-// recording with the screen off — the whole reason for the native build.
-//
-// The plugin is bound by name via registerPlugin (the community package ships no
-// runtime entry, only types), and its native methods are only ever *called* when
-// running natively — on the web the proxy is created but never invoked.
+// Geolocation API (foreground only). Inside the Capacitor app it uses
+// @capgo/background-geolocation (built for Capacitor 8), which keeps a run
+// recording with the screen off — the whole reason for the native build. Its
+// native methods are only ever *called* when running natively.
 
-import { Capacitor, registerPlugin } from '@capacitor/core'
-import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
-
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+import { Capacitor } from '@capacitor/core'
+import { BackgroundGeolocation } from '@capgo/background-geolocation'
 
 export type GpsError = 'denied' | 'unavailable'
 
@@ -21,11 +16,11 @@ export function isNativeApp(): boolean {
 }
 
 // Open this app's system settings page, where the user grants "Allow all the
-// time" location and notifications — the two things Android won't let us request
+// time" location and notifications — the two things the OS won't let us request
 // from an in-app prompt but that background run tracking needs.
 export async function openAppSettings(): Promise<void> {
   try {
-    await (BackgroundGeolocation as unknown as { openSettings: () => Promise<void> }).openSettings()
+    await BackgroundGeolocation.openSettings()
   } catch {
     // web / unavailable — no-op
   }
@@ -58,41 +53,27 @@ function startWebWatch({ onPosition, onError }: PositionWatchHandlers): () => vo
 }
 
 function startNativeWatch({ onPosition, onError }: PositionWatchHandlers): () => void {
-  let watcherId: string | null = null
-  let stopped = false
-
-  BackgroundGeolocation.addWatcher(
+  // One background watcher: start() begins it, stop() ends it. The persistent
+  // notification (backgroundTitle/Message) is what the OS requires to keep
+  // recording location in the background.
+  BackgroundGeolocation.start(
     {
-      // Shown in the persistent notification while tracking in the background —
-      // required by Android for background location.
       backgroundTitle: 'Runsemble is tracking your run',
       backgroundMessage: 'Tap to return to the app.',
       requestPermissions: true,
       stale: false,
       distanceFilter: 5,
     },
-    (location, error) => {
+    (position, error) => {
       if (error) {
         onError(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'unavailable')
         return
       }
-      if (location) onPosition(location.latitude, location.longitude, location.accuracy ?? null)
+      if (position) onPosition(position.latitude, position.longitude, position.accuracy ?? null)
     }
-  )
-    .then((id) => {
-      if (stopped) {
-        void BackgroundGeolocation.removeWatcher({ id })
-        return
-      }
-      watcherId = id
-    })
-    .catch(() => onError('unavailable'))
+  ).catch(() => onError('unavailable'))
 
   return () => {
-    stopped = true
-    if (watcherId) {
-      const id = watcherId
-      void BackgroundGeolocation.removeWatcher({ id })
-    }
+    void BackgroundGeolocation.stop()
   }
 }
