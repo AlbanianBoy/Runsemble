@@ -3,7 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target, Download, LogOut } from 'lucide-react'
+import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target, Download, LogOut, Share2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore, getRankFromXP, type PaceLevel, type SchedulePreference } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { BadgesResponse } from '@/lib/types'
@@ -153,6 +154,24 @@ export function ProfileTab() {
       URL.revokeObjectURL(url)
     } catch {
       alert('Could not export your data right now — try again in a moment.')
+    }
+  }
+
+  // Invite a friend — native share sheet on mobile, clipboard fallback on desktop.
+  // The single cheapest growth lever for a local pilot: get members to bring the
+  // people they already run with.
+  const handleInviteFriend = async () => {
+    const url = 'https://runsemble.net'
+    const text = 'Come run with me on Runsemble — find runners near you and never run alone. Because together is better. 🏃'
+    try {
+      if (typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: 'Runsemble', text, url })
+      } else {
+        await navigator.clipboard.writeText(`${text} ${url}`)
+        toast.success('Invite copied — paste it to a friend!')
+      }
+    } catch {
+      // share sheet dismissed — nothing to do
     }
   }
 
@@ -431,6 +450,9 @@ export function ProfileTab() {
               <p className="font-semibold text-sm">Account &amp; data</p>
               <p className="text-xs text-muted-foreground">Your data belongs to you</p>
             </div>
+            <Button className="w-full rounded-full mb-2" onClick={handleInviteFriend}>
+              <Share2 className="h-4 w-4 mr-1.5" />Invite a friend to run
+            </Button>
             <div className="grid grid-cols-2 gap-2">
               <Button variant="outline" size="sm" className="rounded-full" onClick={handleExportData}>
                 <Download className="h-4 w-4 mr-1.5" />My data
