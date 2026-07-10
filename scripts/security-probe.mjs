@@ -90,6 +90,13 @@ try {
   check('non-member cannot add people', await status(`/api/groups/${priv.id}/members`, outsider.token, 'POST', { userId: outsider.id }) === 403)
   check('member can add people', await status(`/api/groups/${priv.id}/members`, member.token, 'POST', { userId: hidden.id }) === 201)
 
+  // ── Group admin (D2) — non-destructive perm checks ──
+  check('group edit: outsider 403', await status(`/api/groups/${priv.id}`, outsider.token, 'PATCH', { name: 'hacked' }) === 403)
+  check('group edit: member 403', await status(`/api/groups/${priv.id}`, member.token, 'PATCH', { name: 'hacked' }) === 403)
+  check('group delete: member 403 (owner only)', await status(`/api/groups/${priv.id}`, member.token, 'DELETE') === 403)
+  check('change role: member 403 (owner only)', await status(`/api/groups/${priv.id}/members/${owner.id}`, member.token, 'PATCH', { role: 'member' }) === 403)
+  check('remove member: outsider 403', await status(`/api/groups/${priv.id}/members/${member.id}`, outsider.token, 'DELETE') === 403)
+
   // ── Run invites ──
   check('send run invite: 201', await status('/api/invites', owner.token, 'POST', { recipientId: member.id }) === 201)
   check('invite yourself: 400', await status('/api/invites', owner.token, 'POST', { recipientId: owner.id }) === 400)

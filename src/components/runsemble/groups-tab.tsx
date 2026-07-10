@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
-import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play } from 'lucide-react'
+import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play, Settings, Shield, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
@@ -126,6 +126,44 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
+  // ── Group admin (owner / admin) ──
+  const [manageOpen, setManageOpen] = useState(false)
+  const [editName, setEditName] = useState('')
+  const [editDesc, setEditDesc] = useState('')
+  const [editPublic, setEditPublic] = useState(true)
+  const editGroup = useMutation({
+    mutationFn: (data: Record<string, unknown>) => apiSend(`/api/groups/${selectedGroupId}`, 'PATCH', data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['group', selectedGroupId] })
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      toast.success('Group updated')
+      setManageOpen(false)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const deleteGroup = useMutation({
+    mutationFn: () => apiSend(`/api/groups/${selectedGroupId}`, 'DELETE'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['groups'] })
+      toast.success('Group deleted')
+      setManageOpen(false)
+      setGroupView('list')
+      setSelectedGroupId(null)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const removeMember = useMutation({
+    mutationFn: (userId: string) => apiSend(`/api/groups/${selectedGroupId}/members/${userId}`, 'DELETE'),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['group', selectedGroupId] }); toast.success('Member removed') },
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const changeRole = useMutation({
+    mutationFn: ({ userId, role }: { userId: string; role: 'admin' | 'member' }) =>
+      apiSend(`/api/groups/${selectedGroupId}/members/${userId}`, 'PATCH', { role }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['group', selectedGroupId] }),
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Detail view
   if (groupView === 'detail') {
     if (groupLoading || !selectedGroup) {
@@ -142,15 +180,31 @@ export function GroupsTab() {
     const isMember = selectedGroup.members?.some((m) => m.userId === currentUser?.id)
     const memberIds = new Set(selectedGroup.members?.map((m) => m.userId) ?? [])
     const inviteCandidates = (buddiesData?.buddies ?? []).filter((b) => !memberIds.has(b.id))
+    const myRole = selectedGroup.members?.find((m) => m.userId === currentUser?.id)?.role
+    const canManage = myRole === 'owner' || myRole === 'admin'
+    const isOwner = myRole === 'owner'
+    const openManage = () => {
+      setEditName(selectedGroup.name)
+      setEditDesc(selectedGroup.description ?? '')
+      setEditPublic(!!selectedGroup.isPublic)
+      setManageOpen(true)
+    }
     return (
       <div>
         <button onClick={() => { setGroupView('list'); setSelectedGroupId(null) }} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground mb-4 transition-colors">
           <ArrowLeft className="h-4 w-4" /> Back to groups
         </button>
         <div className="space-y-4">
-          <div className="flex items-start justify-between">
+          <div className="flex items-start justify-between gap-2">
             <div><h2 className="text-xl font-bold">{selectedGroup.name}</h2><p className="text-sm text-muted-foreground mt-1">{selectedGroup.description}</p></div>
-            <Badge variant={selectedGroup.isPublic ? 'default' : 'secondary'}>{selectedGroup.isPublic ? <><Globe className="h-3 w-3 mr-1" />Public</> : <><Lock className="h-3 w-3 mr-1" />Private</>}</Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              <Badge variant={selectedGroup.isPublic ? 'default' : 'secondary'}>{selectedGroup.isPublic ? <><Globe className="h-3 w-3 mr-1" />Public</> : <><Lock className="h-3 w-3 mr-1" />Private</>}</Badge>
+              {canManage && (
+                <button onClick={openManage} aria-label="Manage group" className="text-muted-foreground hover:text-foreground transition-colors">
+                  <Settings className="h-4 w-4" />
+                </button>
+              )}
+            </div>
           </div>
           <div className="flex gap-4 text-center">
             <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.memberCount}</p><p className="text-xs text-muted-foreground">members</p></div>
@@ -178,13 +232,38 @@ export function GroupsTab() {
               )}
             </div>
             <div className="space-y-2">
-              {selectedGroup.members?.map((m) => (
-                <div key={m.userId} className="flex items-center gap-3">
-                  <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs text-white ${getAvatarColor(m.user?.name || 'U')}`}>{getInitials(m.user?.name || 'U')}</AvatarFallback></Avatar>
-                  <span className="text-sm font-medium flex-1">{m.user?.name}</span>
-                  <Badge variant="outline" className="text-[10px] capitalize">{m.role}</Badge>
-                </div>
-              ))}
+              {selectedGroup.members?.map((m) => {
+                const isSelf = m.userId === currentUser?.id
+                const canRemove = !isSelf && m.role !== 'owner' && (isOwner || (canManage && m.role === 'member'))
+                const canToggleRole = isOwner && !isSelf && m.role !== 'owner'
+                return (
+                  <div key={m.userId} className="flex items-center gap-3">
+                    <Avatar className="h-8 w-8"><AvatarFallback className={`text-xs text-white ${getAvatarColor(m.user?.name || 'U')}`}>{getInitials(m.user?.name || 'U')}</AvatarFallback></Avatar>
+                    <span className="text-sm font-medium flex-1 truncate">{m.user?.name}</span>
+                    <Badge variant="outline" className="text-[10px] capitalize">{m.role}</Badge>
+                    {canToggleRole && (
+                      <button
+                        onClick={() => changeRole.mutate({ userId: m.userId, role: m.role === 'admin' ? 'member' : 'admin' })}
+                        disabled={changeRole.isPending}
+                        aria-label={m.role === 'admin' ? 'Remove admin' : 'Make admin'}
+                        className={`transition-colors ${m.role === 'admin' ? 'text-primary' : 'text-muted-foreground hover:text-primary'}`}
+                      >
+                        <Shield className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    {canRemove && (
+                      <button
+                        onClick={() => { if (confirm(`Remove ${m.user?.name} from the group?`)) removeMember.mutate(m.userId) }}
+                        disabled={removeMember.isPending}
+                        aria-label="Remove member"
+                        className="text-muted-foreground/60 hover:text-destructive transition-colors"
+                      >
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
             </div>
           </div>
         </div>
@@ -205,6 +284,45 @@ export function GroupsTab() {
                     <Button size="sm" variant="outline" className="rounded-full" disabled={addMemberMutation.isPending} onClick={() => addMemberMutation.mutate(b.id)}>Add</Button>
                   </div>
                 ))
+              )}
+            </div>
+          </SheetContent>
+        </Sheet>
+
+        <Sheet open={manageOpen} onOpenChange={setManageOpen}>
+          <SheetContent side="bottom" className="rounded-t-2xl">
+            <SheetHeader><SheetTitle>Manage group</SheetTitle></SheetHeader>
+            <div className="mt-4 space-y-4 pb-6">
+              <div className="space-y-1.5">
+                <Label htmlFor="grp-name" className="text-xs">Name</Label>
+                <Input id="grp-name" value={editName} onChange={(e) => setEditName(e.target.value)} className="rounded-xl" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="grp-desc" className="text-xs">Description</Label>
+                <Textarea id="grp-desc" value={editDesc} onChange={(e) => setEditDesc(e.target.value)} className="rounded-xl" rows={3} />
+              </div>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">Public group</p>
+                  <p className="text-xs text-muted-foreground">Anyone can find and join it</p>
+                </div>
+                <Switch checked={editPublic} onCheckedChange={setEditPublic} />
+              </div>
+              <Button
+                className="w-full rounded-full"
+                disabled={editGroup.isPending || !editName.trim()}
+                onClick={() => editGroup.mutate({ name: editName.trim(), description: editDesc.trim(), isPublic: editPublic })}
+              >
+                Save changes
+              </Button>
+              {isOwner && (
+                <button
+                  onClick={() => { if (confirm('Delete this group for everyone? This cannot be undone.')) deleteGroup.mutate() }}
+                  disabled={deleteGroup.isPending}
+                  className="w-full text-center text-xs text-destructive/80 hover:text-destructive transition-colors pt-1 flex items-center justify-center gap-1"
+                >
+                  <Trash2 className="h-3.5 w-3.5" />Delete group
+                </button>
               )}
             </div>
           </SheetContent>
