@@ -73,6 +73,30 @@ export function MapTab() {
   const hotspots = hotspotsData?.hotspots ?? []
   const users = usersData?.users ?? []
 
+  // ── Run invites ──
+  const { data: invitesData } = useQuery({
+    queryKey: ['invites'],
+    queryFn: () =>
+      apiGet<{ received: Array<{ id: string; message: string | null; sender: { id: string; name: string; avatar: string | null; paceLevel: string; city: string } }> }>('/api/invites'),
+    enabled: !!currentUser?.id,
+  })
+  const receivedInvites = invitesData?.received ?? []
+  const inviteMutation = useMutation({
+    mutationFn: (recipientId: string) => apiSend('/api/invites', 'POST', { recipientId }),
+    onSuccess: () => toast.success('Run invite sent 🏃'),
+    onError: (e: Error) => toast.error(e.message),
+  })
+  const answerInvite = useMutation({
+    mutationFn: ({ id, action }: { id: string; action: 'accept' | 'decline' }) =>
+      apiSend(`/api/invites/${id}`, 'PATCH', { action }),
+    onSuccess: (_data, v) => {
+      queryClient.invalidateQueries({ queryKey: ['invites'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      if (v.action === 'accept') toast.success('Accepted! Message them to plan it 🤝')
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
+
   // Stable primitives so the memo dependencies match exactly what's read
   // (keeps the React Compiler's manual-memoization check happy).
   const myId = currentUser?.id
@@ -244,6 +268,25 @@ export function MapTab() {
     <div>
       {toggle}
 
+      {/* Run invites waiting for you */}
+      {receivedInvites.length > 0 && (
+        <div className="mb-2 space-y-2">
+          {receivedInvites.map((inv) => (
+            <div key={inv.id} className="rounded-2xl border bg-card p-3 flex items-center gap-3">
+              <Avatar className="h-9 w-9"><AvatarFallback className={`text-xs text-white ${getAvatarColor(inv.sender.name)}`}>{getInitials(inv.sender.name)}</AvatarFallback></Avatar>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm truncate"><span className="font-semibold">{inv.sender.name.split(' ')[0]}</span> invited you to run 🏃</p>
+                {inv.message && <p className="text-xs text-muted-foreground truncate">&ldquo;{inv.message}&rdquo;</p>}
+              </div>
+              <div className="flex gap-1.5 shrink-0">
+                <Button size="sm" variant="outline" className="rounded-full h-8 px-3" disabled={answerInvite.isPending} onClick={() => answerInvite.mutate({ id: inv.id, action: 'decline' })}>Decline</Button>
+                <Button size="sm" className="rounded-full h-8 px-3" disabled={answerInvite.isPending} onClick={() => answerInvite.mutate({ id: inv.id, action: 'accept' })}>Accept</Button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Pace + distance filters */}
       <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
         {PACE_OPTIONS.map((p) => (
@@ -414,16 +457,26 @@ export function MapTab() {
                 <div className="text-center"><p className="font-bold">{selectedRunner.totalPeopleRunWith}</p><p className="text-xs text-muted-foreground">run buddies</p></div>
                 <div className="text-center"><p className="font-bold">{selectedRunner.streak}</p><p className="text-xs text-muted-foreground">streak</p></div>
               </div>
-              <Button
-                className="w-full rounded-full font-semibold"
-                onClick={() => {
-                  const r = selectedRunner
-                  setSelectedRunner(null)
-                  openDm({ id: r.id, name: r.name })
-                }}
-              >
-                <MessageCircle className="h-4 w-4 mr-2" />Message
-              </Button>
+              <div className="flex gap-2 w-full">
+                <Button
+                  variant="outline"
+                  className="flex-1 rounded-full font-semibold"
+                  onClick={() => {
+                    const r = selectedRunner
+                    setSelectedRunner(null)
+                    openDm({ id: r.id, name: r.name })
+                  }}
+                >
+                  <MessageCircle className="h-4 w-4 mr-2" />Message
+                </Button>
+                <Button
+                  className="flex-1 rounded-full font-semibold"
+                  disabled={inviteMutation.isPending}
+                  onClick={() => inviteMutation.mutate(selectedRunner.id)}
+                >
+                  <Play className="h-4 w-4 mr-2" fill="currentColor" />Invite to run
+                </Button>
+              </div>
               <p className="text-[11px] text-muted-foreground pt-1">
                 {'\u{1F512}'} Location shown approximately for privacy
               </p>

@@ -90,6 +90,13 @@ try {
   check('non-member cannot add people', await status(`/api/groups/${priv.id}/members`, outsider.token, 'POST', { userId: outsider.id }) === 403)
   check('member can add people', await status(`/api/groups/${priv.id}/members`, member.token, 'POST', { userId: hidden.id }) === 201)
 
+  // ── Run invites ──
+  check('send run invite: 201', await status('/api/invites', owner.token, 'POST', { recipientId: member.id }) === 201)
+  check('invite yourself: 400', await status('/api/invites', owner.token, 'POST', { recipientId: owner.id }) === 400)
+  const inv = await db.runInvite.findFirst({ where: { senderId: owner.id, recipientId: member.id, status: 'pending' } })
+  check('non-recipient cannot answer invite: 403', await status(`/api/invites/${inv?.id}`, outsider.token, 'PATCH', { action: 'accept' }) === 403)
+  check('recipient accepts invite: 200', await status(`/api/invites/${inv?.id}`, member.token, 'PATCH', { action: 'accept' }) === 200)
+
   // ── Feed / comments / likes visibility ──
   const outFeed = (await json('/api/feed?scope=all', outsider.token)).posts?.map((p) => p.id) ?? []
   check('feed hides private-group post from outsider', !outFeed.includes(privPost.id))
@@ -128,6 +135,7 @@ try {
     try { await db.runGroup.delete({ where: { id: gid } }) } catch {}
   }
   for (const uid of created.users) {
+    try { await db.runInvite.deleteMany({ where: { OR: [{ senderId: uid }, { recipientId: uid }] } }) } catch {}
     try { await db.notification.deleteMany({ where: { OR: [{ userId: uid }, { actorId: uid }] } }) } catch {}
     try { await db.block.deleteMany({ where: { OR: [{ blockerId: uid }, { blockedId: uid }] } }) } catch {}
     try { await db.session.deleteMany({ where: { userId: uid } }) } catch {}
