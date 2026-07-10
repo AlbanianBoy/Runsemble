@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Clock, MapPin, Users, Navigation, Loader2, Map as MapIcon, Flame, Play, MessageCircle } from 'lucide-react'
+import { Clock, MapPin, Users, Navigation, Loader2, Map as MapIcon, Flame, Play, MessageCircle, Search, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
@@ -96,6 +96,16 @@ export function MapTab() {
     },
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // ── Find people by name ──
+  const [search, setSearch] = useState('')
+  const searchQ = search.trim()
+  const { data: searchData, isFetching: searching } = useQuery({
+    queryKey: ['user-search', searchQ],
+    queryFn: () => apiGet<UsersResponse>(`/api/users/search?q=${encodeURIComponent(searchQ)}`),
+    enabled: searchQ.length >= 2,
+  })
+  const searchResults = searchQ.length >= 2 ? searchData?.users ?? [] : []
 
   // Stable primitives so the memo dependencies match exactly what's read
   // (keeps the React Compiler's manual-memoization check happy).
@@ -284,6 +294,36 @@ export function MapTab() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Find people by name */}
+      <div className="relative mb-2">
+        <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search runners by name…" className="rounded-full pl-9" />
+      </div>
+      {searchQ.length >= 2 && (
+        <div className="mb-2 rounded-2xl border bg-card divide-y overflow-hidden">
+          {searching && searchResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Searching…</p>
+          ) : searchResults.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No runners found for &ldquo;{searchQ}&rdquo;</p>
+          ) : (
+            searchResults.map((u) => (
+              <button
+                key={u.id}
+                onClick={() => { setSelectedRunner(u); setSearch('') }}
+                className="flex items-center gap-3 w-full p-3 text-left hover:bg-muted/50 transition-colors"
+              >
+                <Avatar className="h-9 w-9"><AvatarFallback className={`text-xs text-white ${getAvatarColor(u.name)}`}>{getInitials(u.name)}</AvatarFallback></Avatar>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium truncate">{u.name}</p>
+                  <p className="text-xs text-muted-foreground truncate">{u.city} · {u.paceLevel}</p>
+                </div>
+                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+              </button>
+            ))
+          )}
         </div>
       )}
 
