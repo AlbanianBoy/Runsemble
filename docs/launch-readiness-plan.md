@@ -53,6 +53,20 @@ admin@runsemble.dev (A6).
 
 ---
 
+**2026-07-10 (later) — native iOS + GPS plugin:**
+- iOS: real Capacitor iOS app built (`ios/`, `net.runsemble.app`, teal-R icons,
+  background-location Info.plist), cloud-build via `codemagic.yaml` (founder has
+  no Mac), runbook + App Store listing pack in `docs/`. Unbuilt/untested on a
+  real iPhone yet — needs Apple acct ($99) + Codemagic + an iPhone walk test.
+- GPS plugin: tried `@capgo/background-geolocation`, **reverted** to
+  `@capacitor-community/background-geolocation` on founder preference (indoor
+  drift with @capgo). Do NOT re-suggest swapping. See the memory of the same name.
+- Pending founder field test: a ~35-min screen-off Android session (walk +
+  scooter) to prove the timer holds over a long run and the jump-filter doesn't
+  drop fast movement. If the timer under-counts → apply the C1 wall-clock fix.
+
+---
+
 ## Executor notes (read first)
 
 - **Stack constraints:** strict React Compiler ESLint (no `ref.current` reads in
