@@ -23,22 +23,33 @@ Play submission prep (runbook + assets).
 - Also shipped from founder feedback: chat double-send guard, add-people-to-group
   (invite), background-permission nudge, GPS accuracy gate + native/web chip.
 
-**Part D progress:**
-- D1 (run invites) — DONE: API + UI (invite button on runner profile, received
-  card on the map), block-aware, notified, probe-covered (22/22).
-- D3 (like/comment notifications) — already wired in the like/comment routes
-  (verified). Optional extra: notify other thread commenters, not just author.
-- D5 (invite-a-friend) — DONE: native share button on the profile.
-- D4 (find people) — PARTIAL: pace + radius filters already exist on the map.
-  Still to do: name search endpoint + suggested-runners.
-- iPhone decision: founder leaning native; RECOMMENDED Capacitor iOS instead of
-  a Swift rewrite (same background GPS, reuses 100% of the code).
+**Part D progress — D1–D6 DONE, verified live, all folded into `npm run probe`
+(now 27/27):**
+- D1 run invites — API + UI (invite on runner profile, received card on map),
+  block-aware, notified.
+- D2 group admin — edit/delete group (owner/admin), remove member + promote/
+  demote (owner protected); Manage sheet + per-member controls.
+- D3 like/comment notifications — already wired (verified).
+- D4 find people — name search endpoint + search box (pace/radius filters
+  already existed). Suggested-runners left as a minor nice-to-have.
+- D5 invite-a-friend — native share button on the profile.
+- D6 hotspot reminders — lazy sweep from GET /api/hotspots, throttled + DB-deduped.
 
-**Still open:** A5 (iPhone check / Capacitor iOS target), D2 (group admin: edit/
-delete/remove/promote/join-requests — "add people" already shipped), D4 (search +
-suggestions), D6 (reminders), D7 (chat polish), "present people on map" (live
-location, needs privacy design), Part E (push + store), Part F backlog. Also
-outstanding on founder: rotate the Resend key + drop admin@runsemble.dev (A6).
+**Deferred deliberately (not skipped):**
+- D7 chat polish — the `take:50` cap already prevents unbounded loads; "load
+  earlier" is premature at pilot scale, a DM unread badge needs a messages
+  surface (no nav home today), and group-unread needs a `GroupMember.lastReadAt`
+  schema field. Revisit post-pilot.
+- "Present people on the map" — real live-location feature; needs a founder
+  privacy decision (exact vs the app's usual ~200m fuzz; only-to-fellow-
+  participants during an active shared run) before building. RECOMMENDED:
+  fuzzed, participants-only, active-run-only.
+- iPhone / A5 — add the Capacitor iOS target (NOT a native rewrite). Requires a
+  Mac + Xcode to build; can't be done from the Windows box.
+
+**Still open:** the two deferred features above (on a decision / a Mac), Part E
+(push + store), Part F backlog. Founder chores: rotate the Resend key + drop
+admin@runsemble.dev (A6).
 
 ---
 
