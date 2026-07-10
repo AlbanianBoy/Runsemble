@@ -7,6 +7,7 @@ import { db } from './db'
 
 export type NotificationType =
   | 'hotspot_join'
+  | 'hotspot_reminder'
   | 'run_invite'
   | 'group_message'
   | 'badge'

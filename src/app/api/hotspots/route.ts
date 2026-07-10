@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { sweepHotspotReminders } from '@/lib/hotspot-reminders'
 
 export async function GET() {
   try {
     const now = new Date()
+
+    // Opportunistically fire "your run starts soon" reminders (throttled, no cron).
+    await sweepHotspotReminders()
 
     // Fetch all active spots; we decide visibility per-spot below so that
     // official recurring spots stay on the board even after a slot passes.
