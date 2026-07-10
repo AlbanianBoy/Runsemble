@@ -23,6 +23,7 @@ export async function GET() {
     const users = await db.user.findMany({
       where: excludeIds.length ? { id: { notIn: excludeIds } } : undefined,
       orderBy: { createdAt: 'asc' },
+      take: 500, // bound the query; the map/people views work on a local set
       include: {
         earnedBadges: true,
         groupMemberships: {

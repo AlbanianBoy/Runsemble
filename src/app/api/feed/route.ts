@@ -81,6 +81,8 @@ export async function GET(request: NextRequest) {
         likedBy: userId ? { where: { userId }, select: { id: true } } : false,
       },
       orderBy: { createdAt: 'desc' },
+      take: 100, // newest 100 — bounds the query as the feed grows
+
     })
 
     const shaped = posts.map((p) => {
