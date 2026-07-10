@@ -6,6 +6,30 @@ Written 2026-07-09, after: offline steps 1–3 shipped and field-verified, the
 6-finding security sweep, GPS accuracy gate, background-permission nudge, and
 Play submission prep (runbook + assets).
 
+## Progress log
+
+**2026-07-10 — Part A (mostly) + Part B (security) DONE, verified live.**
+- Device matrix (A4): founder confirmed on real Android — background walk test
+  (continuous route, accurate distance/time, notification), crash recovery,
+  offline sync, no stationary drift, ±8m outdoors. **Part C tracking fixes are
+  therefore NOT needed** (timer holds, accuracy gate right, no jump-filter loss).
+  Cold-launch recovery bug found + fixed (page reopens the tracker).
+- A2: `npm run probe` (`scripts/security-probe.mjs`) — 18-check regression suite,
+  green against prod.
+- B1: private-group posts/comments/likes no longer leak; private groups
+  invite-only (self-join blocked). B2: private groups hidden from the list;
+  account-delete cascade audited clean; export completed. B3: input length caps.
+  B4: auth rate limiting. B5: feed/users query bounds.
+- Also shipped from founder feedback: chat double-send guard, add-people-to-group
+  (invite), background-permission nudge, GPS accuracy gate + native/web chip.
+
+**Still open:** A5 (iPhone PWA check), Part D (social upgrades — invites API D1,
+group admin D2, like/comment notifs D3 [partially present — verify], find-people
+D4, cold-start D5, reminders D6, chat polish D7), the "present people on map"
+feature (live-location, needs privacy design), Part E (push + store), Part F backlog.
+
+---
+
 ## Executor notes (read first)
 
 - **Stack constraints:** strict React Compiler ESLint (no `ref.current` reads in
