@@ -71,19 +71,12 @@ The code is done and committed; this covers the accounts + cloud-build steps.
 ---
 
 ## Honest risk to watch
-Background GPS uses **`@capgo/background-geolocation`** — free (MPL-2.0), built
-for **Capacitor 8**, and the maintained, purpose-built plugin for exactly this
-(fitness/run tracking). That removed the old "built for Capacitor 7" warning.
-
-Still: **iOS background rules are stricter than Android, so treat iPhone tracking
-as unproven until the Step-D walk test passes.** If the route comes back gapped
-on iPhone, work the fixes in this order before suspecting anything deeper:
-1. Confirm location is set to **"Always"** (not "While Using").
-2. Make the run **timer clock-based** (compute elapsed from timestamps) so a
-   WebView frozen while backgrounded catches up correctly on resume — the one
-   change we didn't need on Android but iOS may require.
-3. Only then consider a heavier option. A full native rewrite is a last resort,
-   not a first move.
+When the iOS platform was added, Capacitor warned:
+`@capacitor-community/background-geolocation is built for Capacitor 7, it might
+cause issues`. It works on Android, but **iOS is the more likely place this bites**.
+If the Step-D walk test shows a gapped route on iPhone, the plugin's iOS build is
+the first suspect — check for a newer plugin version or an alternative
+(e.g. `@capgo/capacitor-background-geolocation`) before assuming the app is wrong.
 
 ## Cost summary
 - Apple Developer: **$99/year** (hard requirement).
