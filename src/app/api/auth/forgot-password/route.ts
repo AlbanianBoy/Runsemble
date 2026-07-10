@@ -2,12 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { createVerificationCode } from '@/lib/verification'
 import { sendPasswordResetEmail } from '@/lib/email'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 // Start a password reset: if the email belongs to a real account, email a code.
 // Always responds 200 with the same body so this can't be used to probe which
 // emails have accounts.
 export async function POST(request: NextRequest) {
   try {
+    if (!rateLimit(`forgot:${clientIp(request)}`, 5, 60_000)) {
+      return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
+    }
     const { email } = await request.json()
     if (!email?.trim()) {
       return NextResponse.json({ error: 'Email is required' }, { status: 400 })

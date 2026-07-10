@@ -2,9 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/password'
 import { createSession, toSafeUser } from '@/lib/auth'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
+    if (!rateLimit(`login:${clientIp(request)}`, 10, 60_000)) {
+      return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
+    }
     const { email, password } = await request.json()
     if (!email?.trim() || !password) {
       return NextResponse.json({ error: 'Email and password are required' }, { status: 400 })
