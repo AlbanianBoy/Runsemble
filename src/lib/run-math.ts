@@ -1,0 +1,54 @@
+import { haversineKm, type LatLng } from '@/lib/geo'
+
+// ─── Run math ─────────────────────────────────────────────────────────────────
+// Pure, testable versions of the calculations that live inside the RunTracker
+// component: distance filtering, wall-clock elapsed time, and split detection.
+// Extracted so the tricky background-resume behaviour — buffered GPS points that
+// arrive far apart in BOTH distance and time — can be unit-tested without the
+// component, and so the tracking rules have one documented source of truth.
+
+/** A reading less accurate than this (metres) doesn't contribute to distance. */
+export const ACCURACY_GATE_M = 25
+/** Ignore sub-step jitter below this move (km). */
+export const MIN_MOVE_KM = 0.005
+/** Fastest plausible pace for a run / e-scooter (m/s); caps the per-gap jump. */
+export const MAX_SPEED_MPS = 12
+/** Floor for the jump cap (km) so short-gap teleports are still rejected. */
+export const MIN_JUMP_CAP_KM = 0.06
+
+/**
+ * Distance (km) a move should add to the total, or 0 if it must be rejected.
+ * A move counts when: the reading is accurate enough, it's a real step
+ * (> MIN_MOVE_KM), and the jump is plausible for the time since the last fix
+ * (≤ MAX_SPEED_MPS). The time-scaled cap is the key change from a fixed 60m
+ * limit: it lets buffered background points — far apart in distance because they
+ * are far apart in time — reconstruct real distance instead of being discarded.
+ */
+export function moveDistanceKm(
+  prev: LatLng,
+  next: LatLng,
+  accuracyM: number | null,
+  gapMs: number,
+): number {
+  if (accuracyM != null && accuracyM > ACCURACY_GATE_M) return 0
+  const d = haversineKm(prev, next)
+  const gapSec = Math.max(1, gapMs / 1000)
+  const maxJumpKm = Math.max(MIN_JUMP_CAP_KM, (MAX_SPEED_MPS * gapSec) / 1000)
+  return d > MIN_MOVE_KM && d < maxJumpKm ? d : 0
+}
+
+/**
+ * Wall-clock elapsed seconds. `base` is time banked before the current running
+ * segment; `runningSinceMs` is when the current segment started (null = paused).
+ * Derived from timestamps so a timer whose ticks were suspended in the
+ * background snaps to the true elapsed time the moment it recomputes.
+ */
+export function computeElapsedSec(base: number, runningSinceMs: number | null, nowMs: number): number {
+  if (runningSinceMs == null) return Math.max(0, Math.floor(base))
+  return Math.floor(base + Math.max(0, nowMs - runningSinceMs) / 1000)
+}
+
+/** True when the total distance crossed a whole-km boundary (→ record a split). */
+export function crossedKm(prevKm: number, nextKm: number): boolean {
+  return Math.floor(nextKm) > Math.floor(prevKm)
+}

@@ -22,8 +22,28 @@ function handleUnauthorized() {
   window.location.reload()
 }
 
+// Mobile networks stall. Without a cap a request can hang indefinitely, leaving
+// the UI stuck. Abort after a generous timeout and surface it as a TypeError —
+// the same shape as a dropped connection — so callers that queue offline on a
+// network failure (notably the run save) treat a stuck request identically.
+const REQUEST_TIMEOUT_MS = 20_000
+async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Response> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS)
+  try {
+    return await fetch(url, { ...init, signal: controller.signal })
+  } catch (e) {
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      throw new TypeError('Request timed out')
+    }
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export async function apiGet<T>(url: string): Promise<T> {
-  const res = await fetch(url)
+  const res = await fetchWithTimeout(url)
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized()
     throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
@@ -36,7 +56,7 @@ export async function apiSend<T>(
   method: 'POST' | 'PUT' | 'PATCH' | 'DELETE',
   body?: unknown
 ): Promise<T> {
-  const res = await fetch(url, {
+  const res = await fetchWithTimeout(url, {
     method,
     headers: body !== undefined ? { 'Content-Type': 'application/json' } : undefined,
     body: body !== undefined ? JSON.stringify(body) : undefined,
