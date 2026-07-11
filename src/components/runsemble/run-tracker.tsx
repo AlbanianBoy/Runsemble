@@ -111,6 +111,10 @@ export function RunTracker() {
   )
   const [demo, setDemo] = useState(false)
   const [accuracyM, setAccuracyM] = useState<number | null>(null)
+  // Count of GPS points recorded this run. A live diagnostic: if this keeps
+  // climbing during a screen-off walk, the plugin is delivering background points
+  // (distance/route will reconstruct); if it's stuck, the WebView was frozen.
+  const [pointCount, setPointCount] = useState(0)
   // Whether we're in the native app (real background GPS) or the browser
   // (foreground-only). Shown on the GPS chip so we can tell them apart on-device.
   const [isNative] = useState(() => {
@@ -216,6 +220,7 @@ export function RunTracker() {
       }
     }
     pts.push(p)
+    setPointCount(pts.length)
   }
   useEffect(() => { ingestRef.current = ingestPosition })
 
@@ -420,11 +425,14 @@ export function RunTracker() {
   // web fallback are visible on the phone instead of silent.
   const accSuffix = gps === 'ok' && accuracyM != null ? ` ±${Math.round(accuracyM)}m` : ''
   const modeSuffix = gps === 'ok' || gps === 'acquiring' ? (isNative ? ' · native' : ' · web') : ''
+  // Live point count during a run — the diagnostic for background delivery: if it
+  // keeps climbing while the screen is off, the plugin is feeding us points.
+  const ptsSuffix = (phase === 'running' || phase === 'paused') ? ` · ${pointCount}pts` : ''
   const weakGps = gps === 'ok' && accuracyM != null && accuracyM > ACCURACY_GATE_M
   const gpsNote =
     gps === 'acquiring' ? 'Acquiring GPS…' : gps === 'denied' ? 'Location off'
     : gps === 'unavailable' ? 'No GPS' : gps === 'demo' ? 'Demo GPS'
-    : `GPS${accSuffix}${modeSuffix}`
+    : `GPS${accSuffix}${modeSuffix}${ptsSuffix}`
 
   return (
     <motion.div

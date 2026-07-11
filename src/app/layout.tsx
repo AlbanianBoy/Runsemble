@@ -4,6 +4,7 @@ import "./globals.css";
 import { Providers } from "@/lib/providers";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { RunSyncRegister } from "@/components/run-sync-register";
+import { ErrorBoundary } from "@/components/error-boundary";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -49,7 +50,7 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
       >
         <Providers>
-          {children}
+          <ErrorBoundary>{children}</ErrorBoundary>
           <RunSyncRegister />
         </Providers>
         <ServiceWorkerRegister />
