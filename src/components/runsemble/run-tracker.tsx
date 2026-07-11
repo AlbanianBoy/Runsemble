@@ -26,6 +26,7 @@ import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
+import { moveDistanceKm, computeElapsedSec, crossedKm, ACCURACY_GATE_M } from '@/lib/run-math'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
@@ -53,7 +54,6 @@ const DEMO_ROUTE: LatLng[] = [
   { lat: 51.2098, lng: 4.4140 }, { lat: 51.2104, lng: 4.4120 }, { lat: 51.2119, lng: 4.4110 },
 ]
 const DEMO_SPEED_MPS = 5 // ~3:20/km — brisk, so the demo moves visibly
-const ACCURACY_GATE_M = 25 // ignore fixes worse than this for distance (drift guard)
 
 /** Point `meters` along the demo loop (wraps around). */
 function demoPointAt(meters: number): LatLng {
@@ -166,7 +166,7 @@ export function RunTracker() {
   // matter — the next recompute snaps the timer to the true elapsed time.
   const syncElapsed = useCallback(() => {
     if (phaseRef.current !== 'running' || runningSinceRef.current == null) return
-    setElapsedSec(Math.floor(elapsedBaseRef.current + (Date.now() - runningSinceRef.current) / 1000))
+    setElapsedSec(computeElapsedSec(elapsedBaseRef.current, runningSinceRef.current, Date.now()))
   }, [])
   useEffect(() => {
     tickRef.current = setInterval(syncElapsed, 1000)
@@ -196,20 +196,16 @@ export function RunTracker() {
     const pts = pointsRef.current
     const last = pts[pts.length - 1]
     if (last) {
-      const d = haversineKm({ lat: last.lat, lng: last.lng }, { lat, lng })
-      // A move counts if it's a real step (>5m) and *plausible for the time
-      // elapsed since the last fix* — up to ~12 m/s (≈43 km/h, covers running and
-      // an e-scooter). This replaces the old fixed 60m cap, which threw away fast
-      // or gappy movement: when the OS delivers a batch of buffered background
-      // points on resume, they're far apart in both distance and time, so the
-      // speed check lets the real route/distance be reconstructed.
-      const gapSec = Math.max(1, (now - last.t) / 1000)
-      const maxJumpKm = Math.max(0.06, (12 * gapSec) / 1000)
-      if (d > 0.005 && d < maxJumpKm) {
+      // Distance this move contributes, or 0 if rejected (too inaccurate, sub-step
+      // jitter, or an implausible jump for the time gap). The speed-aware cap in
+      // run-math lets buffered background points — far apart in distance AND time —
+      // reconstruct the real route instead of being dropped as "teleports".
+      const d = moveDistanceKm({ lat: last.lat, lng: last.lng }, { lat, lng }, accuracy, now - last.t)
+      if (d > 0) {
         setDistanceKm((prev) => {
           const next = prev + d
           // Record a split each time we cross a whole km.
-          if (Math.floor(next) > Math.floor(prev)) {
+          if (crossedKm(prev, next)) {
             const splitTime = elapsedRef.current - lastSplitElapsedRef.current
             lastSplitElapsedRef.current = elapsedRef.current
             setSplits((s) => [...s, splitTime])
