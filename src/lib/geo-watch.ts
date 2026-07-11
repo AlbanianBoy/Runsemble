@@ -33,9 +33,10 @@ export async function openAppSettings(): Promise<void> {
 
 export interface PositionWatchHandlers {
   // accuracy is the reported horizontal accuracy in metres (null if unknown).
-  // The caller uses it to reject drifty readings so standing still doesn't
-  // accumulate fake distance.
-  onPosition: (lat: number, lng: number, accuracy: number | null) => void
+  // t is the GPS fix time in ms epoch — the *real* time of the reading, which
+  // matters when the OS delivers a batch of buffered background points on resume
+  // (they carry their true timestamps, so distance/route can be reconstructed).
+  onPosition: (lat: number, lng: number, accuracy: number | null, t: number) => void
   onError: (kind: GpsError) => void
 }
 
@@ -50,7 +51,7 @@ function startWebWatch({ onPosition, onError }: PositionWatchHandlers): () => vo
     return () => {}
   }
   const id = navigator.geolocation.watchPosition(
-    (loc) => onPosition(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy ?? null),
+    (loc) => onPosition(loc.coords.latitude, loc.coords.longitude, loc.coords.accuracy ?? null, loc.timestamp),
     (err) => onError(err.code === err.PERMISSION_DENIED ? 'denied' : 'unavailable'),
     { enableHighAccuracy: true, maximumAge: 1000, timeout: 15000 }
   )
@@ -76,7 +77,7 @@ function startNativeWatch({ onPosition, onError }: PositionWatchHandlers): () =>
         onError(error.code === 'NOT_AUTHORIZED' ? 'denied' : 'unavailable')
         return
       }
-      if (location) onPosition(location.latitude, location.longitude, location.accuracy ?? null)
+      if (location) onPosition(location.latitude, location.longitude, location.accuracy ?? null, location.time ?? Date.now())
     }
   )
     .then((id) => {

@@ -140,24 +140,49 @@ export function RunTracker() {
   const tickRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const demoRef = useRef(false)
   const demoProgressRef = useRef(0)
-  const ingestRef = useRef<(lat: number, lng: number, accuracy: number | null) => void>(() => {})
+  const ingestRef = useRef<(lat: number, lng: number, accuracy: number | null, t: number) => void>(() => {})
+  // Wall-clock timer state: elapsed = base + (now - runningSince). Computed from
+  // real timestamps so a WebView frozen in the background catches up on resume,
+  // instead of under-counting because the 1s tick stopped firing.
+  const elapsedBaseRef = useRef(restored?.elapsedSec ?? 0)
+  const runningSinceRef = useRef<number | null>(null)
 
   useEffect(() => { phaseRef.current = phase }, [phase])
   useEffect(() => { elapsedRef.current = elapsedSec }, [elapsedSec])
   useEffect(() => { demoRef.current = demo }, [demo])
 
-  // 1s ticker — advances only while running.
+  // Advance/hold the wall-clock timer as the run starts, pauses, resumes.
   useEffect(() => {
-    tickRef.current = setInterval(() => {
-      if (phaseRef.current === 'running') setElapsedSec((s) => s + 1)
-    }, 1000)
-    return () => { if (tickRef.current) clearInterval(tickRef.current) }
+    if (phase === 'running') {
+      if (runningSinceRef.current == null) runningSinceRef.current = Date.now()
+    } else if (runningSinceRef.current != null) {
+      elapsedBaseRef.current += (Date.now() - runningSinceRef.current) / 1000
+      runningSinceRef.current = null
+    }
+  }, [phase])
+
+  // Recompute elapsed from the wall clock every second AND whenever we return to
+  // the foreground. Missed ticks (a WebView frozen in the background) don't
+  // matter — the next recompute snaps the timer to the true elapsed time.
+  const syncElapsed = useCallback(() => {
+    if (phaseRef.current !== 'running' || runningSinceRef.current == null) return
+    setElapsedSec(Math.floor(elapsedBaseRef.current + (Date.now() - runningSinceRef.current) / 1000))
   }, [])
+  useEffect(() => {
+    tickRef.current = setInterval(syncElapsed, 1000)
+    const onVisible = () => { if (document.visibilityState === 'visible') syncElapsed() }
+    document.addEventListener('visibilitychange', onVisible)
+    return () => {
+      if (tickRef.current) clearInterval(tickRef.current)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
+  }, [syncElapsed])
 
   // One ingestion path for real GPS *and* the simulator: update the position,
   // and while running, accumulate distance/route/splits with a jitter filter.
-  const ingestPosition = (lat: number, lng: number, accuracy: number | null) => {
-    const p: GpsPoint = { lat, lng, t: Date.now() }
+  const ingestPosition = (lat: number, lng: number, accuracy: number | null, t: number) => {
+    const now = t || Date.now() // real GPS fix time (matters for buffered points)
+    const p: GpsPoint = { lat, lng, t: now }
     setPos({ lat, lng })
     if (accuracy != null) setAccuracyM(accuracy)
     if (phaseRef.current !== 'running') return
@@ -172,11 +197,15 @@ export function RunTracker() {
     const last = pts[pts.length - 1]
     if (last) {
       const d = haversineKm({ lat: last.lat, lng: last.lng }, { lat, lng })
-      // Ignore GPS jitter (<3m) and implausible jumps (>60m between samples).
-      // The accuracy gate above is the real drift guard; this floor only trims
-      // sub-step noise, and must stay below the native 5m distanceFilter so real
-      // movement is never dropped.
-      if (d > 0.003 && d < 0.06) {
+      // A move counts if it's a real step (>5m) and *plausible for the time
+      // elapsed since the last fix* — up to ~12 m/s (≈43 km/h, covers running and
+      // an e-scooter). This replaces the old fixed 60m cap, which threw away fast
+      // or gappy movement: when the OS delivers a batch of buffered background
+      // points on resume, they're far apart in both distance and time, so the
+      // speed check lets the real route/distance be reconstructed.
+      const gapSec = Math.max(1, (now - last.t) / 1000)
+      const maxJumpKm = Math.max(0.06, (12 * gapSec) / 1000)
+      if (d > 0.005 && d < maxJumpKm) {
         setDistanceKm((prev) => {
           const next = prev + d
           // Record a split each time we cross a whole km.
@@ -220,10 +249,10 @@ export function RunTracker() {
   // off. Updates are ignored while the simulator drives the position.
   useEffect(() => {
     return startPositionWatch({
-      onPosition: (lat, lng, accuracy) => {
+      onPosition: (lat, lng, accuracy, t) => {
         if (demoRef.current) return
         setGps('ok')
-        ingestRef.current(lat, lng, accuracy)
+        ingestRef.current(lat, lng, accuracy, t)
       },
       onError: (kind) => setGps(kind),
     })
@@ -250,11 +279,11 @@ export function RunTracker() {
   useEffect(() => {
     if (!demo) return
     demoProgressRef.current = 0
-    const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng, 5), 0)
+    const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng, 5, Date.now()), 0)
     const iv = setInterval(() => {
       if (phaseRef.current === 'running') demoProgressRef.current += DEMO_SPEED_MPS
       const p = demoPointAt(demoProgressRef.current)
-      ingestRef.current(p.lat, p.lng, 5)
+      ingestRef.current(p.lat, p.lng, 5, Date.now())
     }, 1000)
     return () => { clearTimeout(t0); clearInterval(iv) }
   }, [demo])
