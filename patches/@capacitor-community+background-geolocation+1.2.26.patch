@@ -14,7 +14,7 @@ index d235202..e6f626f 100644
      targets: [
          .target(
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..2858ff8 100644
+index a92fcf9..7747991 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -20,6 +20,7 @@ import android.os.Build;
@@ -99,8 +99,30 @@ index a92fcf9..2858ff8 100644
              } else {
                  Logger.debug("No locations received");
              }
+@@ -324,6 +366,9 @@ public class BackgroundGeolocation extends Plugin {
+     @Override
+     protected void handleOnResume() {
+         if (service != null) {
++            // Back in the foreground: deliver fixes immediately for a smooth live
++            // marker, and flush any batch collected while backgrounded.
++            service.setBackgroundMode(false);
+             if (stoppedWithoutPermissions && getPermissionState("location") == PermissionState.GRANTED) {
+                 service.onPermissionsGranted();
+             }
+@@ -334,6 +379,11 @@ public class BackgroundGeolocation extends Plugin {
+     @Override
+     protected void handleOnPause() {
+         stoppedWithoutPermissions = getPermissionState("location") != PermissionState.GRANTED;
++        if (service != null) {
++            // Screen off / backgrounded: batch fixes to recover screen-off points
++            // and save battery (the live marker doesn't matter while hidden).
++            service.setBackgroundMode(true);
++        }
+         super.handleOnPause();
+     }
+ 
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..fb4e3ab 100644
+index fafbb86..e4e551b 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 @@ -2,12 +2,14 @@ package com.equimaps.capacitor_background_geolocation;
@@ -118,10 +140,20 @@ index fafbb86..fb4e3ab 100644
  
  import com.getcapacitor.Logger;
  import com.google.android.gms.location.FusedLocationProviderClient;
-@@ -33,6 +35,34 @@ public class BackgroundGeolocationService extends Service {
+@@ -33,6 +35,44 @@ public class BackgroundGeolocationService extends Service {
      // Must be unique for this application.
      private static final int NOTIFICATION_ID = 28351;
  
++    // Batched location delivery. maxWaitTime tells the OS it may collect fixes and
++    // deliver them together; a value well above the interval lets the GPS hardware
++    // buffer fixes (in its FIFO) and hand back a burst, which recovers points that
++    // a screen-off run would otherwise miss and saves battery. We only batch in the
++    // BACKGROUND — in the foreground we deliver ASAP so the live map marker stays
++    // smooth. State is toggled from the plugin's onPause/onResume.
++    private static final long FOREGROUND_MAX_WAIT_MS = 0;      // deliver immediately
++    private static final long BACKGROUND_MAX_WAIT_MS = 30000;  // batch ~30s when screen off
++    private boolean backgroundMode = false;
++
 +    // Held while any watcher is active so location fixes keep arriving at the
 +    // requested rate with the screen off. Without it the CPU sleeps between fixes
 +    // and Android batches/defers delivery, so a backgrounded run gets only a
@@ -153,7 +185,7 @@ index fafbb86..fb4e3ab 100644
      private class Watcher {
          public String id;
          public FusedLocationProviderClient client;
-@@ -57,6 +87,7 @@ public class BackgroundGeolocationService extends Service {
+@@ -57,6 +97,7 @@ public class BackgroundGeolocationService extends Service {
              watcher.client.removeLocationUpdates(watcher.locationCallback);
          }
          watchers = new HashSet<Watcher>();
@@ -161,7 +193,18 @@ index fafbb86..fb4e3ab 100644
          stopSelf();
          return false;
      }
-@@ -135,11 +166,28 @@ public class BackgroundGeolocationService extends Service {
+@@ -81,7 +122,9 @@ public class BackgroundGeolocationService extends Service {
+                     BackgroundGeolocationService.this
+             );
+             LocationRequest locationRequest = new LocationRequest();
+-            locationRequest.setMaxWaitTime(1000);
++            locationRequest.setMaxWaitTime(
++                    backgroundMode ? BACKGROUND_MAX_WAIT_MS : FOREGROUND_MAX_WAIT_MS
++            );
+             locationRequest.setInterval(1000);
+             locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
+             locationRequest.setSmallestDisplacement(distanceFilter);
+@@ -135,11 +178,28 @@ public class BackgroundGeolocationService extends Service {
                      // This method has been known to fail due to weird
                      // permission bugs, so we prevent any exceptions from
                      // crashing the app. See issue #86.
@@ -191,7 +234,7 @@ index fafbb86..fb4e3ab 100644
          }
  
          void removeWatcher(String id) {
-@@ -149,6 +197,7 @@ public class BackgroundGeolocationService extends Service {
+@@ -149,6 +209,7 @@ public class BackgroundGeolocationService extends Service {
                      watchers.remove(watcher);
                      if (getNotification() == null) {
                          stopForeground(true);
@@ -199,6 +242,35 @@ index fafbb86..fb4e3ab 100644
                      }
                      return;
                  }
+@@ -168,6 +229,28 @@ public class BackgroundGeolocationService extends Service {
+             }
+         }
+ 
++        // Switch batching on (background) or off (foreground). Re-requests updates
++        // with the new maxWaitTime; re-requesting also flushes any buffered batch,
++        // so returning to the foreground delivers the backlog right away.
++        void setBackgroundMode(boolean bg) {
++            if (backgroundMode == bg) {
++                return;
++            }
++            backgroundMode = bg;
++            long maxWait = bg ? BACKGROUND_MAX_WAIT_MS : FOREGROUND_MAX_WAIT_MS;
++            for (Watcher watcher : watchers) {
++                watcher.locationRequest.setMaxWaitTime(maxWait);
++                try {
++                    watcher.client.removeLocationUpdates(watcher.locationCallback);
++                    watcher.client.requestLocationUpdates(
++                            watcher.locationRequest,
++                            watcher.locationCallback,
++                            null
++                    );
++                } catch (SecurityException ignore) {}
++            }
++        }
++
+         void stopService() {
+             BackgroundGeolocationService.this.stopSelf();
+         }
 diff --git a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m b/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m
 index 1fc97ca..23fb9e0 100644
 --- a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m
