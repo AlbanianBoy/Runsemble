@@ -199,3 +199,106 @@ index fafbb86..fb4e3ab 100644
                      }
                      return;
                  }
+diff --git a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m b/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m
+index 1fc97ca..23fb9e0 100644
+--- a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m
++++ b/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Plugin.m
+@@ -4,5 +4,6 @@
+ CAP_PLUGIN(BackgroundGeolocation, "BackgroundGeolocation",
+     CAP_PLUGIN_METHOD(addWatcher, CAPPluginReturnCallback);
+     CAP_PLUGIN_METHOD(removeWatcher, CAPPluginReturnPromise);
++    CAP_PLUGIN_METHOD(getBufferedLocations, CAPPluginReturnPromise);
+     CAP_PLUGIN_METHOD(openSettings, CAPPluginReturnPromise);
+ )
+diff --git a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Swift/Plugin.swift b/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Swift/Plugin.swift
+index d4a5965..c7d3e11 100644
+--- a/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Swift/Plugin.swift
++++ b/node_modules/@capacitor-community/background-geolocation/ios/Plugin/Swift/Plugin.swift
+@@ -70,11 +70,22 @@ public class BackgroundGeolocation: CAPPlugin,
+                                     CAPBridgedPlugin,
+                                     CLLocationManagerDelegate {
+     private var watchers = [Watcher]()
++
++    // Native fix buffer. When the app is backgrounded (screen off) the WKWebView's
++    // JavaScript is suspended, so call.resolve() can't deliver — those fixes are
++    // otherwise lost, drawing a straight line. CoreLocation keeps calling the
++    // delegate on the main thread, so we buffer every fix here and let JS pull the
++    // whole batch via getBufferedLocations() when it wakes. Mirrors the Android fix.
++    private var locationBuffer = [PluginCallResultData]()
++    private let bufferLock = NSLock()
++    private let maxBuffer = 20000 // ~5.5h at 1 fix/s; drops oldest past this
++
+     public let identifier = "BackgroundGeolocation"
+     public let jsName = "BackgroundGeolocation"
+     public let pluginMethods: [CAPPluginMethod] = [
+         CAPPluginMethod(name: "addWatcher", returnType: CAPPluginReturnCallback),
+         CAPPluginMethod(name: "removeWatcher", returnType: CAPPluginReturnPromise),
++        CAPPluginMethod(name: "getBufferedLocations", returnType: CAPPluginReturnPromise),
+         CAPPluginMethod(name: "openSettings", returnType: CAPPluginReturnPromise)
+     ]
+ 
+@@ -151,12 +162,26 @@ public class BackgroundGeolocation: CAPPlugin,
+                 if let savedCall = self.bridge?.savedCall(withID: callbackId) {
+                     self.bridge?.releaseCall(savedCall)
+                 }
++                self.bufferLock.lock()
++                self.locationBuffer.removeAll()
++                self.bufferLock.unlock()
+                 return call.resolve()
+             }
+             return call.reject("No callback ID")
+         }
+     }
+ 
++    // Returns every fix collected since the last drain and clears the buffer.
++    // Called from JS on resume (and on an interval) so points gathered while the
++    // WebView was suspended are stitched back into the run with their real times.
++    @objc func getBufferedLocations(_ call: CAPPluginCall) {
++        self.bufferLock.lock()
++        let locations = self.locationBuffer
++        self.locationBuffer.removeAll()
++        self.bufferLock.unlock()
++        call.resolve(["locations": locations])
++    }
++
+     @objc func openSettings(_ call: CAPPluginCall) {
+         DispatchQueue.main.async {
+             guard let settingsUrl = URL(
+@@ -210,16 +235,27 @@ public class BackgroundGeolocation: CAPPlugin,
+         _ manager: CLLocationManager,
+         didUpdateLocations locations: [CLLocation]
+     ) {
+-        if let location = locations.last {
+-            if let watcher = self.watchers.first(
+-                where: { $0.locationManager == manager }
+-            ) {
+-                if watcher.isLocationValid(location) {
+-                    if let call = self.bridge?.savedCall(withID: watcher.callbackId) {
+-                        return call.resolve(formatLocation(location))
+-                    }
+-                }
+-            }
++        guard let watcher = self.watchers.first(
++            where: { $0.locationManager == manager }
++        ) else { return }
++        // Buffer EVERY valid fix, not just the last one. CoreLocation delivers a
++        // batch of buffered fixes on resume, and keeping only .last would throw the
++        // whole backgrounded route away.
++        let valid = locations.filter { watcher.isLocationValid($0) }
++        if valid.isEmpty { return }
++        self.bufferLock.lock()
++        for location in valid {
++            self.locationBuffer.append(formatLocation(location))
++        }
++        if self.locationBuffer.count > self.maxBuffer {
++            self.locationBuffer.removeFirst(self.locationBuffer.count - self.maxBuffer)
++        }
++        self.bufferLock.unlock()
++        // Still deliver the newest fix live for a smooth foreground marker; JS
++        // dedupes by fix time, so a point arriving via both paths is counted once.
++        if let last = valid.last,
++           let call = self.bridge?.savedCall(withID: watcher.callbackId) {
++            call.resolve(formatLocation(last))
+         }
+     }
+ 
