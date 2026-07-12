@@ -39,6 +39,9 @@
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
+    <!-- Hold a partial wake lock while tracking so location fixes keep arriving
+    at full rate with the screen off, instead of being batched by the CPU. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Show the "tracking your run" foreground-service notification on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>
