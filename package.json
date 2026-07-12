@@ -13,7 +13,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:reset": "prisma migrate reset",
-    "postinstall": "patch-package"
+    "postinstall": "node scripts/postinstall.mjs"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "^1.2.26",
