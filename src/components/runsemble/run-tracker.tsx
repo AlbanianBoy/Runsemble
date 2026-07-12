@@ -21,7 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
-import { startPositionWatch } from '@/lib/geo-watch'
+import { startPositionWatch, drainBufferedLocations, nativeBufferSupported } from '@/lib/geo-watch'
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
@@ -145,6 +145,14 @@ export function RunTracker() {
   const demoRef = useRef(false)
   const demoProgressRef = useRef(0)
   const ingestRef = useRef<(lat: number, lng: number, accuracy: number | null, t: number) => void>(() => {})
+  // Dedup GPS fixes by their fix time. A fix can reach us via both the live
+  // callback and the native buffer drain during the brief startup window before
+  // we know which path owns distance — count each fix exactly once.
+  const seenTimesRef = useRef<Set<number>>(new Set())
+  // True once we've confirmed the installed native app has the buffering patch.
+  // Until then (and on the plain web) the live callback feeds distance, so an old
+  // native build still tracks — it just can't recover screen-off points.
+  const bufferSupportedRef = useRef(false)
   // Wall-clock timer state: elapsed = base + (now - runningSince). Computed from
   // real timestamps so a WebView frozen in the background catches up on resume,
   // instead of under-counting because the 1s tick stopped firing.
@@ -190,6 +198,10 @@ export function RunTracker() {
     setPos({ lat, lng })
     if (accuracy != null) setAccuracyM(accuracy)
     if (phaseRef.current !== 'running') return
+
+    // Count each fix once, whichever path delivered it (live callback vs buffer drain).
+    if (seenTimesRef.current.has(now)) return
+    seenTimesRef.current.add(now)
 
     // Reject readings too uncertain to trust. Indoors / urban canyons the fix
     // drifts tens of metres while you stand still; counting those piles up fake
@@ -248,15 +260,65 @@ export function RunTracker() {
   // are). On the web this is the browser Geolocation API; in the native app it's
   // the background-geolocation plugin, so a run keeps recording with the screen
   // off. Updates are ignored while the simulator drives the position.
+  //
+  // When the native buffer is available, distance/route come *only* from draining
+  // that buffer (the effect below) — the live callback just moves the marker. That
+  // keeps the fix stream in true time order and avoids a straight-line jump on
+  // resume. On the web (or an un-patched native build) the live callback feeds
+  // distance directly, exactly as before.
   useEffect(() => {
     return startPositionWatch({
       onPosition: (lat, lng, accuracy, t) => {
         if (demoRef.current) return
         setGps('ok')
-        ingestRef.current(lat, lng, accuracy, t)
+        if (bufferSupportedRef.current) {
+          setPos({ lat, lng })
+          if (accuracy != null) setAccuracyM(accuracy)
+        } else {
+          ingestRef.current(lat, lng, accuracy, t)
+        }
       },
       onError: (kind) => setGps(kind),
     })
+  }, [])
+
+  // Detect the native buffering patch once, and pull the buffered fixes back into
+  // the run whenever the app wakes up. This is the fix for screen-off tracking:
+  // the plugin keeps collecting natively while the WebView JS is frozen, and here
+  // we stitch that backlog in — in true time order — on resume.
+  useEffect(() => {
+    let cancelled = false
+    // A recovered run already holds its earlier fixes; don't recount them.
+    for (const p of pointsRef.current) seenTimesRef.current.add(p.t)
+    const drain = async () => {
+      if (cancelled || !bufferSupportedRef.current) return
+      const fixes = await drainBufferedLocations()
+      // Only accumulate while actually running; drop fixes gathered during a pause.
+      if (cancelled || phaseRef.current !== 'running') return
+      for (const f of fixes) ingestRef.current(f.lat, f.lng, f.accuracy, f.t)
+    }
+
+    void nativeBufferSupported().then((ok) => {
+      if (cancelled) return
+      bufferSupportedRef.current = ok
+      if (ok) void drain()
+    })
+
+    const onVisible = () => { if (document.visibilityState === 'visible') void drain() }
+    const onFocus = () => void drain()
+    // While awake, this is also what advances distance/route (the buffer is the
+    // source of truth on native), so keep it brisk for a smooth on-screen readout.
+    // It can't catch points mid-freeze — the resume events below do that.
+    const iv = setInterval(() => void drain(), 2000)
+    window.addEventListener('focus', onFocus)
+    document.addEventListener('visibilitychange', onVisible)
+
+    return () => {
+      cancelled = true
+      clearInterval(iv)
+      window.removeEventListener('focus', onFocus)
+      document.removeEventListener('visibilitychange', onVisible)
+    }
   }, [])
 
   // Audio pace cues — announce each completed kilometre, Nike Run Club style.
@@ -296,6 +358,10 @@ export function RunTracker() {
       : ANTWERP_CENTER
 
   const startRun = () => {
+    // Drop any fixes the watcher buffered before the run began, and reset dedup,
+    // so distance starts clean from the seed point below.
+    seenTimesRef.current.clear()
+    void drainBufferedLocations()
     // Seed the route with the current fix so the start point is marked
     // immediately — "where you started", Strava-style.
     if (pos) {
@@ -311,6 +377,8 @@ export function RunTracker() {
     if (phaseRef.current !== 'lobby') return // guard against double-fire (own tap + poll)
     setRunningWith(others)
     setBuddyIds(others.map((o) => o.id))
+    seenTimesRef.current.clear()
+    void drainBufferedLocations()
     if (pos) {
       pointsRef.current = [{ lat: pos.lat, lng: pos.lng, t: Date.now() }]
       setRoutePoints([pos])

@@ -1,0 +1,101 @@
+diff --git a/node_modules/@capacitor-community/background-geolocation/Package.swift b/node_modules/@capacitor-community/background-geolocation/Package.swift
+index d235202..e6f626f 100644
+--- a/node_modules/@capacitor-community/background-geolocation/Package.swift
++++ b/node_modules/@capacitor-community/background-geolocation/Package.swift
+@@ -12,9 +12,7 @@ let package = Package(
+     ],
+     dependencies: [
+         .package(
+-            url: "https://github.com/ionic-team/capacitor-swift-pm.git",
+-            from: "7.0.0"
+-        )
++            url: "https://github.com/ionic-team/capacitor-swift-pm.git", from: "8.0.0")
+     ],
+     targets: [
+         .target(
+diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+index a92fcf9..2858ff8 100644
+--- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
++++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
+@@ -20,6 +20,7 @@ import android.os.Build;
+ import android.os.IBinder;
+ import android.provider.Settings;
+ 
++import com.getcapacitor.JSArray;
+ import com.getcapacitor.JSObject;
+ import com.getcapacitor.Logger;
+ import com.getcapacitor.PermissionState;
+@@ -34,6 +35,9 @@ import com.google.android.gms.tasks.OnSuccessListener;
+ 
+ import org.json.JSONObject;
+ 
++import java.util.ArrayList;
++import java.util.List;
++
+ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+ 
+ @CapacitorPlugin(
+@@ -52,6 +56,14 @@ public class BackgroundGeolocation extends Plugin {
+     private BackgroundGeolocationService.LocalBinder service = null;
+     private Boolean stoppedWithoutPermissions = false;
+ 
++    // Native fix buffer. When the screen is off, the WebView's JS engine is frozen
++    // so call.resolve() (the live callback into JS) can't deliver — those points are
++    // otherwise lost, which is why a backgrounded run drew a straight line. The Java
++    // main thread keeps running under the foreground service, so we buffer every fix
++    // here and let JS pull the whole batch via getBufferedLocations() when it wakes.
++    private final List<JSObject> locationBuffer = new ArrayList<JSObject>();
++    private static final int MAX_BUFFER = 20000; // ~5.5h at 1 fix/s; drops oldest past this
++
+     private void fetchLastLocation(PluginCall call) {
+         try {
+             LocationServices.getFusedLocationProviderClient(
+@@ -193,9 +205,29 @@ public class BackgroundGeolocation extends Plugin {
+         if (savedCall != null) {
+             savedCall.release(getBridge());
+         }
++        synchronized (locationBuffer) {
++            locationBuffer.clear();
++        }
+         call.resolve();
+     }
+ 
++    // Returns every fix collected since the last drain and clears the buffer.
++    // Called from JS on resume (and on an interval) so points gathered while the
++    // WebView was frozen are stitched back into the run with their real timestamps.
++    @PluginMethod()
++    public void getBufferedLocations(PluginCall call) {
++        JSArray locations = new JSArray();
++        synchronized (locationBuffer) {
++            for (JSObject loc : locationBuffer) {
++                locations.put(loc);
++            }
++            locationBuffer.clear();
++        }
++        JSObject ret = new JSObject();
++        ret.put("locations", locations);
++        call.resolve(ret);
++    }
++
+     @PluginMethod()
+     public void openSettings(PluginCall call) {
+         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+@@ -255,7 +287,17 @@ public class BackgroundGeolocation extends Plugin {
+             }
+             Location location = intent.getParcelableExtra("location");
+             if (location != null) {
+-                call.resolve(formatLocation(location));
++                JSObject formatted = formatLocation(location);
++                // Always buffer natively (survives a frozen WebView) ...
++                synchronized (locationBuffer) {
++                    locationBuffer.add(formatted);
++                    while (locationBuffer.size() > MAX_BUFFER) {
++                        locationBuffer.remove(0);
++                    }
++                }
++                // ... and still deliver live for smooth foreground updates. JS dedupes
++                // by fix time, so a point arriving via both paths is counted once.
++                call.resolve(formatted);
+             } else {
+                 Logger.debug("No locations received");
+             }

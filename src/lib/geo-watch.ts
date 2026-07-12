@@ -31,6 +31,55 @@ export async function openAppSettings(): Promise<void> {
   }
 }
 
+// A GPS fix pulled from the native buffer (see drainBufferedLocations).
+export interface BufferedFix {
+  lat: number
+  lng: number
+  accuracy: number | null
+  t: number
+}
+
+// Whether the installed native app has the buffering patch (getBufferedLocations).
+// The web JS can reach a phone still running an older native build (JS ships via
+// the web, native ships via a rebuild), so we probe once and fall back to the
+// live callback for distance when the buffer isn't there. Probing also clears any
+// stale pre-run fixes, which is harmless at startup.
+export async function nativeBufferSupported(): Promise<boolean> {
+  if (!isNativeApp()) return false
+  try {
+    await (BackgroundGeolocation as unknown as { getBufferedLocations: () => Promise<unknown> }).getBufferedLocations()
+    return true
+  } catch {
+    return false
+  }
+}
+
+// Pull every fix the native plugin collected while the WebView JS was frozen
+// (screen off / backgrounded) and clear its buffer. No-op on the web, where the
+// browser Geolocation API only runs in the foreground anyway. Each fix carries
+// its true GPS time so the run's distance/route can be reconstructed on resume.
+export async function drainBufferedLocations(): Promise<BufferedFix[]> {
+  if (!isNativeApp()) return []
+  try {
+    const res = await (
+      BackgroundGeolocation as unknown as {
+        getBufferedLocations: () => Promise<{
+          locations?: Array<{ latitude: number; longitude: number; accuracy: number | null; time: number }>
+        }>
+      }
+    ).getBufferedLocations()
+    return (res.locations ?? []).map((l) => ({
+      lat: l.latitude,
+      lng: l.longitude,
+      accuracy: l.accuracy ?? null,
+      t: l.time ?? Date.now(),
+    }))
+  } catch {
+    // Old native build without the buffer method, or web — nothing to drain.
+    return []
+  }
+}
+
 export interface PositionWatchHandlers {
   // accuracy is the reported horizontal accuracy in metres (null if unknown).
   // t is the GPS fix time in ms epoch — the *real* time of the reading, which
