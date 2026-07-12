@@ -18,7 +18,13 @@ describe('moveDistanceKm', () => {
   })
 
   it('rejects readings worse than the accuracy gate', () => {
-    expect(moveDistanceKm(A, P(0.0001), 40, 3000)).toBe(0) // 11 m move but ±40 m fix
+    expect(moveDistanceKm(A, P(0.0001), 60, 3000)).toBe(0) // 11 m move but ±60 m fix
+  })
+
+  it('accepts a pocket-quality fix at the relaxed gate', () => {
+    // ±40 m used to be rejected; a phone in a pocket reads around here, and the
+    // move is real, so it should now count.
+    expect(moveDistanceKm(A, P(0.0001), 40, 3000)).toBeGreaterThan(0)
   })
 
   it('accepts a fast move that is plausible for a long gap (e-scooter / buffered points)', () => {

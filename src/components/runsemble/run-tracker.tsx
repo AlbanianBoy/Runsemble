@@ -115,6 +115,12 @@ export function RunTracker() {
   // climbing during a screen-off walk, the plugin is delivering background points
   // (distance/route will reconstruct); if it's stuck, the WebView was frozen.
   const [pointCount, setPointCount] = useState(0)
+  // How many fixes this run were dropped for poor accuracy. A live diagnostic:
+  // if the route is sparse and this is high, the accuracy gate is too strict for
+  // the current signal (e.g. phone in a pocket); if it's ~0, fixes just aren't
+  // being collected. Shown on the GPS chip as "+Nrej".
+  const [rejectedCount, setRejectedCount] = useState(0)
+  const rejectedRef = useRef(0)
   // Whether we're in the native app (real background GPS) or the browser
   // (foreground-only). Shown on the GPS chip so we can tell them apart on-device.
   const [isNative] = useState(() => {
@@ -205,9 +211,14 @@ export function RunTracker() {
 
     // Reject readings too uncertain to trust. Indoors / urban canyons the fix
     // drifts tens of metres while you stand still; counting those piles up fake
-    // distance (a run "moving" while you sit). Only points accurate to ~25m
-    // contribute to distance and the route.
-    if (accuracy != null && accuracy > ACCURACY_GATE_M) return
+    // distance (a run "moving" while you sit). Only points within the accuracy
+    // gate contribute to distance and the route — the rest are counted as a
+    // diagnostic so we can tell "too strict" from "no signal".
+    if (accuracy != null && accuracy > ACCURACY_GATE_M) {
+      rejectedRef.current += 1
+      setRejectedCount(rejectedRef.current)
+      return
+    }
 
     const pts = pointsRef.current
     const last = pts[pts.length - 1]
@@ -361,6 +372,8 @@ export function RunTracker() {
     // Drop any fixes the watcher buffered before the run began, and reset dedup,
     // so distance starts clean from the seed point below.
     seenTimesRef.current.clear()
+    rejectedRef.current = 0
+    setRejectedCount(0)
     void drainBufferedLocations()
     // Seed the route with the current fix so the start point is marked
     // immediately — "where you started", Strava-style.
@@ -378,6 +391,8 @@ export function RunTracker() {
     setRunningWith(others)
     setBuddyIds(others.map((o) => o.id))
     seenTimesRef.current.clear()
+    rejectedRef.current = 0
+    setRejectedCount(0)
     void drainBufferedLocations()
     if (pos) {
       pointsRef.current = [{ lat: pos.lat, lng: pos.lng, t: Date.now() }]
@@ -495,7 +510,8 @@ export function RunTracker() {
   const modeSuffix = gps === 'ok' || gps === 'acquiring' ? (isNative ? ' · native' : ' · web') : ''
   // Live point count during a run — the diagnostic for background delivery: if it
   // keeps climbing while the screen is off, the plugin is feeding us points.
-  const ptsSuffix = (phase === 'running' || phase === 'paused') ? ` · ${pointCount}pts` : ''
+  const rejSuffix = rejectedCount > 0 ? ` +${rejectedCount}rej` : ''
+  const ptsSuffix = (phase === 'running' || phase === 'paused') ? ` · ${pointCount}pts${rejSuffix}` : ''
   const weakGps = gps === 'ok' && accuracyM != null && accuracyM > ACCURACY_GATE_M
   const gpsNote =
     gps === 'acquiring' ? 'Acquiring GPS…' : gps === 'denied' ? 'Location off'

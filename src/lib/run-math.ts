@@ -7,8 +7,15 @@ import { haversineKm, type LatLng } from '@/lib/geo'
 // arrive far apart in BOTH distance and time — can be unit-tested without the
 // component, and so the tracking rules have one documented source of truth.
 
-/** A reading less accurate than this (metres) doesn't contribute to distance. */
-export const ACCURACY_GATE_M = 25
+/**
+ * A reading less accurate than this (metres) doesn't contribute to distance.
+ * 25m was too strict for a phone in a pocket, where the body blocks half the sky
+ * and fixes come back at ~30–45m — good enough to trace a route, but they were
+ * being thrown away, leaving a straight line. 45m keeps out genuinely useless
+ * fixes while letting pocket-quality ones through; the jitter + speed filters
+ * below still reject stationary drift.
+ */
+export const ACCURACY_GATE_M = 45
 /** Ignore sub-step jitter below this move (km). */
 export const MIN_MOVE_KM = 0.005
 /** Fastest plausible pace for a run / e-scooter (m/s); caps the per-gap jump. */
