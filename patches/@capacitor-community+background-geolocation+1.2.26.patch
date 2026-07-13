@@ -14,18 +14,21 @@ index d235202..e6f626f 100644
      targets: [
          .target(
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..47af7f2 100644
+index a92fcf9..23f9c0d 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-@@ -20,6 +20,7 @@ import android.os.Build;
+@@ -18,8 +18,10 @@ import android.location.LocationManager;
+ import android.net.Uri;
+ import android.os.Build;
  import android.os.IBinder;
++import android.os.PowerManager;
  import android.provider.Settings;
  
 +import com.getcapacitor.JSArray;
  import com.getcapacitor.JSObject;
  import com.getcapacitor.Logger;
  import com.getcapacitor.PermissionState;
-@@ -34,6 +35,9 @@ import com.google.android.gms.tasks.OnSuccessListener;
+@@ -34,6 +36,9 @@ import com.google.android.gms.tasks.OnSuccessListener;
  
  import org.json.JSONObject;
  
@@ -35,7 +38,7 @@ index a92fcf9..47af7f2 100644
  import androidx.localbroadcastmanager.content.LocalBroadcastManager;
  
  @CapacitorPlugin(
-@@ -52,6 +56,14 @@ public class BackgroundGeolocation extends Plugin {
+@@ -52,6 +57,14 @@ public class BackgroundGeolocation extends Plugin {
      private BackgroundGeolocationService.LocalBinder service = null;
      private Boolean stoppedWithoutPermissions = false;
  
@@ -50,7 +53,7 @@ index a92fcf9..47af7f2 100644
      private void fetchLastLocation(PluginCall call) {
          try {
              LocationServices.getFusedLocationProviderClient(
-@@ -193,6 +205,42 @@ public class BackgroundGeolocation extends Plugin {
+@@ -193,6 +206,78 @@ public class BackgroundGeolocation extends Plugin {
          if (savedCall != null) {
              savedCall.release(getBridge());
          }
@@ -90,10 +93,46 @@ index a92fcf9..47af7f2 100644
 +    @PluginMethod()
 +    public void clearFlightLog(PluginCall call) {
 +        BackgroundGeolocationService.clearFlightLog(getContext());
++        call.resolve();
++    }
++
++    // Whether the app is on the OS battery-optimization whitelist (AOSP Doze
++    // exemption) — distinct from Samsung's "Unrestricted" toggle.
++    @PluginMethod()
++    public void isIgnoringBatteryOptimizations(PluginCall call) {
++        boolean ignoring = false;
++        try {
++            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
++            ignoring = pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
++        } catch (Exception ignore) {}
++        JSObject ret = new JSObject();
++        ret.put("ignoring", ignoring);
++        call.resolve(ret);
++    }
++
++    // Pop the one-tap system dialog asking the user to exempt the app from battery
++    // optimization. On Samsung, granting this also adds the app to "Never sleeping
++    // apps" — the exemption their screen-off freezer actually respects.
++    @PluginMethod()
++    public void requestIgnoreBatteryOptimizations(PluginCall call) {
++        try {
++            Intent intent = new Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS);
++            intent.setData(Uri.parse("package:" + getContext().getPackageName()));
++            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++            getContext().startActivity(intent);
++        } catch (Exception e) {
++            // Some OEMs block the direct-request intent; fall back to app settings.
++            try {
++                Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
++                intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
++                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
++                getContext().startActivity(intent);
++            } catch (Exception ignore) {}
++        }
          call.resolve();
      }
  
-@@ -255,7 +303,17 @@ public class BackgroundGeolocation extends Plugin {
+@@ -255,7 +340,17 @@ public class BackgroundGeolocation extends Plugin {
              }
              Location location = intent.getParcelableExtra("location");
              if (location != null) {
@@ -112,7 +151,7 @@ index a92fcf9..47af7f2 100644
              } else {
                  Logger.debug("No locations received");
              }
-@@ -324,6 +382,10 @@ public class BackgroundGeolocation extends Plugin {
+@@ -324,6 +419,10 @@ public class BackgroundGeolocation extends Plugin {
      @Override
      protected void handleOnResume() {
          if (service != null) {
@@ -123,7 +162,7 @@ index a92fcf9..47af7f2 100644
              if (stoppedWithoutPermissions && getPermissionState("location") == PermissionState.GRANTED) {
                  service.onPermissionsGranted();
              }
-@@ -333,6 +395,8 @@ public class BackgroundGeolocation extends Plugin {
+@@ -333,6 +432,8 @@ public class BackgroundGeolocation extends Plugin {
  
      @Override
      protected void handleOnPause() {

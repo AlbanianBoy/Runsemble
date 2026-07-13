@@ -21,7 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
-import { startPositionWatch, drainBufferedLocations, nativeBufferSupported, getFlightLog } from '@/lib/geo-watch'
+import { startPositionWatch, drainBufferedLocations, nativeBufferSupported, getFlightLog, isIgnoringBatteryOptimizations, requestIgnoreBatteryOptimizations } from '@/lib/geo-watch'
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
@@ -331,6 +331,19 @@ export function RunTracker() {
       document.removeEventListener('visibilitychange', onVisible)
     }
   }, [])
+
+  // On native, make sure we're on the OS battery-optimization whitelist — the
+  // exemption Samsung's screen-off freezer actually respects (and which its
+  // "Never sleeping apps" picker won't let you set manually once an app is already
+  // "Unrestricted"). Pops the one-tap system dialog once, only if not already set.
+  useEffect(() => {
+    if (!isNative) return
+    void (async () => {
+      if (!(await isIgnoringBatteryOptimizations())) {
+        await requestIgnoreBatteryOptimizations()
+      }
+    })()
+  }, [isNative])
 
   // Audio pace cues — announce each completed kilometre, Nike Run Club style.
   // Speech is an external system, so driving it from an effect is the right shape.

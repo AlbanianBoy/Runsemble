@@ -44,4 +44,9 @@
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Show the "tracking your run" foreground-service notification on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Ask to be exempted from Doze/battery optimization (the AOSP whitelist —
+    distinct from Samsung's "Unrestricted" toggle; granting it also lands the app
+    in Samsung's "Never sleeping apps" list). Required for reliable screen-off GPS
+    on aggressive OEMs. Location apps are an allowed use of this permission. -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 </manifest>

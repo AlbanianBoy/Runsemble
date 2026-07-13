@@ -31,6 +31,31 @@ export async function openAppSettings(): Promise<void> {
   }
 }
 
+// Is the app on the OS battery-optimization whitelist? True on web (nothing to
+// exempt) and defaults true on error so we never nag spuriously.
+export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
+  if (!isNativeApp()) return true
+  try {
+    const res = await (
+      BackgroundGeolocation as unknown as { isIgnoringBatteryOptimizations: () => Promise<{ ignoring?: boolean }> }
+    ).isIgnoringBatteryOptimizations()
+    return res.ignoring !== false
+  } catch {
+    return true
+  }
+}
+
+// Pop the one-tap system dialog to exempt the app from Doze/battery optimization.
+// The reliable, OEM-agnostic way to survive screen-off on Samsung/Xiaomi/etc.
+export async function requestIgnoreBatteryOptimizations(): Promise<void> {
+  if (!isNativeApp()) return
+  try {
+    await (BackgroundGeolocation as unknown as { requestIgnoreBatteryOptimizations: () => Promise<void> }).requestIgnoreBatteryOptimizations()
+  } catch {
+    // web / unavailable — no-op
+  }
+}
+
 // Pull the native "flight recorder" log (every fix / lost / watchdog event the
 // service saw) so a screen-off walk can be diagnosed after the fact — no adb.
 // Returns '' on web or an un-patched native build.
