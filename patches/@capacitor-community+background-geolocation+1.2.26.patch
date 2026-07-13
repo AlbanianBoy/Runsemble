@@ -14,7 +14,7 @@ index d235202..e6f626f 100644
      targets: [
          .target(
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..7747991 100644
+index a92fcf9..47af7f2 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -20,6 +20,7 @@ import android.os.Build;
@@ -50,16 +50,16 @@ index a92fcf9..7747991 100644
      private void fetchLastLocation(PluginCall call) {
          try {
              LocationServices.getFusedLocationProviderClient(
-@@ -193,9 +205,29 @@ public class BackgroundGeolocation extends Plugin {
+@@ -193,6 +205,42 @@ public class BackgroundGeolocation extends Plugin {
          if (savedCall != null) {
              savedCall.release(getBridge());
          }
 +        synchronized (locationBuffer) {
 +            locationBuffer.clear();
 +        }
-         call.resolve();
-     }
- 
++        call.resolve();
++    }
++
 +    // Returns every fix collected since the last drain and clears the buffer.
 +    // Called from JS on resume (and on an interval) so points gathered while the
 +    // WebView was frozen are stitched back into the run with their real timestamps.
@@ -77,10 +77,23 @@ index a92fcf9..7747991 100644
 +        call.resolve(ret);
 +    }
 +
-     @PluginMethod()
-     public void openSettings(PluginCall call) {
-         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
-@@ -255,7 +287,17 @@ public class BackgroundGeolocation extends Plugin {
++    // Returns the native flight-recorder log (filesDir/gps-flightlog.jsonl) so a
++    // walk can be diagnosed after the fact with no adb — the JS layer surfaces this
++    // (long-press the GPS chip) to copy it out.
++    @PluginMethod()
++    public void getFlightLog(PluginCall call) {
++        JSObject ret = new JSObject();
++        ret.put("log", BackgroundGeolocationService.readFlightLog(getContext()));
++        call.resolve(ret);
++    }
++
++    @PluginMethod()
++    public void clearFlightLog(PluginCall call) {
++        BackgroundGeolocationService.clearFlightLog(getContext());
+         call.resolve();
+     }
+ 
+@@ -255,7 +303,17 @@ public class BackgroundGeolocation extends Plugin {
              }
              Location location = intent.getParcelableExtra("location");
              if (location != null) {
@@ -99,33 +112,31 @@ index a92fcf9..7747991 100644
              } else {
                  Logger.debug("No locations received");
              }
-@@ -324,6 +366,9 @@ public class BackgroundGeolocation extends Plugin {
+@@ -324,6 +382,10 @@ public class BackgroundGeolocation extends Plugin {
      @Override
      protected void handleOnResume() {
          if (service != null) {
-+            // Back in the foreground: deliver fixes immediately for a smooth live
-+            // marker, and flush any batch collected while backgrounded.
-+            service.setBackgroundMode(false);
++            // Back in the foreground: pull back any batched fixes right away. We do
++            // NOT re-register the request here — re-registering from a lifecycle
++            // transition is what previously got it throttled as a background request.
++            service.flush();
              if (stoppedWithoutPermissions && getPermissionState("location") == PermissionState.GRANTED) {
                  service.onPermissionsGranted();
              }
-@@ -334,6 +379,11 @@ public class BackgroundGeolocation extends Plugin {
+@@ -333,6 +395,8 @@ public class BackgroundGeolocation extends Plugin {
+ 
      @Override
      protected void handleOnPause() {
++        // The location request stays exactly as registered; the service keeps
++        // collecting on its own thread + wake lock. Nothing to toggle here.
          stoppedWithoutPermissions = getPermissionState("location") != PermissionState.GRANTED;
-+        if (service != null) {
-+            // Screen off / backgrounded: batch fixes to recover screen-off points
-+            // and save battery (the live marker doesn't matter while hidden).
-+            service.setBackgroundMode(true);
-+        }
          super.handleOnPause();
      }
- 
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..e4e551b 100644
+index fafbb86..ef4a08d 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-@@ -2,12 +2,14 @@ package com.equimaps.capacitor_background_geolocation;
+@@ -2,12 +2,19 @@ package com.equimaps.capacitor_background_geolocation;
  
  import android.app.Notification;
  import android.app.Service;
@@ -133,31 +144,77 @@ index fafbb86..e4e551b 100644
  import android.content.Intent;
  import android.content.pm.ServiceInfo;
  import android.location.Location;
++import android.location.LocationListener;
++import android.location.LocationManager;
  import android.os.Binder;
  import android.os.Build;
++import android.os.Bundle;
++import android.os.Handler;
++import android.os.HandlerThread;
  import android.os.IBinder;
 +import android.os.PowerManager;
  
  import com.getcapacitor.Logger;
  import com.google.android.gms.location.FusedLocationProviderClient;
-@@ -33,6 +35,44 @@ public class BackgroundGeolocationService extends Service {
+@@ -17,13 +24,28 @@ import com.google.android.gms.location.LocationRequest;
+ import com.google.android.gms.location.LocationResult;
+ import com.google.android.gms.location.LocationServices;
+ 
++import org.json.JSONObject;
++
++import java.io.ByteArrayOutputStream;
++import java.io.File;
++import java.io.FileInputStream;
++import java.io.FileOutputStream;
+ import java.util.HashSet;
++import java.util.List;
+ 
+ import androidx.localbroadcastmanager.content.LocalBroadcastManager;
+ 
+ // A bound and started service that is promoted to a foreground service
+ // (showing a persistent notification) when the first background watcher is
+ // added, and demoted when the last background watcher is removed.
++//
++// Runsemble additions (see docs/tracking-endgame-plan.md):
++//  - Fixes are collected on a dedicated HandlerThread, never the WebView's main thread.
++//  - The FLP request is registered ONCE and never re-registered based on app state
++//    (re-registering from the background got the request throttled to a few/hour).
++//  - A starvation watchdog falls back to raw GPS_PROVIDER (bypassing Play Services)
++//    when the fused provider stalls with the screen off — the Samsung-killer fix.
++//  - A "flight recorder" logs every fix / lost / watchdog event to a file for forensics.
+ public class BackgroundGeolocationService extends Service {
+     static final String ACTION_BROADCAST = (
+             BackgroundGeolocationService.class.getPackage().getName() + ".broadcast"
+@@ -33,6 +55,57 @@ public class BackgroundGeolocationService extends Service {
      // Must be unique for this application.
      private static final int NOTIFICATION_ID = 28351;
  
-+    // Batched location delivery. maxWaitTime tells the OS it may collect fixes and
-+    // deliver them together; a value well above the interval lets the GPS hardware
-+    // buffer fixes (in its FIFO) and hand back a burst, which recovers points that
-+    // a screen-off run would otherwise miss and saves battery. We only batch in the
-+    // BACKGROUND — in the foreground we deliver ASAP so the live map marker stays
-+    // smooth. State is toggled from the plugin's onPause/onResume.
-+    private static final long FOREGROUND_MAX_WAIT_MS = 0;      // deliver immediately
-+    private static final long BACKGROUND_MAX_WAIT_MS = 30000;  // batch ~30s when screen off
-+    private boolean backgroundMode = false;
++    // Mild always-on batching: lets the GPS hardware buffer a few seconds of fixes
++    // and hand them back together (recovers screen-off points, saves battery). We
++    // never change this based on app state — doing that from the background is what
++    // got our own request re-classified as background and throttled.
++    private static final long MAX_WAIT_MS = 5000;
 +
-+    // Held while any watcher is active so location fixes keep arriving at the
-+    // requested rate with the screen off. Without it the CPU sleeps between fixes
-+    // and Android batches/defers delivery, so a backgrounded run gets only a
-+    // handful of points. Released when the last watcher is removed.
++    // --- Starvation watchdog + raw-GNSS fallback (single active watcher model) ---
++    // "fused" = Google Play Services FusedLocationProvider (throttled by Samsung on
++    // screen-off). "gps" = raw LocationManager GPS_PROVIDER, straight from the chip,
++    // which bypasses the Play Services power heuristics. Only the active provider is
++    // delivered/buffered, so there's never double counting.
++    private volatile String activeProvider = "fused";
++    private volatile long lastFusedFixMs = 0L;
++    private volatile long lastRawFixMs = 0L;
++    private volatile boolean rawRegistered = false;
++    private volatile boolean tracking = false;
++    private volatile String activeWatcherId = null;
++    private LocationManager locationManager = null;
++    private HandlerThread locationThread = null;
++    private Handler locationHandler = null;
++
++    private static final Object FLIGHT_LOCK = new Object();
++    private static final long FLIGHT_MAX_BYTES = 2L * 1024 * 1024;
++    private static final String FLIGHT_FILE = "gps-flightlog.jsonl";
++
++    // Held while any watcher is active so the CPU can't sleep between fixes.
 +    private PowerManager.WakeLock wakeLock = null;
 +
 +    private void acquireWakeLock() {
@@ -171,50 +228,329 @@ index fafbb86..e4e551b 100644
 +            wakeLock.setReferenceCounted(false);
 +        }
 +        if (!wakeLock.isHeld()) {
-+            // Safety timeout so a missed release can't pin the CPU forever.
-+            wakeLock.acquire(6 * 60 * 60 * 1000L /* 6h */);
++            wakeLock.acquire(6 * 60 * 60 * 1000L /* 6h safety timeout */);
++            log(kv(ev("wakelock"), "held", true));
 +        }
 +    }
 +
 +    private void releaseWakeLock() {
 +        if (wakeLock != null && wakeLock.isHeld()) {
 +            wakeLock.release();
++            log(kv(ev("wakelock"), "held", false));
 +        }
 +    }
 +
      private class Watcher {
          public String id;
          public FusedLocationProviderClient client;
-@@ -57,6 +97,7 @@ public class BackgroundGeolocationService extends Service {
+@@ -42,6 +115,27 @@ public class BackgroundGeolocationService extends Service {
+     }
+     private HashSet<Watcher> watchers = new HashSet<Watcher>();
+ 
++    @Override
++    public void onCreate() {
++        super.onCreate();
++        locationThread = new HandlerThread("bg-geo-location");
++        locationThread.start();
++        locationHandler = new Handler(locationThread.getLooper());
++        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
++    }
++
++    @Override
++    public void onDestroy() {
++        stopWatchdog();
++        removeRawUpdates();
++        if (locationThread != null) {
++            locationThread.quitSafely();
++            locationThread = null;
++        }
++        releaseWakeLock();
++        super.onDestroy();
++    }
++
+     @Override
+     public IBinder onBind(Intent intent) {
+         return binder;
+@@ -57,6 +151,10 @@ public class BackgroundGeolocationService extends Service {
              watcher.client.removeLocationUpdates(watcher.locationCallback);
          }
          watchers = new HashSet<Watcher>();
++        tracking = false;
++        stopWatchdog();
++        removeRawUpdates();
 +        releaseWakeLock();
          stopSelf();
          return false;
      }
-@@ -81,7 +122,9 @@ public class BackgroundGeolocationService extends Service {
+@@ -70,6 +168,168 @@ public class BackgroundGeolocationService extends Service {
+         return null;
+     }
+ 
++    // ─── Flight recorder ────────────────────────────────────────────────────────
++    // Appends one JSON line per event to filesDir/gps-flightlog.jsonl. Written from
++    // the location thread (fixes) and main thread (lifecycle), so guarded by a lock.
++    // Read back via the plugin's getFlightLog() so a walk can be diagnosed after the
++    // fact with no adb. No lat/lng stored — count + accuracy + provider is enough.
++    static void flightLog(Context ctx, JSONObject obj) {
++        if (ctx == null || obj == null) return;
++        synchronized (FLIGHT_LOCK) {
++            try {
++                File f = new File(ctx.getFilesDir(), FLIGHT_FILE);
++                if (f.length() > FLIGHT_MAX_BYTES) {
++                    f.delete();
++                }
++                FileOutputStream fos = new FileOutputStream(f, true);
++                fos.write((obj.toString() + "\n").getBytes("UTF-8"));
++                fos.close();
++            } catch (Exception ignore) {}
++        }
++    }
++
++    static String readFlightLog(Context ctx) {
++        synchronized (FLIGHT_LOCK) {
++            try {
++                File f = new File(ctx.getFilesDir(), FLIGHT_FILE);
++                if (!f.exists()) return "";
++                FileInputStream fis = new FileInputStream(f);
++                ByteArrayOutputStream bos = new ByteArrayOutputStream();
++                byte[] buf = new byte[8192];
++                int n;
++                while ((n = fis.read(buf)) != -1) {
++                    bos.write(buf, 0, n);
++                }
++                fis.close();
++                return bos.toString("UTF-8");
++            } catch (Exception e) {
++                return "";
++            }
++        }
++    }
++
++    static void clearFlightLog(Context ctx) {
++        synchronized (FLIGHT_LOCK) {
++            try {
++                new File(ctx.getFilesDir(), FLIGHT_FILE).delete();
++            } catch (Exception ignore) {}
++        }
++    }
++
++    private static JSONObject ev(String kind) {
++        JSONObject o = new JSONObject();
++        try {
++            o.put("t", System.currentTimeMillis());
++            o.put("kind", kind);
++        } catch (Exception ignore) {}
++        return o;
++    }
++
++    // JSONObject.put throws a checked exception; this swallows it so events can be
++    // built inline.
++    private static JSONObject kv(JSONObject o, String k, Object v) {
++        try { o.put(k, v); } catch (Exception ignore) {}
++        return o;
++    }
++
++    private void log(JSONObject o) {
++        flightLog(getApplicationContext(), o);
++    }
++
++    // ─── Delivery ────────────────────────────────────────────────────────────────
++    // One path for both providers: broadcast the Location to the plugin's receiver,
++    // which buffers it (survives a frozen WebView) and resolves it live to JS.
++    private void deliver(Location location, String id) {
++        if (id == null) return;
++        Intent intent = new Intent(ACTION_BROADCAST);
++        intent.putExtra("location", location);
++        intent.putExtra("id", id);
++        LocalBroadcastManager.getInstance(getApplicationContext()).sendBroadcast(intent);
++    }
++
++    // ─── Watchdog + raw-GNSS fallback ────────────────────────────────────────────
++    private final Runnable watchdog = new Runnable() {
++        @Override
++        public void run() {
++            try { checkStarvation(); } catch (Exception ignore) {}
++            if (tracking && locationHandler != null) {
++                locationHandler.postDelayed(this, 20000);
++            }
++        }
++    };
++
++    private void startWatchdog() {
++        if (locationHandler == null) return;
++        locationHandler.removeCallbacks(watchdog);
++        locationHandler.postDelayed(watchdog, 20000);
++    }
++
++    private void stopWatchdog() {
++        if (locationHandler != null) locationHandler.removeCallbacks(watchdog);
++    }
++
++    private void checkStarvation() {
++        if (!tracking) return;
++        long now = System.currentTimeMillis();
++        if ("fused".equals(activeProvider) && now - lastFusedFixMs > 30000L) {
++            JSONObject o = ev("watchdog");
++            try {
++                o.put("action", "escalate_raw");
++                o.put("sinceFusedMs", now - lastFusedFixMs);
++            } catch (Exception ignore) {}
++            log(o);
++            ensureRawUpdates();
++            activeProvider = "gps";
++        } else if ("gps".equals(activeProvider) && now - lastFusedFixMs < 15000L) {
++            // Fused recovered (usually because we came back to the foreground).
++            log(kv(ev("watchdog"), "action", "deescalate_fused"));
++            activeProvider = "fused";
++            removeRawUpdates();
++        }
++    }
++
++    private final LocationListener rawListener = new LocationListener() {
++        @Override
++        public void onLocationChanged(Location location) {
++            if (location == null) return;
++            lastRawFixMs = System.currentTimeMillis();
++            boolean active = "gps".equals(activeProvider);
++            JSONObject o = ev("fix");
++            try {
++                o.put("provider", "gps");
++                o.put("acc", location.getAccuracy());
++                o.put("active", active);
++            } catch (Exception ignore) {}
++            log(o);
++            if (active) deliver(location, activeWatcherId);
++        }
++        @Override public void onProviderEnabled(String provider) {}
++        @Override public void onProviderDisabled(String provider) {}
++        @Override public void onStatusChanged(String provider, int status, Bundle extras) {}
++    };
++
++    private void ensureRawUpdates() {
++        if (rawRegistered || locationManager == null || locationThread == null) return;
++        try {
++            locationManager.requestLocationUpdates(
++                    LocationManager.GPS_PROVIDER,
++                    1000L,
++                    0f,
++                    rawListener,
++                    locationThread.getLooper()
++            );
++            rawRegistered = true;
++        } catch (SecurityException ignore) {
++        } catch (Exception ignore) {}
++    }
++
++    private void removeRawUpdates() {
++        if (locationManager != null && rawRegistered) {
++            try { locationManager.removeUpdates(rawListener); } catch (Exception ignore) {}
++        }
++        rawRegistered = false;
++    }
++
+     // Handles requests from the activity.
+     public class LocalBinder extends Binder {
+         void addWatcher(
+@@ -81,26 +341,42 @@ public class BackgroundGeolocationService extends Service {
                      BackgroundGeolocationService.this
              );
              LocationRequest locationRequest = new LocationRequest();
 -            locationRequest.setMaxWaitTime(1000);
-+            locationRequest.setMaxWaitTime(
-+                    backgroundMode ? BACKGROUND_MAX_WAIT_MS : FOREGROUND_MAX_WAIT_MS
-+            );
++            locationRequest.setMaxWaitTime(MAX_WAIT_MS);
              locationRequest.setInterval(1000);
++            locationRequest.setFastestInterval(1000);
              locationRequest.setPriority(LocationRequest.PRIORITY_HIGH_ACCURACY);
-             locationRequest.setSmallestDisplacement(distanceFilter);
-@@ -135,11 +178,28 @@ public class BackgroundGeolocationService extends Service {
-                     // This method has been known to fail due to weird
-                     // permission bugs, so we prevent any exceptions from
-                     // crashing the app. See issue #86.
+-            locationRequest.setSmallestDisplacement(distanceFilter);
++            // 0 = report every interval; the JS run-math filters jitter. The old 5m
++            // hardware filter silently cost points when accuracy was poor.
++            locationRequest.setSmallestDisplacement(0);
+ 
+-            LocationCallback callback = new LocationCallback(){
++            LocationCallback callback = new LocationCallback() {
+                 @Override
+                 public void onLocationResult(LocationResult locationResult) {
+-                    Location location = locationResult.getLastLocation();
+-                    Intent intent = new Intent(ACTION_BROADCAST);
+-                    intent.putExtra("location", location);
+-                    intent.putExtra("id", id);
+-                    LocalBroadcastManager.getInstance(
+-                            getApplicationContext()
+-                    ).sendBroadcast(intent);
++                    // Iterate ALL locations, not just getLastLocation() — with
++                    // batching each result carries several fixes and keeping only the
++                    // last would throw the rest of the track away.
++                    List<Location> locs = locationResult.getLocations();
++                    if (locs == null || locs.isEmpty()) return;
++                    lastFusedFixMs = System.currentTimeMillis();
++                    boolean active = "fused".equals(activeProvider);
++                    for (Location location : locs) {
++                        if (location == null) continue;
++                        JSONObject o = ev("fix");
++                        try {
++                            o.put("provider", "fused");
++                            o.put("acc", location.getAccuracy());
++                            o.put("active", active);
++                        } catch (Exception ignore) {}
++                        log(o);
++                        if (active) deliver(location, id);
++                    }
+                 }
+                 @Override
+                 public void onLocationAvailability(LocationAvailability availability) {
+                     if (!availability.isLocationAvailable()) {
+-                        Logger.debug("Location not available");
++                        // GMS telling us it stopped delivering — the exact event we
++                        // used to ignore. This is gold for diagnosing the stall.
++                        log(ev("lost"));
+                     }
+                 }
+             };
+@@ -113,33 +389,52 @@ public class BackgroundGeolocationService extends Service {
+             watcher.backgroundNotification = backgroundNotification;
+             watchers.add(watcher);
+ 
+-            // According to Android Studio, this method can throw a Security Exception if
+-            // permissions are not yet granted. Rather than check the permissions, which is fiddly,
+-            // we simply ignore the exception.
++            activeProvider = "fused";
++            activeWatcherId = id;
++            long now0 = System.currentTimeMillis();
++            lastFusedFixMs = now0;
++            lastRawFixMs = now0;
++            tracking = true;
++
++            // Register ONCE, callbacks delivered on our own thread (never the
++            // WebView's main thread). We never re-register on pause/resume.
+             try {
+                 watcher.client.requestLocationUpdates(
+                         watcher.locationRequest,
+                         watcher.locationCallback,
+-                        null
++                        locationThread != null ? locationThread.getLooper() : null
+                 );
+             } catch (SecurityException ignore) {}
+ 
+-            // Promote the service to the foreground if necessary.
+-            // Ideally we would only call 'startForeground' if the service is not already
+-            // foregrounded. Unfortunately, 'getForegroundServiceType' was only introduced
+-            // in API level 29 and seems to behave weirdly, as reported in #120. However,
+-            // it appears that 'startForeground' is idempotent, so we just call it repeatedly
+-            // each time a background watcher is added.
++            JSONObject added = ev("watcher_added");
++            try {
++                added.put("sdk", Build.VERSION.SDK_INT);
++                added.put("model", Build.MODEL);
++            } catch (Exception ignore) {}
++            log(added);
++
++            // Promote to foreground. On API 29+ the type MUST be passed explicitly or
++            // the OS treats it as a plain service and throttles background GPS.
+             if (backgroundNotification != null) {
+                 try {
+-                    // This method has been known to fail due to weird
+-                    // permission bugs, so we prevent any exceptions from
+-                    // crashing the app. See issue #86.
 -                    startForeground(NOTIFICATION_ID, backgroundNotification);
-+                    //
-+                    // On Android 10+ (API 29) the foreground-service type MUST be
-+                    // passed explicitly, otherwise the OS does not treat this as a
-+                    // location foreground service and throttles background GPS to a
-+                    // few fixes per hour. The un-typed 2-arg call silently did this
-+                    // on modern (API 34+) devices.
 +                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
 +                        startForeground(
 +                                NOTIFICATION_ID,
@@ -224,47 +560,50 @@ index fafbb86..e4e551b 100644
 +                    } else {
 +                        startForeground(NOTIFICATION_ID, backgroundNotification);
 +                    }
++                    log(kv(ev("foreground"), "ok", true));
                  } catch (Exception exception) {
                      Logger.error("Failed to foreground service", exception);
++                    log(kv(kv(ev("foreground"), "ok", false), "err", String.valueOf(exception.getMessage())));
                  }
              }
 +
-+            // Keep the CPU awake for the duration of tracking (see wakeLock above).
 +            acquireWakeLock();
++            startWatchdog();
          }
  
          void removeWatcher(String id) {
-@@ -149,6 +209,7 @@ public class BackgroundGeolocationService extends Service {
+@@ -149,7 +444,15 @@ public class BackgroundGeolocationService extends Service {
                      watchers.remove(watcher);
                      if (getNotification() == null) {
                          stopForeground(true);
 +                        releaseWakeLock();
++                    }
++                    if (watchers.isEmpty()) {
++                        tracking = false;
++                        stopWatchdog();
++                        removeRawUpdates();
++                        activeProvider = "fused";
                      }
++                    log(ev("watcher_removed"));
                      return;
                  }
-@@ -168,6 +229,28 @@ public class BackgroundGeolocationService extends Service {
+             }
+@@ -163,11 +466,20 @@ public class BackgroundGeolocationService extends Service {
+                 watcher.client.requestLocationUpdates(
+                         watcher.locationRequest,
+                         watcher.locationCallback,
+-                        null
++                        locationThread != null ? locationThread.getLooper() : null
+                 );
              }
          }
  
-+        // Switch batching on (background) or off (foreground). Re-requests updates
-+        // with the new maxWaitTime; re-requesting also flushes any buffered batch,
-+        // so returning to the foreground delivers the backlog right away.
-+        void setBackgroundMode(boolean bg) {
-+            if (backgroundMode == bg) {
-+                return;
-+            }
-+            backgroundMode = bg;
-+            long maxWait = bg ? BACKGROUND_MAX_WAIT_MS : FOREGROUND_MAX_WAIT_MS;
++        // Ask FLP to hand back any batched fixes right now — called when the app
++        // returns to the foreground. Crucially this does NOT re-register the request
++        // (which is what previously got us throttled).
++        void flush() {
 +            for (Watcher watcher : watchers) {
-+                watcher.locationRequest.setMaxWaitTime(maxWait);
-+                try {
-+                    watcher.client.removeLocationUpdates(watcher.locationCallback);
-+                    watcher.client.requestLocationUpdates(
-+                            watcher.locationRequest,
-+                            watcher.locationCallback,
-+                            null
-+                    );
-+                } catch (SecurityException ignore) {}
++                try { watcher.client.flushLocations(); } catch (Exception ignore) {}
 +            }
 +        }
 +

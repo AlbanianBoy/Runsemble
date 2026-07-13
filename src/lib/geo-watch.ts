@@ -31,6 +31,30 @@ export async function openAppSettings(): Promise<void> {
   }
 }
 
+// Pull the native "flight recorder" log (every fix / lost / watchdog event the
+// service saw) so a screen-off walk can be diagnosed after the fact — no adb.
+// Returns '' on web or an un-patched native build.
+export async function getFlightLog(): Promise<string> {
+  if (!isNativeApp()) return ''
+  try {
+    const res = await (
+      BackgroundGeolocation as unknown as { getFlightLog: () => Promise<{ log?: string }> }
+    ).getFlightLog()
+    return res.log ?? ''
+  } catch {
+    return ''
+  }
+}
+
+export async function clearFlightLog(): Promise<void> {
+  if (!isNativeApp()) return
+  try {
+    await (BackgroundGeolocation as unknown as { clearFlightLog: () => Promise<void> }).clearFlightLog()
+  } catch {
+    // web / unavailable — no-op
+  }
+}
+
 // A GPS fix pulled from the native buffer (see drainBufferedLocations).
 export interface BufferedFix {
   lat: number

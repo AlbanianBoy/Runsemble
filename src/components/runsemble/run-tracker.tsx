@@ -21,7 +21,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
-import { startPositionWatch, drainBufferedLocations, nativeBufferSupported } from '@/lib/geo-watch'
+import { startPositionWatch, drainBufferedLocations, nativeBufferSupported, getFlightLog } from '@/lib/geo-watch'
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
@@ -503,6 +503,28 @@ export function RunTracker() {
   }, [currentUser, clientRunId, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
 
   const label = runContext?.label ?? 'Solo run'
+  // Long-press the GPS chip to copy the native flight recorder to the clipboard —
+  // a diagnostic hook so a screen-off walk can be pasted back for analysis without
+  // adb. No-op on web / un-patched builds (empty log).
+  const flightPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const copyFlightLog = useCallback(async () => {
+    const logText = await getFlightLog()
+    if (!logText) { toast('No flight log yet'); return }
+    try {
+      await navigator.clipboard.writeText(logText)
+      const lines = logText.trim().split('\n').filter(Boolean).length
+      toast.success(`Flight log copied (${lines} events) — paste it to Claude`)
+    } catch {
+      toast.error('Could not copy flight log')
+    }
+  }, [])
+  const startFlightPress = () => {
+    flightPressRef.current = setTimeout(() => { void copyFlightLog() }, 600)
+  }
+  const cancelFlightPress = () => {
+    if (flightPressRef.current) { clearTimeout(flightPressRef.current); flightPressRef.current = null }
+  }
+
   // Live accuracy + which GPS engine is driving (native background service vs
   // the browser's foreground-only geolocation) — surfaced so weak signal and a
   // web fallback are visible on the phone instead of silent.
@@ -550,7 +572,13 @@ export function RunTracker() {
                 {phase === 'paused' && <span className="text-muted-foreground font-medium">· paused</span>}
               </span>
               <div className="flex items-center gap-2 pointer-events-auto">
-                <span className="glass rounded-full px-3 py-1.5 text-[11px] font-medium border shadow-sm flex items-center gap-1.5">
+                <span
+                  className="glass rounded-full px-3 py-1.5 text-[11px] font-medium border shadow-sm flex items-center gap-1.5 select-none"
+                  onPointerDown={startFlightPress}
+                  onPointerUp={cancelFlightPress}
+                  onPointerLeave={cancelFlightPress}
+                  onPointerCancel={cancelFlightPress}
+                >
                   <span className={`h-2 w-2 rounded-full ${weakGps ? 'bg-amber-500' : gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
                   {gpsNote}
                 </span>
