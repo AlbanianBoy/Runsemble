@@ -1,3 +1,11 @@
 # Default ignored files
 /shelf/
 /workspace.xml
+# Per-developer Android Studio state — rewritten on every run-target / device /
+# JDK change, so tracking it just churns and leaks device serials. Keep it local.
+/deploymentTargetSelector.xml
+/deviceManager.xml
+/runConfigurations.xml
+/migrations.xml
+/compiler.xml
+/AndroidProjectSystem.xml
