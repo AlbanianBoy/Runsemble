@@ -133,15 +133,17 @@ index a92fcf9..47af7f2 100644
          super.handleOnPause();
      }
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..ef4a08d 100644
+index fafbb86..ae3147e 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-@@ -2,12 +2,19 @@ package com.equimaps.capacitor_background_geolocation;
+@@ -2,12 +2,21 @@ package com.equimaps.capacitor_background_geolocation;
  
  import android.app.Notification;
  import android.app.Service;
++import android.content.BroadcastReceiver;
 +import android.content.Context;
  import android.content.Intent;
++import android.content.IntentFilter;
  import android.content.pm.ServiceInfo;
  import android.location.Location;
 +import android.location.LocationListener;
@@ -156,7 +158,7 @@ index fafbb86..ef4a08d 100644
  
  import com.getcapacitor.Logger;
  import com.google.android.gms.location.FusedLocationProviderClient;
-@@ -17,13 +24,28 @@ import com.google.android.gms.location.LocationRequest;
+@@ -17,13 +26,28 @@ import com.google.android.gms.location.LocationRequest;
  import com.google.android.gms.location.LocationResult;
  import com.google.android.gms.location.LocationServices;
  
@@ -185,7 +187,7 @@ index fafbb86..ef4a08d 100644
  public class BackgroundGeolocationService extends Service {
      static final String ACTION_BROADCAST = (
              BackgroundGeolocationService.class.getPackage().getName() + ".broadcast"
-@@ -33,6 +55,57 @@ public class BackgroundGeolocationService extends Service {
+@@ -33,6 +57,57 @@ public class BackgroundGeolocationService extends Service {
      // Must be unique for this application.
      private static final int NOTIFICATION_ID = 28351;
  
@@ -243,10 +245,19 @@ index fafbb86..ef4a08d 100644
      private class Watcher {
          public String id;
          public FusedLocationProviderClient client;
-@@ -42,6 +115,27 @@ public class BackgroundGeolocationService extends Service {
+@@ -42,6 +117,40 @@ public class BackgroundGeolocationService extends Service {
      }
      private HashSet<Watcher> watchers = new HashSet<Watcher>();
  
++    // Marks screen on/off transitions in the flight log so silences can be
++    // correlated with exactly when the OS considered the device "screen off".
++    private final BroadcastReceiver screenReceiver = new BroadcastReceiver() {
++        @Override
++        public void onReceive(Context context, Intent intent) {
++            log(kv(ev("screen"), "on", Intent.ACTION_SCREEN_ON.equals(intent.getAction())));
++        }
++    };
++
 +    @Override
 +    public void onCreate() {
 +        super.onCreate();
@@ -254,10 +265,14 @@ index fafbb86..ef4a08d 100644
 +        locationThread.start();
 +        locationHandler = new Handler(locationThread.getLooper());
 +        locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
++        IntentFilter screenFilter = new IntentFilter(Intent.ACTION_SCREEN_OFF);
++        screenFilter.addAction(Intent.ACTION_SCREEN_ON);
++        registerReceiver(screenReceiver, screenFilter);
 +    }
 +
 +    @Override
 +    public void onDestroy() {
++        try { unregisterReceiver(screenReceiver); } catch (Exception ignore) {}
 +        stopWatchdog();
 +        removeRawUpdates();
 +        if (locationThread != null) {
@@ -271,7 +286,7 @@ index fafbb86..ef4a08d 100644
      @Override
      public IBinder onBind(Intent intent) {
          return binder;
-@@ -57,6 +151,10 @@ public class BackgroundGeolocationService extends Service {
+@@ -57,6 +166,10 @@ public class BackgroundGeolocationService extends Service {
              watcher.client.removeLocationUpdates(watcher.locationCallback);
          }
          watchers = new HashSet<Watcher>();
@@ -282,7 +297,7 @@ index fafbb86..ef4a08d 100644
          stopSelf();
          return false;
      }
-@@ -70,6 +168,168 @@ public class BackgroundGeolocationService extends Service {
+@@ -70,6 +183,179 @@ public class BackgroundGeolocationService extends Service {
          return null;
      }
  
@@ -389,6 +404,15 @@ index fafbb86..ef4a08d 100644
 +    private void checkStarvation() {
 +        if (!tracking) return;
 +        long now = System.currentTimeMillis();
++        // Heartbeat: proves the location thread itself is alive. If a silent
++        // window in the log HAS heartbeats, the OS is gating location delivery;
++        // if the heartbeats stop too, the whole process was frozen. That
++        // distinction decides which fix applies (exemption vs architecture).
++        JSONObject hb = ev("hb");
++        kv(hb, "p", activeProvider);
++        kv(hb, "df", now - lastFusedFixMs);
++        kv(hb, "dr", now - lastRawFixMs);
++        log(hb);
 +        if ("fused".equals(activeProvider) && now - lastFusedFixMs > 30000L) {
 +            JSONObject o = ev("watchdog");
 +            try {
@@ -411,15 +435,17 @@ index fafbb86..ef4a08d 100644
 +        public void onLocationChanged(Location location) {
 +            if (location == null) return;
 +            lastRawFixMs = System.currentTimeMillis();
-+            boolean active = "gps".equals(activeProvider);
 +            JSONObject o = ev("fix");
 +            try {
 +                o.put("provider", "gps");
 +                o.put("acc", location.getAccuracy());
-+                o.put("active", active);
 +            } catch (Exception ignore) {}
 +            log(o);
-+            if (active) deliver(location, activeWatcherId);
++            // Deliver unconditionally. When both providers are live their fixes
++            // land near-identically; the JS jitter filter (<5m moves add nothing)
++            // makes duplicates harmless, whereas gating by activeProvider dropped
++            // real wake-up backlog batches on the floor.
++            deliver(location, activeWatcherId);
 +        }
 +        @Override public void onProviderEnabled(String provider) {}
 +        @Override public void onProviderDisabled(String provider) {}
@@ -451,7 +477,7 @@ index fafbb86..ef4a08d 100644
      // Handles requests from the activity.
      public class LocalBinder extends Binder {
          void addWatcher(
-@@ -81,26 +341,42 @@ public class BackgroundGeolocationService extends Service {
+@@ -81,26 +367,41 @@ public class BackgroundGeolocationService extends Service {
                      BackgroundGeolocationService.this
              );
              LocationRequest locationRequest = new LocationRequest();
@@ -482,17 +508,16 @@ index fafbb86..ef4a08d 100644
 +                    List<Location> locs = locationResult.getLocations();
 +                    if (locs == null || locs.isEmpty()) return;
 +                    lastFusedFixMs = System.currentTimeMillis();
-+                    boolean active = "fused".equals(activeProvider);
 +                    for (Location location : locs) {
 +                        if (location == null) continue;
 +                        JSONObject o = ev("fix");
 +                        try {
 +                            o.put("provider", "fused");
 +                            o.put("acc", location.getAccuracy());
-+                            o.put("active", active);
 +                        } catch (Exception ignore) {}
 +                        log(o);
-+                        if (active) deliver(location, id);
++                        // Unconditional delivery — see rawListener for rationale.
++                        deliver(location, id);
 +                    }
                  }
                  @Override
@@ -505,7 +530,7 @@ index fafbb86..ef4a08d 100644
                      }
                  }
              };
-@@ -113,33 +389,52 @@ public class BackgroundGeolocationService extends Service {
+@@ -113,33 +414,52 @@ public class BackgroundGeolocationService extends Service {
              watcher.backgroundNotification = backgroundNotification;
              watchers.add(watcher);
  
@@ -572,7 +597,7 @@ index fafbb86..ef4a08d 100644
          }
  
          void removeWatcher(String id) {
-@@ -149,7 +444,15 @@ public class BackgroundGeolocationService extends Service {
+@@ -149,7 +469,15 @@ public class BackgroundGeolocationService extends Service {
                      watchers.remove(watcher);
                      if (getNotification() == null) {
                          stopForeground(true);
@@ -588,7 +613,7 @@ index fafbb86..ef4a08d 100644
                      return;
                  }
              }
-@@ -163,11 +466,20 @@ public class BackgroundGeolocationService extends Service {
+@@ -163,11 +491,20 @@ public class BackgroundGeolocationService extends Service {
                  watcher.client.requestLocationUpdates(
                          watcher.locationRequest,
                          watcher.locationCallback,

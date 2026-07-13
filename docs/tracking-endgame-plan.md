@@ -81,6 +81,20 @@ All in the patched plugin (Android). Regenerate the patch after edits: `rm -rf n
 
 ---
 
+## 3.5 PHASE 1 VERDICT — on-device walk 2026-07-13 (flight-recorder forensics)
+
+Two runs (17:39 hand-held 17:18min; 17:58 pocket 27:32min), both straight-lined. The flight log settles it:
+
+- **Everything we built works**: typed FGS started ok, wake lock held, watchdog escalated (`escalate_raw` at 30-45s starvation), raw GPS delivered clean 1Hz ±4-6m fixes — *while awake*.
+- **~60s after screen-off, EVERYTHING goes silent**: 13.8-min and 25.5-min windows with zero fused fixes, zero raw fixes, zero events. Silence ends the exact second the screen wakes.
+- **The GNSS chip was released**: on wake, raw accuracy ramps 19m→4.5m over ~10s = cold re-lock. This is Samsung's screen-off app freezer (dontkillmyapp.com's Samsung page), operating at the OS level — no in-app code can outrun it.
+- Also fixed in commit after this walk: the activeProvider gating dropped fused wake-up backlog batches (28/33/36 fixes logged `active:false`, never delivered). Delivery is now unconditional from both providers (JS jitter filter makes duplicates harmless). Heartbeat (`kind:"hb"` every 20s) + screen on/off markers (`kind:"screen"`) added to the flight log.
+- Note: on this device fused delivers clumpy ~23s batches even in the FOREGROUND with maxWait 5000, while raw GPS is a smooth 1Hz. Phase 2 should consider **raw-GNSS-first** during runs (fused only for fast initial fix) — it's what dedicated trackers do.
+
+**Decisive next test (NO rebuild needed, current build):** founder adds Runsemble to Samsung **Never sleeping apps** (Settings → Battery/Device care → Background usage limits → Never sleeping apps → +; also toggle OFF "Put unused apps to sleep" if present, and disable Device care auto-optimization if present) → repeat a 5-min screen-off walk → read flight log.
+- Fixes flow through screen-off → **solved**; Phase 3's tracking-check UX automates this exemption for every Samsung user (this is how trackers ship on Samsung; OEM allowlists are why Strava skips it).
+- Still silent → next rebuild's heartbeats disambiguate: hb present = location gated per-uid despite exemption (escalate to dumpsys forensics); hb absent = process frozen despite exemption (Phase 2 started-service architecture + exemption UX; note a same-uid second process likely freezes too, so exemption remains the keystone).
+
 ## 4. Phase 2 — `RunRecorder` native module (the "be Strava" core)
 
 Do this after Phase 1 regardless of outcome (launch-grade robustness); it subsumes the plugin patches over time. Keep the hybrid UI — the UI was never the problem.
