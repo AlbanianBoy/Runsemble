@@ -14,7 +14,7 @@ index d235202..e6f626f 100644
      targets: [
          .target(
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
-index a92fcf9..23f9c0d 100644
+index a92fcf9..a84944e 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocation.java
 @@ -18,8 +18,10 @@ import android.location.LocationManager;
@@ -53,7 +53,7 @@ index a92fcf9..23f9c0d 100644
      private void fetchLastLocation(PluginCall call) {
          try {
              LocationServices.getFusedLocationProviderClient(
-@@ -193,6 +206,78 @@ public class BackgroundGeolocation extends Plugin {
+@@ -193,9 +206,91 @@ public class BackgroundGeolocation extends Plugin {
          if (savedCall != null) {
              savedCall.release(getBridge());
          }
@@ -93,9 +93,9 @@ index a92fcf9..23f9c0d 100644
 +    @PluginMethod()
 +    public void clearFlightLog(PluginCall call) {
 +        BackgroundGeolocationService.clearFlightLog(getContext());
-+        call.resolve();
-+    }
-+
+         call.resolve();
+     }
+ 
 +    // Whether the app is on the OS battery-optimization whitelist (AOSP Doze
 +    // exemption) — distinct from Samsung's "Unrestricted" toggle.
 +    @PluginMethod()
@@ -129,10 +129,23 @@ index a92fcf9..23f9c0d 100644
 +                getContext().startActivity(intent);
 +            } catch (Exception ignore) {}
 +        }
-         call.resolve();
-     }
- 
-@@ -255,7 +340,17 @@ public class BackgroundGeolocation extends Plugin {
++        call.resolve();
++    }
++
++    // Device manufacturer/model — reliable (Build.*), unlike the WebView UA which
++    // newer Chrome reduces. Drives the OEM-specific "keep tracking alive" guidance.
++    @PluginMethod()
++    public void getDeviceInfo(PluginCall call) {
++        JSObject ret = new JSObject();
++        ret.put("manufacturer", Build.MANUFACTURER == null ? "" : Build.MANUFACTURER);
++        ret.put("model", Build.MODEL == null ? "" : Build.MODEL);
++        call.resolve(ret);
++    }
++
+     @PluginMethod()
+     public void openSettings(PluginCall call) {
+         Intent intent = new Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+@@ -255,7 +350,17 @@ public class BackgroundGeolocation extends Plugin {
              }
              Location location = intent.getParcelableExtra("location");
              if (location != null) {
@@ -151,7 +164,7 @@ index a92fcf9..23f9c0d 100644
              } else {
                  Logger.debug("No locations received");
              }
-@@ -324,6 +419,10 @@ public class BackgroundGeolocation extends Plugin {
+@@ -324,6 +429,10 @@ public class BackgroundGeolocation extends Plugin {
      @Override
      protected void handleOnResume() {
          if (service != null) {
@@ -162,7 +175,7 @@ index a92fcf9..23f9c0d 100644
              if (stoppedWithoutPermissions && getPermissionState("location") == PermissionState.GRANTED) {
                  service.onPermissionsGranted();
              }
-@@ -333,6 +432,8 @@ public class BackgroundGeolocation extends Plugin {
+@@ -333,6 +442,8 @@ public class BackgroundGeolocation extends Plugin {
  
      @Override
      protected void handleOnPause() {

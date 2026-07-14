@@ -31,6 +31,20 @@ export async function openAppSettings(): Promise<void> {
   }
 }
 
+// Native device manufacturer + model (from Build.*, reliable). Used to show the
+// right OEM-specific "keep tracking alive" guidance. Empty on web / old builds.
+export async function getDeviceInfo(): Promise<{ manufacturer: string; model: string }> {
+  if (!isNativeApp()) return { manufacturer: '', model: '' }
+  try {
+    const res = await (
+      BackgroundGeolocation as unknown as { getDeviceInfo: () => Promise<{ manufacturer?: string; model?: string }> }
+    ).getDeviceInfo()
+    return { manufacturer: (res.manufacturer ?? '').toLowerCase(), model: res.model ?? '' }
+  } catch {
+    return { manufacturer: '', model: '' }
+  }
+}
+
 // Is the app on the OS battery-optimization whitelist? True on web (nothing to
 // exempt) and defaults true on error so we never nag spuriously.
 export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
