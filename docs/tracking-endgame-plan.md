@@ -95,6 +95,18 @@ Two runs (17:39 hand-held 17:18min; 17:58 pocket 27:32min), both straight-lined.
 - Fixes flow through screen-off → **solved**; Phase 3's tracking-check UX automates this exemption for every Samsung user (this is how trackers ship on Samsung; OEM allowlists are why Strava skips it).
 - Still silent → next rebuild's heartbeats disambiguate: hb present = location gated per-uid despite exemption (escalate to dumpsys forensics); hb absent = process frozen despite exemption (Phase 2 started-service architecture + exemption UX; note a same-uid second process likely freezes too, so exemption remains the keystone).
 
+## 3.6 ★ BREAKTHROUGH — "Never sleeping apps" fixes the freeze (2026-07-14)
+
+Founder added Runsemble to Samsung **Never sleeping apps** (had to flip battery Unrestricted→Optimized first to un-hide it) + disabled "pause/remove permissions if unused". Flight log of a stationary 684s screen-off window:
+- **70 fused fixes, steady ~10.13s cadence** (`df` never > ~10s). vs frozen runs: ~5 fixes, `df`→280,000ms. **The freeze is dead.**
+- Verdict: Samsung no longer freezes the app; it **rate-limits the fused (Play Services) provider to ~1 fix/10s** in background. Not our code — heartbeats + wake lock were fine the whole time.
+
+**Raw-first optimization (commit b27bcf9, rebuilt to A51, PENDING confirming walk):** raw `GPS_PROVIDER` isn't throttled like fused (1Hz in logs). Watchdog previously only used raw after fused starved >30s (never happens now). Now raw registers at session start alongside fused; both deliver, JS dedups by fix time. Expected: screen-off route jumps from coarse ~1/10s to smooth ~1Hz. If the confirming walk shows raw also throttled screen-off, ~1/10s fused is still a usable coarse route (freeze solved either way).
+
+**Phase 2 status:** the heartbeats proved the process is NOT frozen, so Phase 2's sticky-service premise does NOT address screen-off (Grok's skeleton is good robustness architecture for app-kill survival, adopt later — but it was never the screen-off fix). Do NOT build Phase 2 to "fix screen-off."
+
+**Shipping path:** Phase 3 first-run "tracking setup" must walk Samsung/Xiaomi/etc. users into Never-sleeping-apps (the keystone exemption) — this is how trackers ship on these OEMs. Most non-Samsung phones already work with the current build. Add per-run telemetry (pts, provider mix, device model) to see the real fleet spread.
+
 ## 4. Phase 2 — `RunRecorder` native module (the "be Strava" core)
 
 Do this after Phase 1 regardless of outcome (launch-grade robustness); it subsumes the plugin patches over time. Keep the hybrid UI — the UI was never the problem.
