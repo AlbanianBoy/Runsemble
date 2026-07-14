@@ -185,7 +185,7 @@ index a92fcf9..a84944e 100644
          super.handleOnPause();
      }
 diff --git a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
-index fafbb86..486642e 100644
+index fafbb86..3d90cb9 100644
 --- a/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 +++ b/node_modules/@capacitor-community/background-geolocation/android/src/main/java/com/equimaps/capacitor_background_geolocation/BackgroundGeolocationService.java
 @@ -2,12 +2,21 @@ package com.equimaps.capacitor_background_geolocation;
@@ -349,7 +349,7 @@ index fafbb86..486642e 100644
          stopSelf();
          return false;
      }
-@@ -70,6 +183,167 @@ public class BackgroundGeolocationService extends Service {
+@@ -70,6 +183,180 @@ public class BackgroundGeolocationService extends Service {
          return null;
      }
  
@@ -456,17 +456,30 @@ index fafbb86..486642e 100644
 +    private void checkStarvation() {
 +        if (!tracking) return;
 +        long now = System.currentTimeMillis();
-+        // Heartbeat + a safety net. Raw GPS runs from the start of every session
-+        // (Samsung throttles the fused provider to ~1 fix/10s in the background but
-+        // does NOT throttle raw GPS_PROVIDER the same way), so normally both are
-+        // live. If raw somehow isn't registered, re-arm it.
++        // Heartbeat (proves the location thread is alive). Fused is the primary —
++        // it's A-GPS assisted, so it's fast + accurate. Raw GPS_PROVIDER is only
++        // brought in as a fallback when fused STARVES (Samsung's background rate
++        // cap), because raw cold-starts with garbage accuracy (±hundreds of m) and
++        // would wreck acquisition + the live reading if it ran during normal use.
 +        JSONObject hb = ev("hb");
++        kv(hb, "p", activeProvider);
 +        kv(hb, "df", now - lastFusedFixMs);
 +        kv(hb, "dr", now - lastRawFixMs);
-+        kv(hb, "raw", rawRegistered);
 +        log(hb);
-+        if (!rawRegistered) {
++        if ("fused".equals(activeProvider) && now - lastFusedFixMs > 30000L) {
++            JSONObject o = ev("watchdog");
++            try {
++                o.put("action", "escalate_raw");
++                o.put("sinceFusedMs", now - lastFusedFixMs);
++            } catch (Exception ignore) {}
++            log(o);
 +            ensureRawUpdates();
++            activeProvider = "gps";
++        } else if ("gps".equals(activeProvider) && now - lastFusedFixMs < 15000L) {
++            // Fused recovered (usually because we returned to the foreground).
++            log(kv(ev("watchdog"), "action", "deescalate_fused"));
++            activeProvider = "fused";
++            removeRawUpdates();
 +        }
 +    }
 +
@@ -517,7 +530,7 @@ index fafbb86..486642e 100644
      // Handles requests from the activity.
      public class LocalBinder extends Binder {
          void addWatcher(
-@@ -81,26 +355,41 @@ public class BackgroundGeolocationService extends Service {
+@@ -81,26 +368,41 @@ public class BackgroundGeolocationService extends Service {
                      BackgroundGeolocationService.this
              );
              LocationRequest locationRequest = new LocationRequest();
@@ -570,7 +583,7 @@ index fafbb86..486642e 100644
                      }
                  }
              };
-@@ -113,33 +402,57 @@ public class BackgroundGeolocationService extends Service {
+@@ -113,33 +415,52 @@ public class BackgroundGeolocationService extends Service {
              watcher.backgroundNotification = backgroundNotification;
              watchers.add(watcher);
  
@@ -633,16 +646,11 @@ index fafbb86..486642e 100644
              }
 +
 +            acquireWakeLock();
-+            // Run raw GPS_PROVIDER from the start, alongside fused. Fused gives a
-+            // fast assisted first fix but Samsung throttles it to ~1/10s in the
-+            // background; raw GPS is a steady 1Hz there. Both deliver (JS dedups by
-+            // fix time), so the route gets the denser stream.
-+            ensureRawUpdates();
 +            startWatchdog();
          }
  
          void removeWatcher(String id) {
-@@ -149,7 +462,15 @@ public class BackgroundGeolocationService extends Service {
+@@ -149,7 +470,15 @@ public class BackgroundGeolocationService extends Service {
                      watchers.remove(watcher);
                      if (getNotification() == null) {
                          stopForeground(true);
@@ -658,7 +666,7 @@ index fafbb86..486642e 100644
                      return;
                  }
              }
-@@ -163,11 +484,20 @@ public class BackgroundGeolocationService extends Service {
+@@ -163,11 +492,20 @@ public class BackgroundGeolocationService extends Service {
                  watcher.client.requestLocationUpdates(
                          watcher.locationRequest,
                          watcher.locationCallback,
