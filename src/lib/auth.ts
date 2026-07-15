@@ -44,6 +44,9 @@ export async function destroySession(): Promise<void> {
   const store = await cookies()
   const token = store.get(COOKIE_NAME)?.value
   if (token) await db.session.deleteMany({ where: { token } })
+  // Explicitly expire the cookie with maxAge: 0 so older WebViews (Capacitor
+  // Android) honour the deletion rather than relying on store.delete() alone.
+  store.set(COOKIE_NAME, '', { maxAge: 0, path: '/' })
   store.delete(COOKIE_NAME)
 }
 

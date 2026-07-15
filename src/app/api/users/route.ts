@@ -5,20 +5,18 @@ import { toPublicUser } from '@/lib/public-user'
 
 export async function GET() {
   try {
-    // Return all users for feed and social features.
-    // Map-visible users are filtered client-side using isAvailable && privacyVisible.
-    // Block filtering is based on the session, not a client-claimed viewer id.
-    const viewerId = (await getSessionUser())?.id ?? null
+    // Session required — anonymous scraping of the full social graph is not allowed.
+    const viewerId = (await getSessionUser())?.id
+    if (!viewerId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
 
     // Hide anyone in a block relationship with the viewer (either direction).
-    let excludeIds: string[] = []
-    if (viewerId) {
-      const blocks = await db.block.findMany({
-        where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] },
-        select: { blockerId: true, blockedId: true },
-      })
-      excludeIds = blocks.map((b) => (b.blockerId === viewerId ? b.blockedId : b.blockerId))
-    }
+    const blocks = await db.block.findMany({
+      where: { OR: [{ blockerId: viewerId }, { blockedId: viewerId }] },
+      select: { blockerId: true, blockedId: true },
+    })
+    const excludeIds = blocks.map((b) => (b.blockerId === viewerId ? b.blockedId : b.blockerId))
 
     const users = await db.user.findMany({
       where: excludeIds.length ? { id: { notIn: excludeIds } } : undefined,

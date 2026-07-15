@@ -72,8 +72,22 @@ export async function POST(request: NextRequest) {
     // Session already resolved the full user row — no extra lookup needed.
     const user = me
 
-    const dist = Math.max(0, Number(distanceKm) || 0)
-    const dur = Math.max(0, Math.round(Number(durationSec) || 0))
+    // ── Plausibility bounds (anti-cheat / leaderboard integrity) ─────────────
+    // Cap distance and duration to physically possible values before any maths.
+    const rawDist = Math.max(0, Number(distanceKm) || 0)
+    const rawDur  = Math.max(0, Math.round(Number(durationSec) || 0))
+    const dist = Math.min(rawDist, 200)   // max 200 km per session
+    const dur  = Math.min(rawDur,  86400) // max 24 h per session
+
+    // Pace sanity: must be between 2 min/km (elite sprint) and 30 min/km (slow walk).
+    // Only checked when both distance and duration are non-zero.
+    if (dist > 0 && dur > 0) {
+      const paceSecPerKm = dur / dist
+      if (paceSecPerKm < 120 || paceSecPerKm > 1800) {
+        return NextResponse.json({ error: 'Invalid run data: pace out of realistic range' }, { status: 422 })
+      }
+    }
+
     const avgPaceSecPerKm = dist > 0 ? Math.round(dur / dist) : 0
     // Rough calorie estimate: ~60 kcal per km (bodyweight-agnostic demo value).
     const calories = Math.round(dist * 60)
@@ -184,7 +198,7 @@ export async function POST(request: NextRequest) {
     if (hotspotId && rating && Number(rating) >= 1) {
       await db.runRating.create({
         data: { hotspotId, userId, rating: Math.min(5, Math.round(Number(rating))), comment: note ?? null },
-      }).catch(() => {}) // best-effort; ignore duplicate/constraint issues
+      }).catch(() => {}) // best-effort; upsert-style via @@unique constraint
     }
 
     // XP is awarded on top of the base user.update so rank-up detection is clean.
@@ -229,7 +243,7 @@ export async function POST(request: NextRequest) {
           authorId: userId,
           groupId: groupId ?? null,
           postType: 'milestone',
-          runSessionId: session.id, // the feed renders this as a route card
+          runSessionId: session.id,
           content:
             note?.trim() ||
             `Just tracked a ${dist.toFixed(2)} km run in ${mins} min${withPart}! 🏃`,
