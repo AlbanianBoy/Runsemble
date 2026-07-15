@@ -4,18 +4,18 @@
 // resolves the device token.
 
 import { NextRequest, NextResponse } from 'next/server'
-import { getSession } from '@/lib/session'
+import { getSessionUser } from '@/lib/auth'
 import { db } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const user = await getSessionUser()
+  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
   const token: string | null = body?.token ?? null
 
   await db.user.update({
-    where: { id: session.userId },
+    where: { id: user.id },
     data: { fcmToken: token },
   })
 
