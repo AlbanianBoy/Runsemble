@@ -22,6 +22,9 @@ import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import { startPositionWatch, drainBufferedLocations, nativeBufferSupported, getFlightLog, isIgnoringBatteryOptimizations, requestIgnoreBatteryOptimizations } from '@/lib/geo-watch'
+// Phase 2: native disk-first recorder. Preferred over the community-plugin buffer
+// when the installed native build has it; falls back gracefully otherwise.
+import { isRunRecorderSupported, startRecording, stopRecording, getTrack as getRecorderTrack } from '@/lib/run-recorder'
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
@@ -159,6 +162,12 @@ export function RunTracker() {
   // Until then (and on the plain web) the live callback feeds distance, so an old
   // native build still tracks — it just can't recover screen-off points.
   const bufferSupportedRef = useRef(false)
+  // Phase 2: native disk-first RunRecorder. When present it REPLACES the community
+  // buffer as the distance/route source — we poll its durable on-disk track by line
+  // index. Gated on support so an old native build (or web) keeps the buffer path.
+  const recorderSupportedRef = useRef(false)
+  const recorderActiveRef = useRef(false)
+  const recorderIndexRef = useRef(0)
   // Wall-clock timer state: elapsed = base + (now - runningSince). Computed from
   // real timestamps so a WebView frozen in the background catches up on resume,
   // instead of under-counting because the 1s tick stopped firing.
@@ -293,26 +302,52 @@ export function RunTracker() {
     })
   }, [])
 
-  // Detect the native buffering patch once, and pull the buffered fixes back into
-  // the run whenever the app wakes up. This is the fix for screen-off tracking:
-  // the plugin keeps collecting natively while the WebView JS is frozen, and here
-  // we stitch that backlog in — in true time order — on resume.
+  // Pull collected fixes into the run whenever the app is awake. Two possible
+  // native sources, in order of preference:
+  //   1. RunRecorder (Phase 2): a started foreground service that writes every fix
+  //      to disk. We poll its durable track by line index — so fixes collected
+  //      while the WebView was frozen/backgrounded are read back from DISK on
+  //      resume, and survive even an app kill. This is the authoritative source.
+  //   2. Community-plugin buffer (Phase 1): in-memory native buffer, drained here.
+  // On web / an old native build neither is present and the live callback (in the
+  // watch effect above) feeds distance directly.
   useEffect(() => {
     let cancelled = false
     // A recovered run already holds its earlier fixes; don't recount them.
     for (const p of pointsRef.current) seenTimesRef.current.add(p.t)
     const drain = async () => {
-      if (cancelled || !bufferSupportedRef.current) return
+      if (cancelled) return
+      if (recorderSupportedRef.current) {
+        if (!recorderActiveRef.current || phaseRef.current !== 'running') return
+        const { points, nextIndex } = await getRecorderTrack(clientRunId, recorderIndexRef.current)
+        recorderIndexRef.current = nextIndex
+        if (cancelled || phaseRef.current !== 'running') return
+        for (const p of points) ingestRef.current(p.lat, p.lng, p.acc, p.t)
+        return
+      }
+      if (!bufferSupportedRef.current) return
       const fixes = await drainBufferedLocations()
       // Only accumulate while actually running; drop fixes gathered during a pause.
       if (cancelled || phaseRef.current !== 'running') return
       for (const f of fixes) ingestRef.current(f.lat, f.lng, f.accuracy, f.t)
     }
 
-    void nativeBufferSupported().then((ok) => {
+    // Prefer RunRecorder; fall back to the community buffer. Either way, the live
+    // watch callback becomes marker-only (bufferSupportedRef) so distance/route
+    // come from the durable source in true time order.
+    void isRunRecorderSupported().then((hasRecorder) => {
       if (cancelled) return
-      bufferSupportedRef.current = ok
-      if (ok) void drain()
+      if (hasRecorder) {
+        recorderSupportedRef.current = true
+        bufferSupportedRef.current = true
+        void drain()
+        return
+      }
+      void nativeBufferSupported().then((ok) => {
+        if (cancelled) return
+        bufferSupportedRef.current = ok
+        if (ok) void drain()
+      })
     })
 
     const onVisible = () => { if (document.visibilityState === 'visible') void drain() }
@@ -344,6 +379,25 @@ export function RunTracker() {
       }
     })()
   }, [isNative])
+
+  // Stop the native disk recorder when the run finishes.
+  useEffect(() => {
+    if (phase === 'finished' && recorderActiveRef.current) {
+      recorderActiveRef.current = false
+      void stopRecording()
+    }
+  }, [phase])
+
+  // And on unmount — covers closing the tracker mid-run — so the foreground
+  // service (and its notification/wake lock) don't linger after a run.
+  useEffect(() => {
+    return () => {
+      if (recorderActiveRef.current) {
+        recorderActiveRef.current = false
+        void stopRecording()
+      }
+    }
+  }, [])
 
   // Audio pace cues — announce each completed kilometre, Nike Run Club style.
   // Speech is an external system, so driving it from an effect is the right shape.
@@ -381,6 +435,14 @@ export function RunTracker() {
       ? { lat: currentUser.lat, lng: currentUser.lng }
       : ANTWERP_CENTER
 
+  // Start the native disk recorder for this run (no-op unless it's present).
+  const beginNativeRecorder = () => {
+    if (!recorderSupportedRef.current) return
+    recorderActiveRef.current = true
+    recorderIndexRef.current = 0
+    void startRecording(clientRunId)
+  }
+
   const startRun = () => {
     // Drop any fixes the watcher buffered before the run began, and reset dedup,
     // so distance starts clean from the seed point below.
@@ -388,6 +450,7 @@ export function RunTracker() {
     rejectedRef.current = 0
     setRejectedCount(0)
     void drainBufferedLocations()
+    beginNativeRecorder()
     // Seed the route with the current fix so the start point is marked
     // immediately — "where you started", Strava-style.
     if (pos) {
@@ -407,6 +470,7 @@ export function RunTracker() {
     rejectedRef.current = 0
     setRejectedCount(0)
     void drainBufferedLocations()
+    beginNativeRecorder()
     if (pos) {
       pointsRef.current = [{ lat: pos.lat, lng: pos.lng, t: Date.now() }]
       setRoutePoints([pos])

@@ -20,6 +20,13 @@
             </intent-filter>
         </activity>
 
+        <!-- Phase 2: native disk-first run recorder (started, sticky foreground service). -->
+        <service
+            android:name="net.runsemble.app.runrecorder.RunRecorderService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
