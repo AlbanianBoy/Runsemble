@@ -4,6 +4,9 @@
 *.jks
 *.keystore
 
+# Firebase — contains project credentials, never commit
+android/app/google-services.json
+
 # dependencies
 node_modules
 /.pnp
@@ -40,7 +43,6 @@ yarn-error.log*
 # vercel
 .vercel
 
-
 # typescript
 *.tsbuildinfo
 next-env.d.ts
@@ -60,7 +62,15 @@ server.log
 # local sqlite dev database (regenerate with: npx prisma db push && node seed-db.ts)
 prisma/dev.db
 prisma/dev.db-journal.env
-.vercel
-.env*
 
 .env.local
+
+# Scan / audit output artifacts — generated locally, not part of source
+repomix-output.xml
+runsemble-audit.xml
+runsemble-tracking-audit.xml
+
+# Scratch / temp files
+phase2-recorder-code.txt
+mcps/
+native/
