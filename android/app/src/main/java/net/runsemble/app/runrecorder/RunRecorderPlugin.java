@@ -3,6 +3,8 @@ package net.runsemble.app.runrecorder;
 import android.Manifest;
 import android.content.Intent;
 import android.os.Build;
+import android.os.PowerManager;
+import android.content.Context;
 
 import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
@@ -141,6 +143,65 @@ public class RunRecorderPlugin extends Plugin {
             } catch (Exception ignore) {}
         }
         RunRecorderService.clearActive(getContext());
+        call.resolve();
+    }
+
+    // -------------------------------------------------------------------------
+    // Battery optimisation helpers
+    //
+    // These are the methods that geo-watch.ts calls to check / request the Doze
+    // whitelist. Previously they were cast onto BackgroundGeolocation (which does
+    // not expose them), so they silently threw and the 'Allow background' button
+    // in the permission nudge card was a no-op. Wired here so JS calls the right
+    // plugin.
+    // -------------------------------------------------------------------------
+
+    /** Returns { ignoring: true } if the app is already on the Doze whitelist. */
+    @PluginMethod
+    public void isIgnoringBatteryOptimizations(PluginCall call) {
+        JSObject ret = new JSObject();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            PowerManager pm = (PowerManager) getContext().getSystemService(Context.POWER_SERVICE);
+            boolean ignoring = pm != null && pm.isIgnoringBatteryOptimizations(getContext().getPackageName());
+            ret.put("ignoring", ignoring);
+        } else {
+            // Pre-M: no Doze, always effectively whitelisted.
+            ret.put("ignoring", true);
+        }
+        call.resolve(ret);
+    }
+
+    /**
+     * Fire the system dialog asking the user to exempt Runsemble from battery
+     * optimisation (Doze whitelist). This is the AOSP equivalent of Samsung's
+     * "Unrestricted" toggle and is the only reliable way to keep GPS alive with
+     * the screen off across all OEMs.
+     *
+     * Uses ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS which targets this package
+     * directly, so the user sees a single-tap "Allow" dialog rather than having
+     * to navigate through the full battery settings list.
+     */
+    @PluginMethod
+    public void requestIgnoreBatteryOptimizations(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                Intent intent = new Intent(
+                    android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                    android.net.Uri.parse("package:" + getContext().getPackageName())
+                );
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                getContext().startActivity(intent);
+            } catch (Exception e) {
+                // Device blocked the direct intent (some OEMs) — fall back to the
+                // full battery optimisation list so the user can find the app there.
+                try {
+                    Intent fallback = new Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS);
+                    fallback.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    getContext().startActivity(fallback);
+                } catch (Exception ignore) {}
+            }
+        }
+        // Resolve immediately — the dialog is async, the JS caller doesn't need to await.
         call.resolve();
     }
 }

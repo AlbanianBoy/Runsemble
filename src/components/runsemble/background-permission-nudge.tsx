@@ -2,19 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { MapPin, Bell, BatteryCharging, Zap, ChevronRight, X } from 'lucide-react'
-import { isNativeApp, openAppSettings, requestIgnoreBatteryOptimizations, getDeviceInfo } from '@/lib/geo-watch'
+import { isNativeApp, openAppSettings, requestIgnoreBatteryOptimizations, isIgnoringBatteryOptimizations, getDeviceInfo } from '@/lib/geo-watch'
 
 // Android hands out "while using the app" location by default, blocks
-// notifications until asked, and — on aggressive OEM skins (Samsung, Xiaomi, …) —
+// notifications until asked, and — on aggressive OEM skins (Samsung, Xiaomi, …)
 // *freezes* backgrounded apps, which stops screen-off tracking dead. None of this
 // can be flipped for the user from an in-app API, so we explain it once and
 // deep-link to Settings, with the extra OEM-specific step called out. Shown only
 // in the native app, only until acknowledged.
-const ACK_KEY = 'runsemble-bg-perm-ack'
+//
+// v2 key: forces re-display for users who dismissed the card before the
+// requestIgnoreBatteryOptimizations fix was in place (it was silently a no-op
+// until this commit, so they may not have actually allowed background activity).
+const ACK_KEY = 'runsemble-bg-perm-ack-v2'
 
-// OEM-specific "never freeze this app" step. name is what we call the phone; path
-// is the exact settings trail. Manufacturer comes from Build.MANUFACTURER (native,
-// reliable); the WebView UA is only a fallback because newer Chrome reduces it.
+// OEM-specific "never freeze this app" step.
 type OemGuide = { name: string; path: string }
 function guideFor(manufacturer: string, ua: string): OemGuide | null {
   const m = manufacturer.toLowerCase()
@@ -30,28 +32,39 @@ function guideFor(manufacturer: string, ua: string): OemGuide | null {
   if (m.includes('vivo') || /\bvivo\b/i.test(ua))
     return { name: 'vivo', path: 'Battery → high background power consumption → allow Runsemble' }
   if (m.includes('oneplus') || /oneplus/i.test(ua))
-    return { name: 'OnePlus', path: 'Battery → Battery optimization → Don’t optimize Runsemble' }
+    return { name: 'OnePlus', path: "Battery → Battery optimization → Don't optimize Runsemble" }
   return null
 }
 
 export function BackgroundPermissionNudge() {
-  const [show, setShow] = useState(() => {
-    if (typeof window === 'undefined') return false
-    try {
-      return isNativeApp() && localStorage.getItem(ACK_KEY) !== '1'
-    } catch {
-      return false
-    }
-  })
+  // Start hidden; we'll decide after checking the live battery-opt status.
+  const [show, setShow] = useState(false)
   const [oem, setOem] = useState<OemGuide | null>(null)
 
-  // Resolve the OEM guidance once (native manufacturer, UA fallback).
   useEffect(() => {
+    // Only ever show inside the native app.
+    if (!isNativeApp()) return
+
     let cancelled = false
     const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
-    void getDeviceInfo().then(({ manufacturer }) => {
-      if (!cancelled) setOem(guideFor(manufacturer, ua))
+
+    // Run both checks in parallel: OEM guide + live battery-opt status.
+    void Promise.all([
+      getDeviceInfo(),
+      isIgnoringBatteryOptimizations(),
+    ]).then(([{ manufacturer }, ignoring]) => {
+      if (cancelled) return
+      setOem(guideFor(manufacturer, ua))
+
+      // Show the card if:
+      //   (a) battery optimisation is NOT yet disabled (the thing that matters), OR
+      //   (b) the v2 ACK has never been set (first time seeing the new card).
+      // This means a user who tapped 'Done' without actually granting it will keep
+      // seeing the card until the OS confirms it’s been granted.
+      const acked = (() => { try { return localStorage.getItem(ACK_KEY) === '1' } catch { return false } })()
+      if (!ignoring || !acked) setShow(true)
     })
+
     return () => { cancelled = true }
   }, [])
 
@@ -89,7 +102,6 @@ export function BackgroundPermissionNudge() {
         </div>
       </div>
 
-      {/* The one that actually matters on aggressive OEMs — no API can set it for us. */}
       {oem && (
         <div className="mt-3 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3">
           <div className="flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-400">

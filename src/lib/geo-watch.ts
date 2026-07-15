@@ -1,17 +1,29 @@
-// ─── Position watching (web + native) ────────────────────────────────────────
-// One place that watches the device's location. On the web it uses the browser
+// ─── Position watching (web + native) ─────────────────────────────────────────────────
+// One place that watches the device’s location. On the web it uses the browser
 // Geolocation API (foreground only). Inside the Capacitor app it uses the native
 // background-geolocation plugin, which runs a foreground service so a run keeps
 // recording with the screen off — the whole reason for the native build.
 //
-// The plugin is bound by name via registerPlugin (the community package ships no
-// runtime entry, only types), and its native methods are only ever *called* when
-// running natively — on the web the proxy is created but never invoked.
+// Battery-optimisation helpers (isIgnoringBatteryOptimizations,
+// requestIgnoreBatteryOptimizations) are routed through the RunRecorder plugin
+// because it actually exposes those @PluginMethods. The previous implementation
+// cast BackgroundGeolocation to an unknown type and called them there — that
+// plugin doesn’t expose those methods, so the calls silently threw and the
+// ‘Allow background’ button in the permission nudge was a no-op.
 
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 
 const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+
+// Minimal interface for the RunRecorder plugin methods we call here.
+// The full surface lives in src/lib/run-recorder.ts.
+interface RunRecorderBatteryPlugin {
+  isIgnoringBatteryOptimizations(): Promise<{ ignoring?: boolean }>
+  requestIgnoreBatteryOptimizations(): Promise<void>
+  getDeviceInfo?(): Promise<{ manufacturer?: string; model?: string }>
+}
+const RunRecorder = registerPlugin<RunRecorderBatteryPlugin>('RunRecorder')
 
 export type GpsError = 'denied' | 'unavailable'
 
@@ -20,8 +32,8 @@ export function isNativeApp(): boolean {
   try { return Capacitor.isNativePlatform() } catch { return false }
 }
 
-// Open this app's system settings page, where the user grants "Allow all the
-// time" location and notifications — the two things Android won't let us request
+// Open this app’s system settings page, where the user grants “Allow all the
+// time” location and notifications — the two things Android won’t let us request
 // from an in-app prompt but that background run tracking needs.
 export async function openAppSettings(): Promise<void> {
   try {
@@ -32,10 +44,15 @@ export async function openAppSettings(): Promise<void> {
 }
 
 // Native device manufacturer + model (from Build.*, reliable). Used to show the
-// right OEM-specific "keep tracking alive" guidance. Empty on web / old builds.
+// right OEM-specific “keep tracking alive” guidance. Empty on web / old builds.
 export async function getDeviceInfo(): Promise<{ manufacturer: string; model: string }> {
   if (!isNativeApp()) return { manufacturer: '', model: '' }
   try {
+    // Try RunRecorder first (newer builds); fall back to BackgroundGeolocation cast.
+    if (RunRecorder.getDeviceInfo) {
+      const res = await RunRecorder.getDeviceInfo()
+      if (res.manufacturer) return { manufacturer: (res.manufacturer ?? '').toLowerCase(), model: res.model ?? '' }
+    }
     const res = await (
       BackgroundGeolocation as unknown as { getDeviceInfo: () => Promise<{ manufacturer?: string; model?: string }> }
     ).getDeviceInfo()
@@ -45,14 +62,14 @@ export async function getDeviceInfo(): Promise<{ manufacturer: string; model: st
   }
 }
 
-// Is the app on the OS battery-optimization whitelist? True on web (nothing to
-// exempt) and defaults true on error so we never nag spuriously.
+// Is the app on the OS battery-optimization whitelist?
+// Routed through RunRecorder which actually implements the @PluginMethod.
+// Returns true on web (nothing to exempt) and defaults true on error so we
+// never nag spuriously.
 export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
   if (!isNativeApp()) return true
   try {
-    const res = await (
-      BackgroundGeolocation as unknown as { isIgnoringBatteryOptimizations: () => Promise<{ ignoring?: boolean }> }
-    ).isIgnoringBatteryOptimizations()
+    const res = await RunRecorder.isIgnoringBatteryOptimizations()
     return res.ignoring !== false
   } catch {
     return true
@@ -60,17 +77,18 @@ export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
 }
 
 // Pop the one-tap system dialog to exempt the app from Doze/battery optimization.
-// The reliable, OEM-agnostic way to survive screen-off on Samsung/Xiaomi/etc.
+// Routed through RunRecorder which actually implements the @PluginMethod —
+// previously this was cast onto BackgroundGeolocation which silently threw.
 export async function requestIgnoreBatteryOptimizations(): Promise<void> {
   if (!isNativeApp()) return
   try {
-    await (BackgroundGeolocation as unknown as { requestIgnoreBatteryOptimizations: () => Promise<void> }).requestIgnoreBatteryOptimizations()
+    await RunRecorder.requestIgnoreBatteryOptimizations()
   } catch {
     // web / unavailable — no-op
   }
 }
 
-// Pull the native "flight recorder" log (every fix / lost / watchdog event the
+// Pull the native “flight recorder” log (every fix / lost / watchdog event the
 // service saw) so a screen-off walk can be diagnosed after the fact — no adb.
 // Returns '' on web or an un-patched native build.
 export async function getFlightLog(): Promise<string> {
@@ -103,10 +121,6 @@ export interface BufferedFix {
 }
 
 // Whether the installed native app has the buffering patch (getBufferedLocations).
-// The web JS can reach a phone still running an older native build (JS ships via
-// the web, native ships via a rebuild), so we probe once and fall back to the
-// live callback for distance when the buffer isn't there. Probing also clears any
-// stale pre-run fixes, which is harmless at startup.
 export async function nativeBufferSupported(): Promise<boolean> {
   if (!isNativeApp()) return false
   try {
@@ -118,9 +132,7 @@ export async function nativeBufferSupported(): Promise<boolean> {
 }
 
 // Pull every fix the native plugin collected while the WebView JS was frozen
-// (screen off / backgrounded) and clear its buffer. No-op on the web, where the
-// browser Geolocation API only runs in the foreground anyway. Each fix carries
-// its true GPS time so the run's distance/route can be reconstructed on resume.
+// (screen off / backgrounded) and clear its buffer.
 export async function drainBufferedLocations(): Promise<BufferedFix[]> {
   if (!isNativeApp()) return []
   try {
@@ -138,16 +150,11 @@ export async function drainBufferedLocations(): Promise<BufferedFix[]> {
       t: l.time ?? Date.now(),
     }))
   } catch {
-    // Old native build without the buffer method, or web — nothing to drain.
     return []
   }
 }
 
 export interface PositionWatchHandlers {
-  // accuracy is the reported horizontal accuracy in metres (null if unknown).
-  // t is the GPS fix time in ms epoch — the *real* time of the reading, which
-  // matters when the OS delivers a batch of buffered background points on resume
-  // (they carry their true timestamps, so distance/route can be reconstructed).
   onPosition: (lat: number, lng: number, accuracy: number | null, t: number) => void
   onError: (kind: GpsError) => void
 }
@@ -176,8 +183,6 @@ function startNativeWatch({ onPosition, onError }: PositionWatchHandlers): () =>
 
   BackgroundGeolocation.addWatcher(
     {
-      // Shown in the persistent notification while tracking in the background —
-      // required by Android for background location.
       backgroundTitle: 'Runsemble is tracking your run',
       backgroundMessage: 'Tap to return to the app.',
       requestPermissions: true,
