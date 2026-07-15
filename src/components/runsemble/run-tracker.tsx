@@ -309,7 +309,8 @@ export function RunTracker() {
   useEffect(() => {
     let cancelled = false
     async function reattachIfNeeded() {
-      const hasRecorder = await isRunRecorderSupported()
+      // isRunRecorderSupported() is sync — no await needed.
+      const hasRecorder = isRunRecorderSupported()
       if (cancelled || !hasRecorder) return
       recorderSupportedRef.current = true
       bufferSupportedRef.current = true
@@ -378,23 +379,21 @@ export function RunTracker() {
       for (const f of fixes) ingestRef.current(f.lat, f.lng, f.accuracy, f.t)
     }
 
-    // Prefer RunRecorder; fall back to the community buffer. Either way, the live
-    // watch callback becomes marker-only (bufferSupportedRef) so distance/route
-    // come from the durable source in true time order.
-    void isRunRecorderSupported().then((hasRecorder) => {
+    // isRunRecorderSupported() is sync — use a plain if instead of .then() to
+    // avoid a TypeError crash (calling .then() on a boolean throws immediately).
+    void (async () => {
       if (cancelled) return
-      if (hasRecorder) {
+      if (isRunRecorderSupported()) {
         recorderSupportedRef.current = true
         bufferSupportedRef.current = true
         void drain()
         return
       }
-      void nativeBufferSupported().then((ok) => {
-        if (cancelled) return
-        bufferSupportedRef.current = ok
-        if (ok) void drain()
-      })
-    })
+      const ok = await nativeBufferSupported()
+      if (cancelled) return
+      bufferSupportedRef.current = ok
+      if (ok) void drain()
+    })()
 
     const onVisible = () => { if (document.visibilityState === 'visible') void drain() }
     const onFocus = () => void drain()
