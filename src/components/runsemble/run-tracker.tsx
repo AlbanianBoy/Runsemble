@@ -24,7 +24,7 @@ import { haversineKm, ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import { startPositionWatch, drainBufferedLocations, nativeBufferSupported, getFlightLog, isIgnoringBatteryOptimizations, requestIgnoreBatteryOptimizations } from '@/lib/geo-watch'
 // Phase 2: native disk-first recorder. Preferred over the community-plugin buffer
 // when the installed native build has it; falls back gracefully otherwise.
-import { isRunRecorderSupported, startRecording, stopRecording, getTrack as getRecorderTrack, getActiveSession } from '@/lib/run-recorder'
+import { isRunRecorderSupported, startRecording, stopRecording, clearRecording, getTrack as getRecorderTrack, getActiveSession } from '@/lib/run-recorder'
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
@@ -49,7 +49,7 @@ interface Candidate { id: string; name: string }
 
 // ─── GPS simulator ───────────────────────────────────────────────────────────
 // A loop around Stadspark, Antwerp. Lets the full tracking experience (trail,
-// distance, pace, splits) be demoed indoors — research interviews, desktops —
+// distance, pace, and splits) be demoed indoors — research interviews, desktops —
 // where there's no GPS. Clearly labelled "Demo GPS" in the UI.
 const DEMO_ROUTE: LatLng[] = [
   { lat: 51.2119, lng: 4.4110 }, { lat: 51.2130, lng: 4.4128 }, { lat: 51.2134, lng: 4.4150 },
@@ -427,11 +427,14 @@ export function RunTracker() {
   }, [isNative])
 
   // Stop the native disk recorder when the run finishes or is explicitly discarded.
+  // Clear the on-disk track immediately after stopping so JSONL files don't
+  // accumulate on internal storage — one run, one write cycle.
   // NOT on unmount — swiping the app away must not terminate the native service.
   useEffect(() => {
     if (phase === 'finished' && recorderActiveRef.current) {
+      const runId = clientRunIdRef.current
       recorderActiveRef.current = false
-      void stopRecording()
+      void stopRecording().then(() => clearRecording(runId))
     }
   }, [phase])
 
@@ -945,8 +948,9 @@ export function RunTracker() {
               <Button
                 onClick={() => {
                   if (recorderActiveRef.current) {
+                    const runId = clientRunIdRef.current
                     recorderActiveRef.current = false
-                    void stopRecording()
+                    void stopRecording().then(() => clearRecording(runId))
                   }
                   closeRunTracker()
                 }}
