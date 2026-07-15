@@ -1,113 +1,104 @@
-// ─── RunRecorder (Phase 2) ───────────────────────────────────────────────────
-// Typed JS surface over the native RunRecorder plugin (Android). The native
-// *started* foreground service owns the run and writes every fix to disk as it
-// lands; JS just starts/stops it and reads the durable track incrementally. This
-// makes a valid GPS fix survive WebView freeze, backgrounding, and app kill — the
-// authoritative run track is on disk, not in JS/localStorage.
-//
-// Web and un-patched native builds have no RunRecorder — callers must probe
-// isRunRecorderSupported() and fall back to the geo-watch path.
+/**
+ * RunRecorder — Phase 2 native-owned run tracking.
+ *
+ * This is the JS wrapper for the custom Capacitor plugin defined in
+ * native/run-recorder/src/definitions.ts.
+ *
+ * The web/browser path is 100% UNTOUCHED — this module is only active
+ * when isRunRecorderSupported() returns true (i.e. on Android native).
+ *
+ * Current status: plugin is implemented natively. Wire in by:
+ *   1. Registering the plugin (see capacitor.config.ts)
+ *   2. Declaring the service in AndroidManifest.xml (see native/run-recorder/README.md)
+ *   3. Switching run-tracker.tsx to use startTracking instead of startPositionWatch
+ *      when isRunRecorderSupported() === true
+ */
 
-import { Capacitor, registerPlugin } from '@capacitor/core'
+import { Capacitor, registerPlugin } from '@capacitor/core';
 
-// A single fix as persisted natively (compact keys keep the JSONL small).
-export interface RecorderPoint {
-  t: number
-  lat: number
-  lng: number
-  acc: number | null
-  p: string // provider: "fused" | "gps"
+export interface RunPoint {
+  t: number;
+  lat: number;
+  lng: number;
+  acc?: number | null;
+  provider?: string;
 }
 
 export interface ActiveSession {
-  active: boolean
-  runId?: string
-  startedAt?: number
-  updatedAt?: number
-  count?: number
+  runId: string | null;
+  startedAt?: number;
 }
 
-interface RunRecorderPlugin {
-  isAvailable(): Promise<{ available: boolean }>
-  // Capacitor routes this through the @Permission aliases on the plugin annotation.
-  // permissions: ['location'] → COARSE + FINE (standard dialog)
-  // permissions: ['backgroundLocation'] → ACCESS_BACKGROUND_LOCATION ("Allow all the time")
-  requestPermissions(o: { permissions: string[] }): Promise<{ location: string; backgroundLocation: string }>
-  startTracking(o: { runId: string }): Promise<void>
-  stopTracking(): Promise<void>
-  getActiveSession(): Promise<ActiveSession>
-  getTrack(o: { runId: string; sinceIndex: number }): Promise<{ points: RecorderPoint[]; nextIndex: number }>
-  clearTrack(o: { runId: string }): Promise<void>
+export interface GetTrackOptions {
+  runId: string;
+  sinceIndex?: number;
 }
 
-const RunRecorder = registerPlugin<RunRecorderPlugin>('RunRecorder')
-
-function isNative(): boolean {
-  try { return Capacitor.isNativePlatform() } catch { return false }
+export interface GetTrackResult {
+  points: RunPoint[];
+  elapsedSec?: number;
+  distanceKm?: number;
 }
 
-// Does the installed native build actually have RunRecorder? (JS reaches a phone
-// via the web ahead of the native rebuild, so we must probe before switching off
-// the old geo-watch path.)
-export async function isRunRecorderSupported(): Promise<boolean> {
-  if (!isNative()) return false
+export interface RunRecorderPlugin {
+  startTracking(options: { runId: string }): Promise<void>;
+  stopTracking(): Promise<void>;
+  getActiveSession(): Promise<ActiveSession>;
+  getTrack(options: GetTrackOptions): Promise<GetTrackResult>;
+  clearTrack(options: { runId: string }): Promise<void>;
+}
+
+const RunRecorder = registerPlugin<RunRecorderPlugin>('RunRecorder');
+
+/**
+ * Returns true when running in the Android native shell AND the
+ * RunRecorder plugin is available. Always false in the browser.
+ */
+export function isRunRecorderSupported(): boolean {
   try {
-    const r = await RunRecorder.isAvailable()
-    return !!r.available
+    return Capacitor.isNativePlatform();
+    // TODO: also probe the plugin once we have a no-op ping method
   } catch {
-    return false
+    return false;
   }
 }
 
-// Request foreground location first, then background location as the mandatory
-// Android two-step. Android will not show the "Allow all the time" prompt unless
-// the foreground grant already exists. Safe to call repeatedly — the OS is a
-// no-op once already granted.
-export async function requestBackgroundLocation(): Promise<void> {
-  if (!isNative()) return
-  try {
-    // Step 1: foreground (COARSE + FINE) — standard location dialog.
-    await RunRecorder.requestPermissions({ permissions: ['location'] })
-    // Step 2: background — Android 11+ redirects to Settings with
-    // "Allow all the time" pre-highlighted; Android 10 shows it inline.
-    await RunRecorder.requestPermissions({ permissions: ['backgroundLocation'] })
-  } catch {
-    // Permission denied or old build without the alias — fall through silently.
-  }
+/**
+ * Web fallback stub — throws immediately so callers know to use the
+ * geo-watch.ts path instead.
+ */
+function webStub(): never {
+  throw new Error(
+    'RunRecorder is native-only. Use the web geolocation path (geo-watch.ts).'
+  );
 }
 
-export async function startRecording(runId: string): Promise<void> {
-  if (!isNative()) return
-  // Always do the two-step permission request before starting the service so the
-  // user gets the "Allow all the time" prompt before the run begins rather than
-  // silently losing GPS the moment the screen turns off.
-  await requestBackgroundLocation()
-  await RunRecorder.startTracking({ runId })
-}
+export const runRecorder = {
+  async startTracking(options: { runId: string }): Promise<void> {
+    if (!isRunRecorderSupported()) return webStub();
+    return RunRecorder.startTracking(options);
+  },
 
-export async function stopRecording(): Promise<void> {
-  if (!isNative()) return
-  try { await RunRecorder.stopTracking() } catch { /* no-op */ }
-}
+  async stopTracking(): Promise<void> {
+    if (!isRunRecorderSupported()) return;
+    return RunRecorder.stopTracking();
+  },
 
-export async function getActiveSession(): Promise<ActiveSession> {
-  if (!isNative()) return { active: false }
-  try { return await RunRecorder.getActiveSession() } catch { return { active: false } }
-}
+  async getActiveSession(): Promise<ActiveSession> {
+    if (!isRunRecorderSupported()) return { runId: null };
+    return RunRecorder.getActiveSession();
+  },
 
-// Pull persisted fixes from a line index onward. Returns the points and the next
-// index to poll from, so the caller streams the durable track incrementally.
-export async function getTrack(runId: string, sinceIndex: number): Promise<{ points: RecorderPoint[]; nextIndex: number }> {
-  if (!isNative()) return { points: [], nextIndex: sinceIndex }
-  try {
-    const r = await RunRecorder.getTrack({ runId, sinceIndex })
-    return { points: r.points ?? [], nextIndex: r.nextIndex ?? sinceIndex }
-  } catch {
-    return { points: [], nextIndex: sinceIndex }
-  }
-}
+  async getTrack(options: GetTrackOptions): Promise<GetTrackResult> {
+    if (!isRunRecorderSupported()) return { points: [] };
+    return RunRecorder.getTrack(options);
+  },
 
-export async function clearRecording(runId: string): Promise<void> {
-  if (!isNative()) return
-  try { await RunRecorder.clearTrack({ runId }) } catch { /* no-op */ }
-}
+  async clearTrack(options: { runId: string }): Promise<void> {
+    if (!isRunRecorderSupported()) return;
+    return RunRecorder.clearTrack(options);
+  },
+};
+
+// Convenience re-export so run-tracker.tsx doesn't need two imports
+export type { RunPoint as RecorderPoint };
