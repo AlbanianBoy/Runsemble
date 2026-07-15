@@ -88,6 +88,9 @@ export async function PATCH(
       'lastActiveDate',
       'lat',
       'lng',
+      // FCM push token — device registers its token on app open so the server
+      // can send targeted push notifications to this user's device.
+      'fcmToken',
       // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
       // deliberately NOT here. They are moved only by the server (in /api/runs);
       // letting a client PATCH them would let anyone set xp: 999999 and top the
@@ -165,6 +168,9 @@ export async function PUT(
       'lastActiveDate',
       'lat',
       'lng',
+      // FCM push token — device registers its token on app open so the server
+      // can send targeted push notifications to this user's device.
+      'fcmToken',
       // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
       // deliberately NOT here. They are moved only by the server (in /api/runs);
       // letting a client PATCH them would let anyone set xp: 999999 and top the
