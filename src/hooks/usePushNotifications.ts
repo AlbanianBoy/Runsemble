@@ -1,22 +1,33 @@
-// ─── usePushNotifications ──────────────────────────────────────────────────────
+// ─── usePushNotifications ───────────────────────────────────────────────────────
 // Registers the device for FCM push notifications and uploads the token to the
-// server. Safe to call on every app mount — it's a no-op on web (Capacitor
-// native plugin is not available in a browser).
+// server. Safe to call on every app mount — it's a no-op on web.
+// Tapping a notification deep-links into the app:
+//   - data.type === 'message' + data.senderId/senderName → opens DM sheet
+//   - any other notification → switches to Messages tab
 
 import { useEffect } from 'react'
+import { useRunsembleStore } from '@/lib/store'
 
 export function usePushNotifications() {
+  const { openDm, setActiveTab } = useRunsembleStore()
+
   useEffect(() => {
-    registerPush()
+    registerPush({ openDm, setActiveTab })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
 
-async function registerPush() {
+async function registerPush({
+  openDm,
+  setActiveTab,
+}: {
+  openDm: (partner: { id: string; name: string }) => void
+  setActiveTab: (tab: 'feed' | 'map' | 'hotspots' | 'groups' | 'messages' | 'profile') => void
+}) {
   try {
-    // Dynamic import so Next.js doesn't bundle this for the web build.
     const { PushNotifications } = await import('@capacitor/push-notifications')
 
-    // ── 1. Attach listeners FIRST so we never miss the registration event ──
+    // ── 1. Token registration ─────────────────────────────────────────────────
     PushNotifications.addListener('registration', async ({ value: token }) => {
       console.log('FCM token received:', token)
       try {
@@ -36,7 +47,24 @@ async function registerPush() {
       console.error('FCM registration error:', err)
     })
 
-    // ── 2. Check / request permission ──
+    // ── 2. Notification tap handler (deep linking) ─────────────────────────
+    // Fired when the user taps a notification while the app is backgrounded.
+    PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
+      const data = action.notification.data as {
+        type?: string
+        senderId?: string
+        senderName?: string
+      }
+      if (data?.type === 'message' && data.senderId && data.senderName) {
+        // Open the DM sheet directly with the sender
+        openDm({ id: data.senderId, name: data.senderName })
+      } else {
+        // Fallback: go to the Messages tab
+        setActiveTab('messages')
+      }
+    })
+
+    // ── 3. Permissions ────────────────────────────────────────────────────
     let permStatus = await PushNotifications.checkPermissions()
     if (permStatus.receive === 'prompt') {
       permStatus = await PushNotifications.requestPermissions()
@@ -46,7 +74,7 @@ async function registerPush() {
       return
     }
 
-    // ── 3. Register — triggers the 'registration' listener above ──
+    // ── 4. Register ──────────────────────────────────────────────────────
     await PushNotifications.register()
   } catch {
     // Not running inside Capacitor (plain browser) — ignore.
