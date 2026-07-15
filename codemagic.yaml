@@ -4,6 +4,17 @@
 #
 # The app loads runsemble.net via Capacitor server.url, so there is no static web
 # build step — `cap sync ios` just refreshes the native shell + plugins.
+#
+# ── App Store submission checklist ────────────────────────────────────────────
+# Before flipping submit_to_app_store: true you must:
+#   1. Add the "Background Modes" capability in Xcode → Signing & Capabilities
+#      and tick "Location updates" (writes the UIBackgroundModes key we already
+#      have in Info.plist into the entitlements).
+#   2. In the App Store Connect listing, set the location usage justification
+#      to "User-initiated background location for run tracking" — Apple requires
+#      this for ACCESS_BACKGROUND_LOCATION / NSLocationAlwaysUsageDescription.
+#   3. Ensure APP_STORE_APP_ID is set in the Codemagic variable group.
+# ─────────────────────────────────────────────────────────────────────────────
 
 workflows:
   ios-release:
