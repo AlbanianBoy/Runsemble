@@ -27,6 +27,14 @@ import org.json.JSONObject;
                 @Permission(alias = "location", strings = {
                         Manifest.permission.ACCESS_COARSE_LOCATION,
                         Manifest.permission.ACCESS_FINE_LOCATION
+                }),
+                // Android requires a *separate* runtime request for background location
+                // (ACCESS_BACKGROUND_LOCATION). Without it the OS only offers
+                // "While using the app" — which stops GPS the moment the screen turns off.
+                // This alias is requested explicitly from JS via
+                // run-recorder.ts#requestBackgroundLocation() before each recording starts.
+                @Permission(alias = "backgroundLocation", strings = {
+                        Manifest.permission.ACCESS_BACKGROUND_LOCATION
                 })
         }
 )

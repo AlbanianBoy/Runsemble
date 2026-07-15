@@ -29,6 +29,10 @@ export interface ActiveSession {
 
 interface RunRecorderPlugin {
   isAvailable(): Promise<{ available: boolean }>
+  // Capacitor routes this through the @Permission aliases on the plugin annotation.
+  // permissions: ['location'] → COARSE + FINE (standard dialog)
+  // permissions: ['backgroundLocation'] → ACCESS_BACKGROUND_LOCATION ("Allow all the time")
+  requestPermissions(o: { permissions: string[] }): Promise<{ location: string; backgroundLocation: string }>
   startTracking(o: { runId: string }): Promise<void>
   stopTracking(): Promise<void>
   getActiveSession(): Promise<ActiveSession>
@@ -55,8 +59,29 @@ export async function isRunRecorderSupported(): Promise<boolean> {
   }
 }
 
+// Request foreground location first, then background location as the mandatory
+// Android two-step. Android will not show the "Allow all the time" prompt unless
+// the foreground grant already exists. Safe to call repeatedly — the OS is a
+// no-op once already granted.
+export async function requestBackgroundLocation(): Promise<void> {
+  if (!isNative()) return
+  try {
+    // Step 1: foreground (COARSE + FINE) — standard location dialog.
+    await RunRecorder.requestPermissions({ permissions: ['location'] })
+    // Step 2: background — Android 11+ redirects to Settings with
+    // "Allow all the time" pre-highlighted; Android 10 shows it inline.
+    await RunRecorder.requestPermissions({ permissions: ['backgroundLocation'] })
+  } catch {
+    // Permission denied or old build without the alias — fall through silently.
+  }
+}
+
 export async function startRecording(runId: string): Promise<void> {
   if (!isNative()) return
+  // Always do the two-step permission request before starting the service so the
+  // user gets the "Allow all the time" prompt before the run begins rather than
+  // silently losing GPS the moment the screen turns off.
+  await requestBackgroundLocation()
   await RunRecorder.startTracking({ runId })
 }
 

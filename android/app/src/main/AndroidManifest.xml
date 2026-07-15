@@ -1,12 +1,21 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <application
         android:allowBackup="true"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/AppTheme">
+        android:theme="@style/AppTheme"
+        android:hasFragileUserData="true">
+        <!--
+          android:hasFragileUserData="true"
+          Tells Android 12+ that this app holds user data (runs, GPS tracks)
+          that must not be silently wiped. This suppresses the system prompt
+          "Pause app activity if unused" and prevents auto-revocation of
+          location permission between runs.
+        -->
         <activity
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
             android:name=".MainActivity"
@@ -47,13 +56,15 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <!-- Hold a partial wake lock while tracking so location fixes keep arriving
-    at full rate with the screen off, instead of being batched by the CPU. -->
+         at full rate with the screen off, instead of being batched by the CPU. -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <!-- Show the "tracking your run" foreground-service notification on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- Ask to be exempted from Doze/battery optimization (the AOSP whitelist —
-    distinct from Samsung's "Unrestricted" toggle; granting it also lands the app
-    in Samsung's "Never sleeping apps" list). Required for reliable screen-off GPS
-    on aggressive OEMs. Location apps are an allowed use of this permission. -->
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Exempt from Doze/battery optimisation (AOSP whitelist — distinct from
+         Samsung's "Unrestricted" toggle). Required for reliable screen-off GPS
+         on aggressive OEMs. tools:ignore suppresses the Play Store lint warning
+         (sideloaded / dev build). -->
+    <uses-permission
+        android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"
+        tools:ignore="ProtectedPermissions" />
 </manifest>
