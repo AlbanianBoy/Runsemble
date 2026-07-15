@@ -1,13 +1,17 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Rss, MapPin, Users, User, Play, MessageSquare } from 'lucide-react'
+import { Rss, MapPin, Users, User, Play } from 'lucide-react'
 import { useRunsembleStore, type TabType } from '@/lib/store'
 
-const tabs: { id: TabType; icon: typeof Rss; label: string }[] = [
+// Feed | Explore | [Start] | Groups | Profile
+// Groups tab surfaces both group chats AND direct messages (Instagram-style).
+const leftTabs: { id: TabType; icon: typeof Rss; label: string }[] = [
   { id: 'feed', icon: Rss, label: 'Feed' },
   { id: 'map', icon: MapPin, label: 'Explore' },
-  { id: 'messages', icon: MessageSquare, label: 'Messages' },
+]
+
+const rightTabs: { id: TabType; icon: typeof Rss; label: string }[] = [
   { id: 'groups', icon: Users, label: 'Groups' },
   { id: 'profile', icon: User, label: 'Profile' },
 ]
@@ -19,8 +23,7 @@ export function BottomNav() {
     <nav className="fixed bottom-0 left-0 right-0 z-50 glass border-t">
       <div className="max-w-md mx-auto relative">
         <div className="flex items-center justify-around h-16 safe-bottom px-2">
-          {/* Left pair */}
-          {tabs.slice(0, 2).map((tab) => (
+          {leftTabs.map((tab) => (
             <NavButton key={tab.id} tab={tab} active={activeTab === tab.id} badge={0} onClick={() => setActiveTab(tab.id)} />
           ))}
 
@@ -38,13 +41,12 @@ export function BottomNav() {
             <span className="text-[10px] font-semibold text-primary">Start</span>
           </div>
 
-          {/* Right pair */}
-          {tabs.slice(2).map((tab) => (
+          {rightTabs.map((tab) => (
             <NavButton
               key={tab.id}
               tab={tab}
               active={activeTab === tab.id}
-              badge={tab.id === 'messages' ? unreadDmCount : 0}
+              badge={tab.id === 'groups' ? unreadDmCount : 0}
               onClick={() => setActiveTab(tab.id)}
             />
           ))}

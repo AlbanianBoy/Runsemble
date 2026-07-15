@@ -5,7 +5,7 @@ import { getRankFromXP, type RankTier } from './ranks'
 export { getRankFromXP }
 export type { RankTier }
 
-export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'messages' | 'profile'
+export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 export type OnboardingStep = 'welcome' | 'profile' | 'verify' | 'login' | 'runs' | 'complete' | 'done'
 export type PaceLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
 export type SchedulePreference = 'morning' | 'afternoon' | 'evening' | 'anytime'
@@ -71,7 +71,7 @@ interface RunsembleState {
   notificationsOpen: boolean
   setNotificationsOpen: (open: boolean) => void
 
-  // Unread DM count shown on Messages tab badge
+  // Total unread DM count (shown as badge on Groups tab)
   unreadDmCount: number
   setUnreadDmCount: (count: number) => void
 

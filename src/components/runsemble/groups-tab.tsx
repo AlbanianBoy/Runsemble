@@ -5,9 +5,10 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play, Settings, Shield, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
+import { formatDistanceToNow } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
-import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse } from '@/lib/types'
+import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -16,16 +17,18 @@ import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
-import { Separator } from '@/components/ui/separator'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
-import { formatDistanceToNow } from 'date-fns'
 import { getAvatarColor, getInitials } from './helpers'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
+function timeAgo(iso: string): string {
+  try { return formatDistanceToNow(new Date(iso), { addSuffix: false }) } catch { return '' }
+}
+
 export function GroupsTab() {
-  const { currentUser, selectedGroupId, setSelectedGroupId, groupView, setGroupView, openRunTracker } = useRunsembleStore()
+  const { currentUser, selectedGroupId, setSelectedGroupId, groupView, setGroupView, openRunTracker, openDm, setUnreadDmCount } = useRunsembleStore()
   const [createOpen, setCreateOpen] = useState(false)
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
@@ -37,6 +40,22 @@ export function GroupsTab() {
     queryFn: () => apiGet<GroupsResponse>(`/api/groups?userId=${currentUser?.id}`),
   })
 
+  // DM conversations shown at the top of this tab
+  const { data: convData } = useQuery({
+    queryKey: ['conversations', currentUser?.id],
+    queryFn: () => apiGet<ConversationsResponse>(`/api/messages?userId=${currentUser?.id}`),
+    enabled: !!currentUser?.id,
+    refetchInterval: 10000,
+  })
+
+  const conversations = convData?.conversations ?? []
+
+  // Keep the Groups-tab badge in sync with actual unread count
+  useEffect(() => {
+    const total = conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0)
+    setUnreadDmCount(total)
+  }, [conversations, setUnreadDmCount])
+
   const groups: ApiGroup[] = groupsData?.groups ?? []
 
   const { data: selectedGroupData, isLoading: groupLoading } = useQuery({
@@ -47,7 +66,7 @@ export function GroupsTab() {
 
   const selectedGroup: ApiGroup | null = selectedGroupData?.group ?? null
 
-  const { data: messagesData, isLoading: chatLoading } = useQuery({
+  const { data: messagesData } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => apiGet<GroupMessagesResponse>(`/api/groups/${selectedGroupId}/chat`),
     enabled: !!selectedGroupId && groupView === 'chat',
@@ -57,7 +76,6 @@ export function GroupsTab() {
 
   const [chatMsg, setChatMsg] = useState('')
 
-  // Keep the chat pinned to the newest message.
   const chatEndRef = useRef<HTMLDivElement | null>(null)
   useEffect(() => {
     if (groupView === 'chat' && messages.length > 0) {
@@ -65,9 +83,6 @@ export function GroupsTab() {
     }
   }, [messages, groupView])
 
-  // Identity comes from the session cookie server-side, so these calls send no
-  // user id. They go through apiSend, which checks res.ok, surfaces the error,
-  // and bounces to login on 401 (instead of silently swallowing it).
   const joinMutation = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'join' | 'leave' }) =>
       apiSend<GroupResponse>(`/api/groups/${id}/join`, action === 'join' ? 'POST' : 'DELETE'),
@@ -98,18 +113,12 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // Guard against double-send: while a message is in flight the input still
-  // holds the text (it clears on success), so a second tap during lag would
-  // fire the same message again. Ignore sends while one is pending.
   const handleSendMsg = () => {
     const content = chatMsg.trim()
     if (!content || sendMsgMutation.isPending) return
     sendMsgMutation.mutate(content)
   }
 
-  // ── Add people to a group (invite) ──
-  // Buddies (people you've run with) are the natural pool to add. This is what
-  // makes a private group usable instead of a dead end.
   const [inviteOpen, setInviteOpen] = useState(false)
   const { data: buddiesData } = useQuery({
     queryKey: ['buddies', currentUser?.id],
@@ -126,7 +135,6 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // ── Group admin (owner / admin) ──
   const [manageOpen, setManageOpen] = useState(false)
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
@@ -164,7 +172,7 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // Detail view
+  // ── Detail view ───────────────────────────────────────────────────────────────
   if (groupView === 'detail') {
     if (groupLoading || !selectedGroup) {
       return (
@@ -221,7 +229,6 @@ export function GroupsTab() {
               <Button className="flex-1 rounded-xl" onClick={() => joinMutation.mutate({ id: selectedGroup.id!, action: 'join' })}>Join Group</Button>
             )}
           </div>
-          {/* Members */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <h3 className="font-semibold text-sm">Members</h3>
@@ -274,7 +281,7 @@ export function GroupsTab() {
             <div className="mt-4 space-y-2 max-h-[55vh] overflow-y-auto pb-6">
               {inviteCandidates.length === 0 ? (
                 <p className="text-sm text-muted-foreground text-center py-8">
-                  No one to add yet — your run buddies show up here. Run with people to add them to groups.
+                  No one to add yet — your run buddies show up here.
                 </p>
               ) : (
                 inviteCandidates.map((b) => (
@@ -331,7 +338,7 @@ export function GroupsTab() {
     )
   }
 
-  // Chat view
+  // ── Chat view ─────────────────────────────────────────────────────────────────
   if (groupView === 'chat') {
     if (!selectedGroup) {
       return (
@@ -368,7 +375,7 @@ export function GroupsTab() {
     )
   }
 
-  // List view
+  // ── List view ─────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-3 pb-4">
@@ -376,7 +383,7 @@ export function GroupsTab() {
           <Skeleton className="h-6 w-20" />
           <Skeleton className="h-8 w-20 rounded-full" />
         </div>
-        {[1,2,3].map(i => (<Card key={i}><CardContent className="p-4"><div className="space-y-2"><Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/3" /></div></CardContent></Card>))}
+        {[1, 2, 3].map(i => (<Card key={i}><CardContent className="p-4"><div className="space-y-2"><Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-4 w-1/3" /></div></CardContent></Card>))}
       </div>
     )
   }
@@ -384,58 +391,123 @@ export function GroupsTab() {
   const myGroups = groups.filter((g) => g.isMember)
   const discoverGroups = groups.filter((g) => !g.isMember && g.isPublic)
 
-  if (myGroups.length === 0 && discoverGroups.length === 0) {
-    return (
-      <div className="space-y-5 pb-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold">Groups</h2>
-          <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
-        </div>
-        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
-          <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-          No groups yet. Create one to get started!
-        </CardContent></Card>
-      </div>
-    )
-  }
-
   return (
     <div className="space-y-5 pb-4">
+      {/* ── Direct Messages ─────────────────────────────────────────────── */}
+      {conversations.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-2">Messages</h3>
+          <div className="space-y-1">
+            {conversations.map((c) => (
+              <motion.button
+                key={c.partner.id}
+                {...fadeUp}
+                onClick={() => openDm(c.partner)}
+                className="w-full flex items-center gap-3 rounded-2xl p-2.5 hover:bg-muted/60 active:bg-muted transition-colors text-left"
+              >
+                <Avatar className="h-11 w-11 shrink-0">
+                  <AvatarFallback className={`text-sm text-white ${getAvatarColor(c.partner.name)}`}>
+                    {getInitials(c.partner.name)}
+                  </AvatarFallback>
+                </Avatar>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className={`text-sm truncate ${c.unread > 0 ? 'font-bold' : 'font-medium'}`}>{c.partner.name}</p>
+                    <span className="text-[10px] text-muted-foreground shrink-0">{timeAgo(c.createdAt)}</span>
+                  </div>
+                  <p className={`text-xs truncate ${c.unread > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                    {c.lastMessage}
+                  </p>
+                </div>
+                {c.unread > 0 && (
+                  <span className="h-5 min-w-5 px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold flex items-center justify-center shrink-0">
+                    {c.unread > 9 ? '9+' : c.unread}
+                  </span>
+                )}
+              </motion.button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ── Groups ──────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Groups</h2>
         <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
       </div>
 
+      {myGroups.length === 0 && discoverGroups.length === 0 && (
+        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
+          <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+          No groups yet. Create one to get started!
+        </CardContent></Card>
+      )}
+
       {myGroups.length > 0 && (
-        <div><h3 className="text-sm font-semibold text-muted-foreground mb-2">My Groups</h3><div className="space-y-2">
-          {myGroups.map((g) => (
-            <motion.div key={g.id} {...fadeUp}>
-              <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}>
-                <CardContent className="p-4"><div className="flex items-start justify-between"><div className="flex-1"><div className="flex items-center gap-2"><h4 className="font-semibold text-sm">{g.name}</h4><Badge variant="secondary" className="text-[10px]">{g.memberCount}</Badge></div><p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p><p className="text-xs text-muted-foreground mt-1">{g.totalKmThisWeek?.toFixed(0)} km this week</p></div><ChevronRight className="h-4 w-4 text-muted-foreground" /></div></CardContent>
-              </Card>
-            </motion.div>
-          ))}
-        </div></div>
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-2">My Groups</h3>
+          <div className="space-y-2">
+            {myGroups.map((g) => (
+              <motion.div key={g.id} {...fadeUp}>
+                <Card className="cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm">{g.name}</h4>
+                          <Badge variant="secondary" className="text-[10px]">{g.memberCount}</Badge>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{g.totalKmThisWeek?.toFixed(0)} km this week</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
       )}
 
       {discoverGroups.length > 0 && (
-        <div><h3 className="text-sm font-semibold text-muted-foreground mb-2">Discover</h3><div className="space-y-2">
-          {discoverGroups.map((g) => (
-            <motion.div key={g.id} {...fadeUp}>
-              <Card className="hover:shadow-md transition-shadow"><CardContent className="p-4"><div className="flex items-start justify-between"><div className="flex-1 cursor-pointer" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}><div className="flex items-center gap-2"><h4 className="font-semibold text-sm">{g.name}</h4>{g.isPublic ? <Globe className="h-3 w-3 text-muted-foreground" /> : <Lock className="h-3 w-3 text-muted-foreground" />}</div><p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p><p className="text-xs text-muted-foreground mt-1">{g.memberCount} members &middot; {g.totalKmThisWeek?.toFixed(0)} km/week</p></div><Button size="sm" variant="outline" className="rounded-full text-xs" onClick={() => joinMutation.mutate({ id: g.id, action: 'join' })}>Join</Button></div></CardContent></Card>
-            </motion.div>
-          ))}
-        </div></div>
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-2">Discover</h3>
+          <div className="space-y-2">
+            {discoverGroups.map((g) => (
+              <motion.div key={g.id} {...fadeUp}>
+                <Card className="hover:shadow-md transition-shadow">
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1 cursor-pointer" onClick={() => { setSelectedGroupId(g.id); setGroupView('detail') }}>
+                        <div className="flex items-center gap-2">
+                          <h4 className="font-semibold text-sm">{g.name}</h4>
+                          {g.isPublic ? <Globe className="h-3 w-3 text-muted-foreground" /> : <Lock className="h-3 w-3 text-muted-foreground" />}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-1">{g.description}</p>
+                        <p className="text-xs text-muted-foreground mt-1">{g.memberCount} members · {g.totalKmThisWeek?.toFixed(0)} km/week</p>
+                      </div>
+                      <Button size="sm" variant="outline" className="rounded-full text-xs" onClick={() => joinMutation.mutate({ id: g.id, action: 'join' })}>Join</Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </motion.div>
+            ))}
+          </div>
+        </div>
       )}
 
-      <Sheet open={createOpen} onOpenChange={setCreateOpen}><SheetContent side="bottom" className="rounded-t-3xl"><SheetHeader><SheetTitle>Create a Group</SheetTitle></SheetHeader>
-        <div className="space-y-4 p-4">
-          <div><Label>Group Name</Label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Friday Night Runners" className="mt-1.5" /></div>
-          <div><Label>Description</Label><Textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="What's your group about?" className="mt-1.5" rows={3} /></div>
-          <div className="flex items-center justify-between"><Label>Public Group</Label><Switch checked={newPublic} onCheckedChange={setNewPublic} /></div>
-          <Button className="w-full rounded-full" onClick={() => createMutation.mutate()} disabled={!newName.trim()}>Create Group</Button>
-        </div>
-      </SheetContent></Sheet>
+      <Sheet open={createOpen} onOpenChange={setCreateOpen}>
+        <SheetContent side="bottom" className="rounded-t-3xl">
+          <SheetHeader><SheetTitle>Create a Group</SheetTitle></SheetHeader>
+          <div className="space-y-4 p-4">
+            <div><Label>Group Name</Label><Input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Friday Night Runners" className="mt-1.5" /></div>
+            <div><Label>Description</Label><Textarea value={newDesc} onChange={e => setNewDesc(e.target.value)} placeholder="What's your group about?" className="mt-1.5" rows={3} /></div>
+            <div className="flex items-center justify-between"><Label>Public Group</Label><Switch checked={newPublic} onCheckedChange={setNewPublic} /></div>
+            <Button className="w-full rounded-full" onClick={() => createMutation.mutate()} disabled={!newName.trim()}>Create Group</Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }
