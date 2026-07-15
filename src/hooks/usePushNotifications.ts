@@ -16,23 +16,17 @@ async function registerPush() {
     // Dynamic import so Next.js doesn't bundle this for the web build.
     const { PushNotifications } = await import('@capacitor/push-notifications')
 
-    // Check / request permission.
-    let permStatus = await PushNotifications.checkPermissions()
-    if (permStatus.receive === 'prompt') {
-      permStatus = await PushNotifications.requestPermissions()
-    }
-    if (permStatus.receive !== 'granted') return
-
-    await PushNotifications.register()
-
-    // Listen for the token — fires once after register().
+    // ── 1. Attach listeners FIRST so we never miss the registration event ──
     PushNotifications.addListener('registration', async ({ value: token }) => {
+      console.log('FCM token received:', token)
       try {
-        await fetch('/api/push-token', {
+        const res = await fetch('/api/push-token', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token }),
         })
+        if (!res.ok) console.error('push token upload failed, status:', res.status)
+        else console.log('FCM token saved successfully')
       } catch (e) {
         console.error('push token upload failed:', e)
       }
@@ -41,6 +35,19 @@ async function registerPush() {
     PushNotifications.addListener('registrationError', (err) => {
       console.error('FCM registration error:', err)
     })
+
+    // ── 2. Check / request permission ──
+    let permStatus = await PushNotifications.checkPermissions()
+    if (permStatus.receive === 'prompt') {
+      permStatus = await PushNotifications.requestPermissions()
+    }
+    if (permStatus.receive !== 'granted') {
+      console.warn('Push notification permission not granted:', permStatus.receive)
+      return
+    }
+
+    // ── 3. Register — triggers the 'registration' listener above ──
+    await PushNotifications.register()
   } catch {
     // Not running inside Capacitor (plain browser) — ignore.
   }
