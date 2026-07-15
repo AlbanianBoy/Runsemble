@@ -33,6 +33,8 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
+import java.security.MessageDigest;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -57,49 +59,48 @@ import java.util.List;
 public class RunRecorderService extends Service {
 
     public static final String ACTION_START = "net.runsemble.app.runrecorder.START";
-    public static final String ACTION_STOP = "net.runsemble.app.runrecorder.STOP";
+    public static final String ACTION_STOP  = "net.runsemble.app.runrecorder.STOP";
     public static final String EXTRA_RUN_ID = "runId";
 
-    private static final int NOTIFICATION_ID = 41287;
-    private static final String CHANNEL_ID = "runsemble_run_recorder";
-    private static final long MAX_WAIT_MS = 5000;      // mild batching (hardware FIFO)
-    private static final long STARVE_MS = 30000;       // fused silent this long → raw fallback
-    private static final long RECOVER_MS = 15000;      // fused healthy again → drop raw
+    private static final int    NOTIFICATION_ID = 41287;
+    private static final String CHANNEL_ID      = "runsemble_run_recorder";
+    private static final long   MAX_WAIT_MS     = 5000;   // mild batching (hardware FIFO)
+    private static final long   STARVE_MS       = 30000;  // fused silent this long → raw fallback
+    private static final long   RECOVER_MS      = 15000;  // fused healthy again → drop raw
 
     // One process-wide lock guarding the run files (service writes, plugin reads).
     static final Object FILE_LOCK = new Object();
 
-    private String runId = null;
+    private String  runId    = null;
     private volatile boolean tracking = false;
 
     private FusedLocationProviderClient fused;
-    private LocationCallback fusedCallback;
-    private LocationManager locationManager;
-    private HandlerThread thread;
-    private Handler handler;
-    private PowerManager.WakeLock wakeLock;
-    private Writer trackWriter;
+    private LocationCallback            fusedCallback;
+    private LocationManager             locationManager;
+    private HandlerThread               thread;
+    private Handler                     handler;
+    private PowerManager.WakeLock       wakeLock;
+    private Writer                      trackWriter;
 
-    private long startedAt = 0L;
-    private int count = 0;
+    private long startedAt        = 0L;
+    private int  count            = 0;
     private long lastActiveWriteMs = 0L;
 
     // Provider arbitration (single active provider — never both delivering at once).
-    private volatile String activeProvider = "fused";
-    private volatile long lastFusedFixMs = 0L;
-    private volatile boolean rawRegistered = false;
+    private volatile String  activeProvider  = "fused";
+    private volatile long    lastFusedFixMs  = 0L;
+    private volatile boolean rawRegistered   = false;
 
-    @Override
-    public IBinder onBind(Intent intent) { return null; }
+    @Override public IBinder onBind(Intent intent) { return null; }
 
     @Override
     public void onCreate() {
         super.onCreate();
         thread = new HandlerThread("run-recorder");
         thread.start();
-        handler = new Handler(thread.getLooper());
+        handler         = new Handler(thread.getLooper());
         locationManager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
-        fused = LocationServices.getFusedLocationProviderClient(this);
+        fused           = LocationServices.getFusedLocationProviderClient(this);
         createChannel();
     }
 
@@ -130,14 +131,14 @@ public class RunRecorderService extends Service {
         return START_STICKY;
     }
 
-    // ─── Tracking lifecycle ──────────────────────────────────────────────────────
+    // ─── Tracking lifecycle ─────────────────────────────────────────────────────
     private void startTracking(String id) {
-        runId = id;
-        tracking = true;
+        runId          = id;
+        tracking       = true;
         activeProvider = "fused";
-        long now = System.currentTimeMillis();
+        long now       = System.currentTimeMillis();
         lastFusedFixMs = now;
-        count = countLines(trackFile(this, id)); // resume-safe (append to existing)
+        count          = countLines(trackFile(this, id)); // resume-safe (append to existing)
         openTrackWriter(id);
         if (startedAt == 0L) startedAt = readStartedAt(this, id, now);
         writeActive(id);
@@ -156,9 +157,9 @@ public class RunRecorderService extends Service {
         closeTrackWriter();
         clearActive(this);
         releaseWakeLock();
-        runId = null;
+        runId     = null;
         startedAt = 0L;
-        count = 0;
+        count     = 0;
     }
 
     @Override
@@ -168,7 +169,7 @@ public class RunRecorderService extends Service {
         super.onDestroy();
     }
 
-    // ─── Location: fused primary ────────────────────────────────────────────────
+    // ─── Location: fused primary ─────────────────────────────────────────────────
     private void requestFused() {
         LocationRequest req = new LocationRequest();
         req.setInterval(1000);
@@ -185,8 +186,7 @@ public class RunRecorderService extends Service {
                 if (!"fused".equals(activeProvider)) return; // raw owns delivery right now
                 for (Location l : locs) record(l, "fused");
             }
-            @Override
-            public void onLocationAvailability(LocationAvailability a) {}
+            @Override public void onLocationAvailability(LocationAvailability a) {}
         };
         try {
             fused.requestLocationUpdates(req, fusedCallback, thread.getLooper());
@@ -200,7 +200,7 @@ public class RunRecorderService extends Service {
             if (!"gps".equals(activeProvider)) return;
             record(l, "gps");
         }
-        @Override public void onProviderEnabled(String p) {}
+        @Override public void onProviderEnabled(String p)  {}
         @Override public void onProviderDisabled(String p) {}
         @Override public void onStatusChanged(String p, int s, Bundle b) {}
     };
@@ -253,11 +253,11 @@ public class RunRecorderService extends Service {
         long t = l.getTime() > 0 ? l.getTime() : System.currentTimeMillis();
         JSONObject o = new JSONObject();
         try {
-            o.put("t", t);
+            o.put("t",   t);
             o.put("lat", l.getLatitude());
             o.put("lng", l.getLongitude());
             o.put("acc", l.hasAccuracy() ? l.getAccuracy() : JSONObject.NULL);
-            o.put("p", provider);
+            o.put("p",   provider);
         } catch (Exception ignore) { return; }
         synchronized (FILE_LOCK) {
             try {
@@ -279,7 +279,7 @@ public class RunRecorderService extends Service {
     private void openTrackWriter(String id) {
         synchronized (FILE_LOCK) {
             try {
-                File f = trackFile(this, id);
+                File f   = trackFile(this, id);
                 File dir = f.getParentFile();
                 if (dir != null && !dir.exists()) dir.mkdirs();
                 trackWriter = new OutputStreamWriter(new FileOutputStream(f, true), "UTF-8");
@@ -297,14 +297,14 @@ public class RunRecorderService extends Service {
         if (id == null) return;
         JSONObject o = new JSONObject();
         try {
-            o.put("runId", id);
+            o.put("runId",     id);
             o.put("startedAt", startedAt);
             o.put("updatedAt", System.currentTimeMillis());
-            o.put("count", count);
+            o.put("count",     count);
         } catch (Exception ignore) { return; }
         synchronized (FILE_LOCK) {
             try {
-                File f = activeFile(this);
+                File f   = activeFile(this);
                 File dir = f.getParentFile();
                 if (dir != null && !dir.exists()) dir.mkdirs();
                 FileOutputStream fos = new FileOutputStream(f, false);
@@ -314,10 +314,10 @@ public class RunRecorderService extends Service {
         }
     }
 
-    // ─── Static helpers (also used by the plugin, on its own thread) ────────────
-    static File runsDir(Context ctx) { return new File(ctx.getFilesDir(), "runs"); }
-    static File trackFile(Context ctx, String runId) { return new File(runsDir(ctx), runId + ".jsonl"); }
-    static File activeFile(Context ctx) { return new File(runsDir(ctx), "active.json"); }
+    // ─── Static helpers (also used by the plugin, on its own thread) ─────────────
+    static File runsDir(Context ctx)                       { return new File(ctx.getFilesDir(), "runs"); }
+    static File trackFile(Context ctx, String runId)       { return new File(runsDir(ctx), runId + ".jsonl"); }
+    static File activeFile(Context ctx)                    { return new File(runsDir(ctx), "active.json"); }
 
     static void clearActive(Context ctx) {
         synchronized (FILE_LOCK) {
@@ -342,11 +342,30 @@ public class RunRecorderService extends Service {
 
     private static long readStartedAt(Context ctx, String id, long fallback) {
         JSONObject o = readActive(ctx);
-        if (o != null && id.equals(o.optString("runId", null))) {
+        // R-3DA63: use MessageDigest.isEqual() for timing-safe runId comparison
+        // to avoid leaking run ownership via timing side-channel.
+        if (o != null && timingSafeEquals(id, o.optString("runId", null))) {
             long s = o.optLong("startedAt", 0L);
             if (s > 0) return s;
         }
         return fallback;
+    }
+
+    /**
+     * Timing-safe string equality (R-3DA63).
+     * Uses MessageDigest.isEqual on UTF-8 bytes so comparison time is constant
+     * regardless of where the strings first differ — prevents timing oracles.
+     */
+    private static boolean timingSafeEquals(String a, String b) {
+        if (a == null && b == null) return true;
+        if (a == null || b == null) return false;
+        try {
+            byte[] ba = a.getBytes("UTF-8");
+            byte[] bb = b.getBytes("UTF-8");
+            return MessageDigest.isEqual(ba, bb);
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private static int countLines(File f) {
@@ -372,7 +391,9 @@ public class RunRecorderService extends Service {
                 if (!f.exists()) return arr;
                 String s = readFile(f);
                 if (s.isEmpty()) return arr;
-                String[] lines = s.split("\n");
+                // R-3F9B0: use split("\n", -1) to preserve trailing empty strings
+                // so line-index arithmetic stays correct even when the file ends with \n.
+                String[] lines = s.split("\n", -1);
                 for (int i = Math.max(0, sinceIndex); i < lines.length; i++) {
                     String line = lines[i];
                     if (line == null || line.trim().isEmpty()) continue;
@@ -384,7 +405,7 @@ public class RunRecorderService extends Service {
     }
 
     private static String readFile(File f) throws Exception {
-        FileInputStream fis = new FileInputStream(f);
+        FileInputStream       fis = new FileInputStream(f);
         ByteArrayOutputStream bos = new ByteArrayOutputStream();
         byte[] buf = new byte[16384];
         int n;
@@ -393,7 +414,7 @@ public class RunRecorderService extends Service {
         return bos.toString("UTF-8");
     }
 
-    // ─── Foreground service plumbing ────────────────────────────────────────────
+    // ─── Foreground service plumbing ─────────────────────────────────────────────
     private void startForegroundSafely() {
         Notification n = buildNotification();
         try {

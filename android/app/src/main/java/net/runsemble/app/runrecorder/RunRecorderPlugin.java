@@ -48,6 +48,12 @@ public class RunRecorderPlugin extends Plugin {
             call.reject("runId required");
             return;
         }
+        // R-0FF70: validate runId contains only safe alphanumeric/dash/underscore chars
+        // to prevent path traversal attacks (runId is used to construct a file path).
+        if (!runId.matches("^[a-zA-Z0-9_\\-]{1,128}$")) {
+            call.reject("invalid runId");
+            return;
+        }
         Intent i = new Intent(getContext(), RunRecorderService.class);
         i.setAction(RunRecorderService.ACTION_START);
         i.putExtra(RunRecorderService.EXTRA_RUN_ID, runId);
@@ -76,11 +82,11 @@ public class RunRecorderPlugin extends Plugin {
         if (active == null || active.optString("runId", null) == null) {
             ret.put("active", false);
         } else {
-            ret.put("active", true);
-            ret.put("runId", active.optString("runId"));
-            ret.put("startedAt", active.optLong("startedAt", 0L));
-            ret.put("updatedAt", active.optLong("updatedAt", 0L));
-            ret.put("count", active.optInt("count", 0));
+            ret.put("active",     true);
+            ret.put("runId",      active.optString("runId"));
+            ret.put("startedAt",  active.optLong("startedAt", 0L));
+            ret.put("updatedAt",  active.optLong("updatedAt", 0L));
+            ret.put("count",      active.optInt("count", 0));
         }
         call.resolve(ret);
     }
@@ -93,6 +99,11 @@ public class RunRecorderPlugin extends Plugin {
             call.reject("runId required");
             return;
         }
+        // R-0FF70: same path-traversal guard as startTracking
+        if (!runId.matches("^[a-zA-Z0-9_\\-]{1,128}$")) {
+            call.reject("invalid runId");
+            return;
+        }
         int sinceIndex = call.getInt("sinceIndex", 0);
         JSArray points = new JSArray();
         org.json.JSONArray arr = RunRecorderService.readTrack(getContext(), runId, sinceIndex);
@@ -100,7 +111,7 @@ public class RunRecorderPlugin extends Plugin {
             points.put(arr.optJSONObject(i));
         }
         JSObject ret = new JSObject();
-        ret.put("points", points);
+        ret.put("points",    points);
         ret.put("nextIndex", sinceIndex + arr.length());
         call.resolve(ret);
     }
@@ -109,6 +120,11 @@ public class RunRecorderPlugin extends Plugin {
     public void clearTrack(PluginCall call) {
         String runId = call.getString("runId");
         if (runId != null && !runId.isEmpty()) {
+            // R-0FF70: path-traversal guard before using runId as a filename
+            if (!runId.matches("^[a-zA-Z0-9_\\-]{1,128}$")) {
+                call.reject("invalid runId");
+                return;
+            }
             try {
                 java.io.File f = RunRecorderService.trackFile(getContext(), runId);
                 synchronized (RunRecorderService.FILE_LOCK) {
