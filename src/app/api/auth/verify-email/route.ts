@@ -2,10 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { consumeVerificationCode } from '@/lib/verification'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 // Confirm the logged-in user's email with the 6-digit code they were sent.
 export async function POST(request: NextRequest) {
   try {
+    if (!rateLimit(`verify-email:${clientIp(request)}`, 10, 60_000)) {
+      return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
+    }
+
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     if (me.emailVerified) {

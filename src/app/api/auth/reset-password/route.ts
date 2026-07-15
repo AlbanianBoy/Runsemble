@@ -2,11 +2,16 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword } from '@/lib/password'
 import { consumeVerificationCode } from '@/lib/verification'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 // Finish a password reset: verify the emailed code, set the new password, and
 // sign out everywhere by dropping all of the user's sessions.
 export async function POST(request: NextRequest) {
   try {
+    if (!rateLimit(`reset-password:${clientIp(request)}`, 5, 60_000)) {
+      return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
+    }
+
     const { email, code, password } = await request.json()
 
     if (!email?.trim() || !code?.trim()) {

@@ -63,6 +63,8 @@ model User {
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
   verificationTokens VerificationToken[]
+
+  @@index([xp]) // leaderboard ORDER BY xp DESC — avoids full table scan
 }
 
 // Login sessions — token lives in an httpOnly cookie.
@@ -327,6 +329,9 @@ model RunRating {
 
   hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Prevents a user from submitting multiple ratings for the same hotspot.
+  @@unique([hotspotId, userId])
 }
 
 // A running-buddy relationship, formed after running together. Directional rows
