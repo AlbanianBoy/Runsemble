@@ -11,7 +11,6 @@ const FCM_ENDPOINT = `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/m
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
 const SCOPE = 'https://www.googleapis.com/auth/firebase.messaging'
 
-// Read env var at call time (not module load) so Vercel always gets the live value.
 function getPrivateKey(): string {
   return (process.env.FCM_PRIVATE_KEY ?? '').replace(/\\n/g, '\n')
 }
@@ -25,7 +24,6 @@ function base64url(data: string): string {
 async function makeJwt(): Promise<string> {
   const privateKey = getPrivateKey()
   const now = Math.floor(Date.now() / 1000)
-  // kid is required by Google so it can look up the right public key to verify against.
   const header = base64url(JSON.stringify({ alg: 'RS256', typ: 'JWT', kid: FCM_PRIVATE_KEY_ID }))
   const payload = base64url(JSON.stringify({
     iss: FCM_CLIENT_EMAIL,
@@ -56,19 +54,20 @@ function pemToDer(pem: string): ArrayBuffer {
   return buf.buffer
 }
 
-// ── OAuth2 access token (cached per process lifetime, refreshed when expired) ──
+// ── OAuth2 access token ───────────────────────────────────────────────────────────────
 let cachedToken: { token: string; exp: number } | null = null
 
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.exp > Date.now() / 1000 + 60) return cachedToken.token
   const jwt = await makeJwt()
+  // Build body as a plain string to avoid any URLSearchParams encoding quirks
+  // that cause Google to reject the grant_type.
+  const grantType = encodeURIComponent('urn:ietf:params:oauth2:grant-type:jwt-bearer')
+  const body = `grant_type=${grantType}&assertion=${jwt}`
   const res = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth2:grant-type:jwt-bearer',
-      assertion: jwt,
-    }),
+    body,
   })
   if (!res.ok) {
     const err = await res.text()
@@ -87,7 +86,7 @@ export interface PushPayload {
 }
 
 export async function sendPush(payload: PushPayload): Promise<void> {
-  if (!getPrivateKey()) return // env var not set — skip silently
+  if (!getPrivateKey()) return
   try {
     const accessToken = await getAccessToken()
     const res = await fetch(FCM_ENDPOINT, {
