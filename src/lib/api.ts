@@ -14,6 +14,8 @@ async function extractError(res: Response): Promise<string | null> {
 
 // A 401 means the login session is gone (expired, revoked, or a pre-auth local
 // profile). Reset to the login screen once instead of failing silently forever.
+// Only triggered for primary/critical API calls — NOT background polling queries
+// like the conversations list (which would cause an infinite reload loop).
 let handling401 = false
 function handleUnauthorized() {
   if (typeof window === 'undefined' || handling401) return
@@ -42,10 +44,24 @@ async function fetchWithTimeout(url: string, init?: RequestInit): Promise<Respon
   }
 }
 
+/** Standard GET — throws on error, triggers logout redirect on 401. */
 export async function apiGet<T>(url: string): Promise<T> {
   const res = await fetchWithTimeout(url)
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized()
+    throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
+  }
+  return (await res.json()) as T
+}
+
+/**
+ * Silent GET — throws on error like apiGet but NEVER triggers a 401 redirect.
+ * Use this for background/polling queries (e.g. conversations list) where a
+ * transient 401 should just show an empty result rather than nuking the app.
+ */
+export async function apiGetSilent<T>(url: string): Promise<T> {
+  const res = await fetchWithTimeout(url)
+  if (!res.ok) {
     throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
   }
   return (await res.json()) as T

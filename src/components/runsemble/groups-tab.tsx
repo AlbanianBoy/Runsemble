@@ -7,7 +7,7 @@ import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight,
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
-import { apiGet, apiSend } from '@/lib/api'
+import { apiGet, apiGetSilent, apiSend } from '@/lib/api'
 import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -40,12 +40,16 @@ export function GroupsTab() {
     queryFn: () => apiGet<GroupsResponse>(`/api/groups?userId=${currentUser?.id}`),
   })
 
-  // DM conversations shown at the top of this tab
+  // DM conversations — use apiGetSilent so a 401 never triggers the global
+  // reload loop. retry:false + throwOnError:false means an error just gives an
+  // empty list rather than crashing the whole tab.
   const { data: convData } = useQuery({
-    queryKey: ['conversations', currentUser?.id],
-    queryFn: () => apiGet<ConversationsResponse>(`/api/messages?userId=${currentUser?.id}`),
+    queryKey: ['conversations'],
+    queryFn: () => apiGetSilent<ConversationsResponse>('/api/messages'),
     enabled: !!currentUser?.id,
-    refetchInterval: 10000,
+    refetchInterval: 15_000,
+    retry: false,
+    throwOnError: false,
   })
 
   const conversations = convData?.conversations ?? []
@@ -172,7 +176,7 @@ export function GroupsTab() {
     onError: (e: Error) => toast.error(e.message),
   })
 
-  // ── Detail view ───────────────────────────────────────────────────────────────
+  // ── Detail view ──────────────────────────────────────────────────────────────
   if (groupView === 'detail') {
     if (groupLoading || !selectedGroup) {
       return (
@@ -338,7 +342,7 @@ export function GroupsTab() {
     )
   }
 
-  // ── Chat view ─────────────────────────────────────────────────────────────────
+  // ── Chat view ────────────────────────────────────────────────────────────────
   if (groupView === 'chat') {
     if (!selectedGroup) {
       return (
@@ -375,7 +379,7 @@ export function GroupsTab() {
     )
   }
 
-  // ── List view ─────────────────────────────────────────────────────────────────
+  // ── List view ────────────────────────────────────────────────────────────────
   if (isLoading) {
     return (
       <div className="space-y-3 pb-4">
@@ -393,7 +397,7 @@ export function GroupsTab() {
 
   return (
     <div className="space-y-5 pb-4">
-      {/* ── Direct Messages ─────────────────────────────────────────────── */}
+      {/* ── Direct Messages ──────────────────────────────────────────────────── */}
       {conversations.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">Messages</h3>
@@ -430,7 +434,7 @@ export function GroupsTab() {
         </div>
       )}
 
-      {/* ── Groups ──────────────────────────────────────────────────────── */}
+      {/* ── Groups ───────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Groups</h2>
         <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
