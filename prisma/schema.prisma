@@ -38,6 +38,7 @@ model User {
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
   onboardingComplete Boolean  @default(false)
+  fcmToken          String?   // FCM device token for push notifications
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
