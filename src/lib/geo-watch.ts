@@ -1,5 +1,5 @@
 // ─── Position watching (web + native) ─────────────────────────────────────────────────
-// One place that watches the device’s location. On the web it uses the browser
+// One place that watches the device's location. On the web it uses the browser
 // Geolocation API (foreground only). Inside the Capacitor app it uses the native
 // background-geolocation plugin, which runs a foreground service so a run keeps
 // recording with the screen off — the whole reason for the native build.
@@ -8,13 +8,38 @@
 // requestIgnoreBatteryOptimizations) are routed through the RunRecorder plugin
 // because it actually exposes those @PluginMethods. The previous implementation
 // cast BackgroundGeolocation to an unknown type and called them there — that
-// plugin doesn’t expose those methods, so the calls silently threw and the
-// ‘Allow background’ button in the permission nudge was a no-op.
+// plugin doesn't expose those methods, so the calls silently threw and the
+// 'Allow background' button in the permission nudge was a no-op.
 
 import { Capacitor, registerPlugin } from '@capacitor/core'
 import type { BackgroundGeolocationPlugin } from '@capacitor-community/background-geolocation'
 
-const BackgroundGeolocation = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+// ─── Lazy singletons ──────────────────────────────────────────────────────────
+// registerPlugin must NOT be called at module-load time: Next.js evaluates
+// this module on the server (SSR) AND in the browser bundle, which causes
+// Capacitor to throw "plugin already registered". We defer the call to the
+// first actual use, guarded by a typeof-window check so it never runs SSR.
+
+let _bgGeo: BackgroundGeolocationPlugin | null = null
+function getBackgroundGeolocation(): BackgroundGeolocationPlugin {
+  if (!_bgGeo) {
+    if (typeof window === 'undefined') {
+      // SSR — return a no-op stub so imports don't crash on the server
+      _bgGeo = {
+        addWatcher: async () => '',
+        removeWatcher: async () => {},
+        openSettings: async () => {},
+        getBufferedLocations: async () => ({ locations: [] }),
+        getFlightLog: async () => ({ log: '' }),
+        clearFlightLog: async () => {},
+        getDeviceInfo: async () => ({ manufacturer: '', model: '' }),
+      } as unknown as BackgroundGeolocationPlugin
+    } else {
+      _bgGeo = registerPlugin<BackgroundGeolocationPlugin>('BackgroundGeolocation')
+    }
+  }
+  return _bgGeo
+}
 
 // Minimal interface for the RunRecorder plugin methods we call here.
 // The full surface lives in src/lib/run-recorder.ts.
@@ -23,7 +48,22 @@ interface RunRecorderBatteryPlugin {
   requestIgnoreBatteryOptimizations(): Promise<void>
   getDeviceInfo?(): Promise<{ manufacturer?: string; model?: string }>
 }
-const RunRecorder = registerPlugin<RunRecorderBatteryPlugin>('RunRecorder')
+
+let _runRecorderBattery: RunRecorderBatteryPlugin | null = null
+function getRunRecorderBattery(): RunRecorderBatteryPlugin {
+  if (!_runRecorderBattery) {
+    if (typeof window === 'undefined') {
+      _runRecorderBattery = {
+        isIgnoringBatteryOptimizations: async () => ({ ignoring: true }),
+        requestIgnoreBatteryOptimizations: async () => {},
+        getDeviceInfo: async () => ({ manufacturer: '', model: '' }),
+      }
+    } else {
+      _runRecorderBattery = registerPlugin<RunRecorderBatteryPlugin>('RunRecorder')
+    }
+  }
+  return _runRecorderBattery
+}
 
 export type GpsError = 'denied' | 'unavailable'
 
@@ -32,29 +72,30 @@ export function isNativeApp(): boolean {
   try { return Capacitor.isNativePlatform() } catch { return false }
 }
 
-// Open this app’s system settings page, where the user grants “Allow all the
-// time” location and notifications — the two things Android won’t let us request
+// Open this app's system settings page, where the user grants "Allow all the
+// time" location and notifications — the two things Android won't let us request
 // from an in-app prompt but that background run tracking needs.
 export async function openAppSettings(): Promise<void> {
   try {
-    await (BackgroundGeolocation as unknown as { openSettings: () => Promise<void> }).openSettings()
+    await (getBackgroundGeolocation() as unknown as { openSettings: () => Promise<void> }).openSettings()
   } catch {
     // web / unavailable — no-op
   }
 }
 
 // Native device manufacturer + model (from Build.*, reliable). Used to show the
-// right OEM-specific “keep tracking alive” guidance. Empty on web / old builds.
+// right OEM-specific "keep tracking alive" guidance. Empty on web / old builds.
 export async function getDeviceInfo(): Promise<{ manufacturer: string; model: string }> {
   if (!isNativeApp()) return { manufacturer: '', model: '' }
   try {
     // Try RunRecorder first (newer builds); fall back to BackgroundGeolocation cast.
-    if (RunRecorder.getDeviceInfo) {
-      const res = await RunRecorder.getDeviceInfo()
+    const rr = getRunRecorderBattery()
+    if (rr.getDeviceInfo) {
+      const res = await rr.getDeviceInfo()
       if (res.manufacturer) return { manufacturer: (res.manufacturer ?? '').toLowerCase(), model: res.model ?? '' }
     }
     const res = await (
-      BackgroundGeolocation as unknown as { getDeviceInfo: () => Promise<{ manufacturer?: string; model?: string }> }
+      getBackgroundGeolocation() as unknown as { getDeviceInfo: () => Promise<{ manufacturer?: string; model?: string }> }
     ).getDeviceInfo()
     return { manufacturer: (res.manufacturer ?? '').toLowerCase(), model: res.model ?? '' }
   } catch {
@@ -69,7 +110,7 @@ export async function getDeviceInfo(): Promise<{ manufacturer: string; model: st
 export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
   if (!isNativeApp()) return true
   try {
-    const res = await RunRecorder.isIgnoringBatteryOptimizations()
+    const res = await getRunRecorderBattery().isIgnoringBatteryOptimizations()
     return res.ignoring !== false
   } catch {
     return true
@@ -82,20 +123,20 @@ export async function isIgnoringBatteryOptimizations(): Promise<boolean> {
 export async function requestIgnoreBatteryOptimizations(): Promise<void> {
   if (!isNativeApp()) return
   try {
-    await RunRecorder.requestIgnoreBatteryOptimizations()
+    await getRunRecorderBattery().requestIgnoreBatteryOptimizations()
   } catch {
     // web / unavailable — no-op
   }
 }
 
-// Pull the native “flight recorder” log (every fix / lost / watchdog event the
+// Pull the native "flight recorder" log (every fix / lost / watchdog event the
 // service saw) so a screen-off walk can be diagnosed after the fact — no adb.
 // Returns '' on web or an un-patched native build.
 export async function getFlightLog(): Promise<string> {
   if (!isNativeApp()) return ''
   try {
     const res = await (
-      BackgroundGeolocation as unknown as { getFlightLog: () => Promise<{ log?: string }> }
+      getBackgroundGeolocation() as unknown as { getFlightLog: () => Promise<{ log?: string }> }
     ).getFlightLog()
     return res.log ?? ''
   } catch {
@@ -106,7 +147,7 @@ export async function getFlightLog(): Promise<string> {
 export async function clearFlightLog(): Promise<void> {
   if (!isNativeApp()) return
   try {
-    await (BackgroundGeolocation as unknown as { clearFlightLog: () => Promise<void> }).clearFlightLog()
+    await (getBackgroundGeolocation() as unknown as { clearFlightLog: () => Promise<void> }).clearFlightLog()
   } catch {
     // web / unavailable — no-op
   }
@@ -124,7 +165,7 @@ export interface BufferedFix {
 export async function nativeBufferSupported(): Promise<boolean> {
   if (!isNativeApp()) return false
   try {
-    await (BackgroundGeolocation as unknown as { getBufferedLocations: () => Promise<unknown> }).getBufferedLocations()
+    await (getBackgroundGeolocation() as unknown as { getBufferedLocations: () => Promise<unknown> }).getBufferedLocations()
     return true
   } catch {
     return false
@@ -137,7 +178,7 @@ export async function drainBufferedLocations(): Promise<BufferedFix[]> {
   if (!isNativeApp()) return []
   try {
     const res = await (
-      BackgroundGeolocation as unknown as {
+      getBackgroundGeolocation() as unknown as {
         getBufferedLocations: () => Promise<{
           locations?: Array<{ latitude: number; longitude: number; accuracy: number | null; time: number }>
         }>
@@ -161,6 +202,7 @@ export interface PositionWatchHandlers {
 
 /** Start watching position; returns a function that stops the watch. */
 export function startPositionWatch(handlers: PositionWatchHandlers): () => void {
+  if (typeof window === 'undefined') return () => {}
   return Capacitor.isNativePlatform() ? startNativeWatch(handlers) : startWebWatch(handlers)
 }
 
@@ -178,6 +220,7 @@ function startWebWatch({ onPosition, onError }: PositionWatchHandlers): () => vo
 }
 
 function startNativeWatch({ onPosition, onError }: PositionWatchHandlers): () => void {
+  const BackgroundGeolocation = getBackgroundGeolocation()
   let watcherId: string | null = null
   let stopped = false
 
