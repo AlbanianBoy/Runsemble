@@ -22,6 +22,16 @@ android {
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
     }
+    // Phase 2: include the RunRecorder plugin sources directly from the repo
+    // tree so we don't need to copy/symlink Java files into the app module.
+    // Both RunRecorderPlugin.java and RunRecorderService.java live under
+    // native/run-recorder/android/src/main/java and are compiled as part
+    // of the :app target.
+    sourceSets {
+        main {
+            java.srcDirs += ['../../native/run-recorder/android/src/main/java']
+        }
+    }
 }
 
 repositories {
