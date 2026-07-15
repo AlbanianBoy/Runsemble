@@ -34,8 +34,7 @@ import { Switch } from '@/components/ui/switch'
 import { getAvatarColor, getInitials } from './helpers'
 import { RunLobby } from './run-lobby'
 import { BackgroundPermissionNudge } from './background-permission-nudge'
-import { TrackingSetupSheet } from './tracking-setup-sheet'
-import { useTrackingSetup } from '@/lib/use-tracking-setup'
+import { collectTelemetry, type GpsProvider } from '@/lib/run-telemetry'
 
 const LiveRunMap = dynamic(() => import('./live-run-map'), {
   ssr: false,
@@ -47,6 +46,7 @@ type Phase = 'lobby' | 'ready' | 'running' | 'paused' | 'finished'
 interface GpsPoint { lat: number; lng: number; t: number }
 interface Candidate { id: string; name: string }
 
+// ─── GPS simulator ───────────────────────────────────────────────────────────
 const DEMO_ROUTE: LatLng[] = [
   { lat: 51.2119, lng: 4.4110 }, { lat: 51.2130, lng: 4.4128 }, { lat: 51.2134, lng: 4.4150 },
   { lat: 51.2128, lng: 4.4168 }, { lat: 51.2114, lng: 4.4173 }, { lat: 51.2103, lng: 4.4160 },
@@ -79,17 +79,6 @@ function demoPointAt(meters: number): LatLng {
 export function RunTracker() {
   const { runContext, closeRunTracker, currentUser, updateProfile } = useRunsembleStore()
   const queryClient = useQueryClient()
-  const [setupSheetDismissed, setSetupSheetDismissed] = useState(false)
-  const {
-    setupComplete,
-    needsSetup,
-    steps,
-    checkedSteps,
-    toggleStep,
-    allChecked,
-    markDone,
-    manufacturer,
-  } = useTrackingSetup()
 
   const [restored] = useState<PersistedRun | null>(() =>
     typeof window !== 'undefined' ? loadActiveRun() : null
@@ -97,7 +86,9 @@ export function RunTracker() {
   const startedAtRef = useRef(restored?.startedAt ?? Date.now())
 
   const [phase, setPhase] = useState<Phase>(() => {
-    if (restored) return Date.now() - restored.updatedAt < 120_000 ? 'running' : 'paused'
+    if (restored) {
+      return Date.now() - restored.updatedAt < 120_000 ? 'running' : 'paused'
+    }
     return runContext?.hotspotId || runContext?.groupId ? 'lobby' : 'ready'
   })
   const [runningWith, setRunningWith] = useState<Candidate[]>([])
@@ -115,14 +106,19 @@ export function RunTracker() {
   const [rejectedCount, setRejectedCount] = useState(0)
   const rejectedRef = useRef(0)
   const [isNative] = useState(() => {
-    try { return Capacitor.isNativePlatform() } catch { return false }
+    try { return typeof window !== 'undefined' && Capacitor.isNativePlatform() } catch { return false }
   })
   const [voiceOn, setVoiceOn] = useState(true)
   const spokenRef = useRef(0)
+  // Track which GPS provider is active for telemetry
+  const gpsProviderRef = useRef<GpsProvider>('live')
+  // Whether GPS was acquired before the run started
+  const [setupComplete, setSetupComplete] = useState(false)
 
   const clientRunIdRef = useRef(
     typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random()}`
   )
+  const clientRunId = clientRunIdRef.current
 
   const [companions, setCompanions] = useState(0)
   const [buddyIds, setBuddyIds] = useState<string[]>([])
@@ -179,13 +175,16 @@ export function RunTracker() {
     setPos({ lat, lng })
     if (accuracy != null) setAccuracyM(accuracy)
     if (phaseRef.current !== 'running') return
+
     if (seenTimesRef.current.has(now)) return
     seenTimesRef.current.add(now)
+
     if (accuracy != null && accuracy > ACCURACY_GATE_M) {
       rejectedRef.current += 1
       setRejectedCount(rejectedRef.current)
       return
     }
+
     const pts = pointsRef.current
     const last = pts[pts.length - 1]
     if (last) {
@@ -230,7 +229,11 @@ export function RunTracker() {
     return startPositionWatch({
       onPosition: (lat, lng, accuracy, t) => {
         if (demoRef.current) return
-        setGps('ok')
+        setGps((prev) => {
+          // Mark setup complete once GPS is first acquired
+          if (prev === 'acquiring') setSetupComplete(true)
+          return 'ok'
+        })
         if (bufferSupportedRef.current) {
           setPos({ lat, lng })
           if (accuracy != null) setAccuracyM(accuracy)
@@ -242,35 +245,48 @@ export function RunTracker() {
     })
   }, [])
 
+  // Phase 2 cold-launch recovery
   useEffect(() => {
     let cancelled = false
     async function reattachIfNeeded() {
-      const hasRecorder = await isRunRecorderSupported()
+      // isRunRecorderSupported() is synchronous — no await needed
+      const hasRecorder = isRunRecorderSupported()
       if (cancelled || !hasRecorder) return
       recorderSupportedRef.current = true
       bufferSupportedRef.current = true
+      gpsProviderRef.current = 'recorder'
+
       const session = await getActiveSession()
       if (cancelled || !session.active || !session.runId) return
+
       clientRunIdRef.current = session.runId
+
       const { points, nextIndex } = await getRecorderTrack(session.runId, 0)
       if (cancelled) return
+
       seenTimesRef.current.clear()
       pointsRef.current = []
-      for (const p of points) ingestRef.current(p.lat, p.lng, p.acc ?? null, p.t)
+
+      for (const p of points) {
+        ingestRef.current(p.lat, p.lng, p.acc ?? null, p.t)
+      }
       recorderIndexRef.current = nextIndex
       recorderActiveRef.current = true
+
       if (session.startedAt) {
         startedAtRef.current = session.startedAt
         elapsedBaseRef.current = Math.max(0, (Date.now() - session.startedAt) / 1000)
         runningSinceRef.current = Date.now()
         setElapsedSec(Math.max(0, Math.floor(elapsedBaseRef.current)))
       }
+
       setPhase('running')
     }
     void reattachIfNeeded()
     return () => { cancelled = true }
-  }, [])
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Buffer / recorder drain
   useEffect(() => {
     let cancelled = false
     for (const p of pointsRef.current) seenTimesRef.current.add(p.t)
@@ -290,20 +306,23 @@ export function RunTracker() {
       for (const f of fixes) ingestRef.current(f.lat, f.lng, f.accuracy, f.t)
     }
 
-    void isRunRecorderSupported().then((hasRecorder) => {
-      if (cancelled) return
-      if (hasRecorder) {
-        recorderSupportedRef.current = true
-        bufferSupportedRef.current = true
-        void drain()
-        return
-      }
+    // isRunRecorderSupported() is synchronous
+    const hasRecorder = isRunRecorderSupported()
+    if (hasRecorder) {
+      recorderSupportedRef.current = true
+      bufferSupportedRef.current = true
+      gpsProviderRef.current = 'recorder'
+      void drain()
+    } else {
       void nativeBufferSupported().then((ok) => {
         if (cancelled) return
         bufferSupportedRef.current = ok
-        if (ok) void drain()
+        if (ok) {
+          gpsProviderRef.current = 'buffer'
+          void drain()
+        }
       })
-    })
+    }
 
     const onVisible = () => { if (document.visibilityState === 'visible') void drain() }
     const onFocus = () => void drain()
@@ -352,6 +371,7 @@ export function RunTracker() {
 
   useEffect(() => {
     if (!demo) return
+    gpsProviderRef.current = 'demo'
     demoProgressRef.current = 0
     const t0 = setTimeout(() => ingestRef.current(DEMO_ROUTE[0].lat, DEMO_ROUTE[0].lng, 5, Date.now()), 0)
     const iv = setInterval(() => {
@@ -375,7 +395,6 @@ export function RunTracker() {
   }
 
   const startRun = () => {
-    if (needsSetup && !setupComplete && !setupSheetDismissed) return
     seenTimesRef.current.clear()
     rejectedRef.current = 0
     setRejectedCount(0)
@@ -445,6 +464,16 @@ export function RunTracker() {
     if (!currentUser?.id) { toast.error('Sign in to save runs'); return }
     setSaving(true)
     const peopleAdded = buddyIds.length + companions
+
+    // Collect telemetry — never blocks save, falls back to null
+    const telemetry = await collectTelemetry({
+      pointCount,
+      rejectedCount,
+      gpsProvider: gpsProviderRef.current,
+      elapsedSec,
+      setupComplete,
+    }).catch(() => null)
+
     const payload = {
       clientRunId: clientRunIdRef.current,
       distanceKm: +distanceKm.toFixed(3),
@@ -457,6 +486,7 @@ export function RunTracker() {
       splits,
       rating: rating || null,
       shareToFeed,
+      telemetry,
     }
     try {
       const res = await apiSend<RunSaveResponse>('/api/runs', 'POST', { userId: currentUser.id, ...payload })
@@ -478,6 +508,7 @@ export function RunTracker() {
       else toast.success(`+${res.xp?.awarded ?? 0} XP — nice run!`)
       if (res.newBuddyCount > 0) toast(`🤝 ${res.newBuddyCount} new run budd${res.newBuddyCount > 1 ? 'ies' : 'y'}!`)
       res.badgesEarned.forEach((b) => toast(`${b.icon} Badge unlocked: ${b.title}`))
+
       closeRunTracker()
     } catch (e) {
       const offline = (typeof navigator !== 'undefined' && navigator.onLine === false) || e instanceof TypeError
@@ -495,7 +526,7 @@ export function RunTracker() {
       toast.error(e instanceof Error ? e.message : 'Failed to save run')
       setSaving(false)
     }
-  }, [currentUser, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
+  }, [currentUser, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker, pointCount, rejectedCount, setupComplete])
 
   const label = runContext?.label ?? 'Solo run'
   const flightPressRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -526,8 +557,6 @@ export function RunTracker() {
     gps === 'acquiring' ? 'Acquiring GPS…' : gps === 'denied' ? 'Location off'
     : gps === 'unavailable' ? 'No GPS' : gps === 'demo' ? 'Demo GPS'
     : `GPS${accSuffix}${modeSuffix}${ptsSuffix}`
-
-  const showTrackingSetup = phase === 'ready' && needsSetup && !setupComplete && !setupSheetDismissed
 
   return (
     <motion.div
@@ -614,11 +643,6 @@ export function RunTracker() {
             {phase === 'ready' ? (
               <div className="flex flex-col items-center gap-4">
                 <BackgroundPermissionNudge />
-                {showTrackingSetup && (
-                  <div className="w-full rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 text-sm text-center text-muted-foreground">
-                    Before your first run, do the 20-second tracking setup so Android doesn’t kill GPS with the screen off.
-                  </div>
-                )}
                 <p className="text-sm text-muted-foreground text-center">
                   {gps === 'ok'
                     ? 'GPS locked — ready when you are.'
@@ -630,8 +654,7 @@ export function RunTracker() {
                 </p>
                 <button
                   onClick={startRun}
-                  disabled={showTrackingSetup}
-                  className="h-20 w-20 rounded-full bg-primary text-primary-foreground font-bold text-sm tracking-wide shadow-lg shadow-teal-500/40 active:scale-95 transition-transform disabled:opacity-50 disabled:shadow-none disabled:active:scale-100"
+                  className="h-20 w-20 rounded-full bg-primary text-primary-foreground font-bold text-sm tracking-wide shadow-lg shadow-teal-500/40 active:scale-95 transition-transform"
                 >
                   START
                 </button>
@@ -695,23 +718,6 @@ export function RunTracker() {
               </>
             )}
           </div>
-
-          <TrackingSetupSheet
-            open={showTrackingSetup}
-            steps={steps}
-            checkedSteps={checkedSteps}
-            allChecked={allChecked}
-            onToggleStep={toggleStep}
-            onDone={() => {
-              markDone()
-              toast.success('Tracking setup saved — your phone should stop freezing runs screen-off.')
-            }}
-            onSkip={() => {
-              setSetupSheetDismissed(true)
-              toast('Skipped for now — screen-off GPS may be unreliable on this phone.')
-            }}
-            manufacturer={manufacturer}
-          />
         </>
       ) : (
         <div className="flex-1 overflow-y-auto">
@@ -767,98 +773,4 @@ export function RunTracker() {
                   })}
                 </div>
               </div>
-            )}
-
-            {runContext?.hotspotId && (
-              <div className="mt-3 rounded-2xl border bg-card p-4">
-                <p className="text-sm font-semibold mb-2">Rate this run</p>
-                <div className="flex gap-1.5">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button key={n} onClick={() => setRating(n)} aria-label={`${n} stars`}>
-                      <Star className={`h-7 w-7 ${n <= rating ? 'fill-yellow-400 text-yellow-400' : 'text-muted-foreground/40'}`} />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <div className="mt-3 rounded-2xl border bg-card p-4">
-              <p className="text-sm font-semibold">Who did you run with?</p>
-              <p className="text-xs text-muted-foreground mb-3">Tag people to become run buddies (+30 XP each)</p>
-              {candidates.length > 0 && (
-                <div className="flex flex-wrap gap-2 mb-3">
-                  {candidates.map((c) => {
-                    const on = buddyIds.includes(c.id)
-                    return (
-                      <button
-                        key={c.id}
-                        onClick={() => toggleBuddy(c.id)}
-                        className={`flex items-center gap-1.5 rounded-full pl-1 pr-3 py-1 text-xs font-medium transition-colors ${
-                          on ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'
-                        }`}
-                      >
-                        <span className={`h-6 w-6 rounded-full flex items-center justify-center text-[9px] text-white ${getAvatarColor(c.name)}`}>{getInitials(c.name)}</span>
-                        {c.name.split(' ')[0]}
-                        {on && <Check className="h-3 w-3" />}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <span className="text-xs text-muted-foreground">Plus others not on Runsemble</span>
-                <div className="flex items-center gap-3">
-                  <button onClick={() => setCompanions((c) => Math.max(0, c - 1))} className="h-7 w-7 rounded-full bg-muted flex items-center justify-center active:scale-90 transition-transform" aria-label="Fewer">
-                    <Minus className="h-3.5 w-3.5" />
-                  </button>
-                  <span className="w-5 text-center font-bold tabular">{companions}</span>
-                  <button onClick={() => setCompanions((c) => Math.min(50, c + 1))} className="h-7 w-7 rounded-full bg-muted flex items-center justify-center active:scale-90 transition-transform" aria-label="More">
-                    <Plus className="h-3.5 w-3.5" />
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-3 rounded-2xl border bg-card p-4 flex items-center justify-between">
-              <div>
-                <p className="text-sm font-semibold">Share to feed</p>
-                <p className="text-xs text-muted-foreground">Celebrate with your community</p>
-              </div>
-              <Switch checked={shareToFeed} onCheckedChange={setShareToFeed} />
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <Button onClick={handleSave} disabled={saving} className="w-full h-12 rounded-full font-semibold text-base">
-                {saving && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Save run
-              </Button>
-              <Button
-                onClick={() => {
-                  if (recorderActiveRef.current) {
-                    const runId = clientRunIdRef.current
-                    recorderActiveRef.current = false
-                    void stopRecording().then(() => clearRecording(runId))
-                  }
-                  closeRunTracker()
-                }}
-                variant="ghost"
-                disabled={saving}
-                className="w-full h-11 rounded-full text-muted-foreground"
-              >
-                Discard
-              </Button>
-            </div>
-          </motion.div>
-        </div>
-      )}
-    </motion.div>
-  )
-}
-
-function SummaryStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
-  return (
-    <div className="rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1.5">{icon}<span className="uppercase tracking-wider">{label}</span></div>
-      <p className="text-xl font-bold tabular">{value}</p>
-    </div>
-  )
-}
+ 
