@@ -1,20 +1,16 @@
 /**
  * RunRecorder — Phase 2 native-owned run tracking.
  *
- * This is the JS wrapper for the custom Capacitor plugin defined in
+ * JS wrapper for the custom Capacitor plugin defined in
  * native/run-recorder/src/definitions.ts.
  *
- * The web/browser path is 100% UNTOUCHED — this module is only active
- * when isRunRecorderSupported() returns true (i.e. on Android native).
- *
- * Current status: plugin is implemented natively. Wire in by:
- *   1. Registering the plugin (see capacitor.config.ts)
- *   2. Declaring the service in AndroidManifest.xml (see native/run-recorder/README.md)
- *   3. Switching run-tracker.tsx to use startTracking instead of startPositionWatch
- *      when isRunRecorderSupported() === true
+ * The web/browser path is 100% UNTOUCHED — this module is only
+ * active when isRunRecorderSupported() returns true (Android native).
  */
 
 import { Capacitor, registerPlugin } from '@capacitor/core';
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface RunPoint {
   t: number;
@@ -24,8 +20,14 @@ export interface RunPoint {
   provider?: string;
 }
 
+/** Legacy compact alias used by the old RecorderPoint interface in run-tracker.tsx */
+export type RecorderPoint = RunPoint;
+
 export interface ActiveSession {
+  /** null when no run is active */
   runId: string | null;
+  /** true when runId is non-null — kept for back-compat with run-tracker.tsx */
+  active: boolean;
   startedAt?: number;
 }
 
@@ -36,46 +38,50 @@ export interface GetTrackOptions {
 
 export interface GetTrackResult {
   points: RunPoint[];
+  /** next index to pass as sinceIndex on the following poll */
+  nextIndex: number;
   elapsedSec?: number;
   distanceKm?: number;
 }
 
-export interface RunRecorderPlugin {
+interface RunRecorderPlugin {
   startTracking(options: { runId: string }): Promise<void>;
   stopTracking(): Promise<void>;
-  getActiveSession(): Promise<ActiveSession>;
-  getTrack(options: GetTrackOptions): Promise<GetTrackResult>;
+  getActiveSession(): Promise<{ runId: string | null; startedAt?: number }>;
+  getTrack(options: { runId: string; sinceIndex: number }): Promise<{ points: RunPoint[] }>;
   clearTrack(options: { runId: string }): Promise<void>;
 }
 
 const RunRecorder = registerPlugin<RunRecorderPlugin>('RunRecorder');
 
+// ─── Support probe ────────────────────────────────────────────────────────────
+
 /**
- * Returns true when running in the Android native shell AND the
- * RunRecorder plugin is available. Always false in the browser.
+ * Sync check — returns true on Android native, false everywhere else.
+ * Use this for branch decisions inside effects.
  */
 export function isRunRecorderSupported(): boolean {
   try {
     return Capacitor.isNativePlatform();
-    // TODO: also probe the plugin once we have a no-op ping method
   } catch {
     return false;
   }
 }
 
 /**
- * Web fallback stub — throws immediately so callers know to use the
- * geo-watch.ts path instead.
+ * Async overload kept for backward-compat with run-tracker.tsx which calls:
+ *   const hasRecorder = await isRunRecorderSupported()
+ * Resolves immediately — there is no async work here, just wraps the sync check.
  */
-function webStub(): never {
-  throw new Error(
-    'RunRecorder is native-only. Use the web geolocation path (geo-watch.ts).'
-  );
+export async function isRunRecorderSupportedAsync(): Promise<boolean> {
+  return isRunRecorderSupported();
 }
+
+// ─── New namespaced API (runRecorder.xxx) ─────────────────────────────────────
 
 export const runRecorder = {
   async startTracking(options: { runId: string }): Promise<void> {
-    if (!isRunRecorderSupported()) return webStub();
+    if (!isRunRecorderSupported()) return;
     return RunRecorder.startTracking(options);
   },
 
@@ -85,13 +91,16 @@ export const runRecorder = {
   },
 
   async getActiveSession(): Promise<ActiveSession> {
-    if (!isRunRecorderSupported()) return { runId: null };
-    return RunRecorder.getActiveSession();
+    if (!isRunRecorderSupported()) return { runId: null, active: false };
+    const r = await RunRecorder.getActiveSession();
+    return { runId: r.runId ?? null, active: r.runId != null, startedAt: r.startedAt };
   },
 
   async getTrack(options: GetTrackOptions): Promise<GetTrackResult> {
-    if (!isRunRecorderSupported()) return { points: [] };
-    return RunRecorder.getTrack(options);
+    if (!isRunRecorderSupported()) return { points: [], nextIndex: options.sinceIndex ?? 0 };
+    const r = await RunRecorder.getTrack({ runId: options.runId, sinceIndex: options.sinceIndex ?? 0 });
+    const pts = r.points ?? [];
+    return { points: pts, nextIndex: (options.sinceIndex ?? 0) + pts.length };
   },
 
   async clearTrack(options: { runId: string }): Promise<void> {
@@ -100,5 +109,37 @@ export const runRecorder = {
   },
 };
 
-// Convenience re-export so run-tracker.tsx doesn't need two imports
-export type { RunPoint as RecorderPoint };
+// ─── Legacy flat exports (back-compat with run-tracker.tsx) ──────────────────
+// run-tracker.tsx on main imports these names directly. Keep them as thin
+// wrappers so no changes are needed in that file.
+
+/** @deprecated Use runRecorder.startTracking instead */
+export async function startRecording(runId: string): Promise<void> {
+  return runRecorder.startTracking({ runId });
+}
+
+/** @deprecated Use runRecorder.stopTracking instead */
+export async function stopRecording(): Promise<void> {
+  return runRecorder.stopTracking();
+}
+
+/** @deprecated Use runRecorder.getActiveSession instead */
+export async function getActiveSession(): Promise<ActiveSession> {
+  return runRecorder.getActiveSession();
+}
+
+/**
+ * @deprecated Use runRecorder.getTrack instead.
+ * Returns { points, nextIndex } matching the shape run-tracker.tsx expects.
+ */
+export async function getTrack(
+  runId: string,
+  sinceIndex: number,
+): Promise<{ points: RunPoint[]; nextIndex: number }> {
+  return runRecorder.getTrack({ runId, sinceIndex });
+}
+
+/** @deprecated Use runRecorder.clearTrack instead */
+export async function clearRecording(runId: string): Promise<void> {
+  return runRecorder.clearTrack({ runId });
+}
