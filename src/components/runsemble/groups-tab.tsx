@@ -54,11 +54,18 @@ export function GroupsTab() {
 
   const conversations = convData?.conversations ?? []
 
-  // Keep the Groups-tab badge in sync with actual unread count
+  // Keep the Groups-tab badge in sync with actual unread count.
+  // We track the last-synced total in a ref so we only call setUnreadDmCount
+  // when the number actually changes — calling it on every render would create
+  // an infinite update loop (store update → re-render → effect → store update…).
+  const lastUnreadTotal = useRef<number>(-1)
   useEffect(() => {
     const total = conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0)
-    setUnreadDmCount(total)
-  }, [conversations, setUnreadDmCount])
+    if (total !== lastUnreadTotal.current) {
+      lastUnreadTotal.current = total
+      setUnreadDmCount(total)
+    }
+  })
 
   const groups: ApiGroup[] = groupsData?.groups ?? []
 
