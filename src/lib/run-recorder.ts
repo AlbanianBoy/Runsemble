@@ -20,13 +20,12 @@ export interface RunPoint {
   provider?: string;
 }
 
-/** Legacy compact alias used by the old RecorderPoint interface in run-tracker.tsx */
+/** Legacy alias kept for back-compat with run-tracker.tsx */
 export type RecorderPoint = RunPoint;
 
 export interface ActiveSession {
-  /** null when no run is active */
   runId: string | null;
-  /** true when runId is non-null — kept for back-compat with run-tracker.tsx */
+  /** true when runId is non-null — kept for back-compat */
   active: boolean;
   startedAt?: number;
 }
@@ -38,7 +37,6 @@ export interface GetTrackOptions {
 
 export interface GetTrackResult {
   points: RunPoint[];
-  /** next index to pass as sinceIndex on the following poll */
   nextIndex: number;
   elapsedSec?: number;
   distanceKm?: number;
@@ -52,86 +50,93 @@ interface RunRecorderPlugin {
   clearTrack(options: { runId: string }): Promise<void>;
 }
 
-const RunRecorder = registerPlugin<RunRecorderPlugin>('RunRecorder');
+// ─── Lazy singleton ───────────────────────────────────────────────────────────
+// registerPlugin must NOT be called at module-load time: Next.js evaluates
+// this module on the server (SSR) AND in the browser bundle, which causes
+// Capacitor to throw "plugin already registered". We defer the call to the
+// first actual use, guarded by a typeof-window check so it never runs SSR.
+
+let _plugin: RunRecorderPlugin | null = null;
+
+function getPlugin(): RunRecorderPlugin {
+  if (!_plugin) {
+    if (typeof window === 'undefined') {
+      // SSR — return a no-op stub so imports don't crash on the server
+      _plugin = {
+        startTracking: async () => {},
+        stopTracking:  async () => {},
+        getActiveSession: async () => ({ runId: null }),
+        getTrack: async () => ({ points: [] }),
+        clearTrack: async () => {},
+      } as unknown as RunRecorderPlugin;
+    } else {
+      _plugin = registerPlugin<RunRecorderPlugin>('RunRecorder');
+    }
+  }
+  return _plugin;
+}
 
 // ─── Support probe ────────────────────────────────────────────────────────────
 
-/**
- * Sync check — returns true on Android native, false everywhere else.
- * Use this for branch decisions inside effects.
- */
+/** Returns true on Android native, false everywhere else (including SSR). */
 export function isRunRecorderSupported(): boolean {
   try {
-    return Capacitor.isNativePlatform();
+    return typeof window !== 'undefined' && Capacitor.isNativePlatform();
   } catch {
     return false;
   }
 }
 
-/**
- * Async overload kept for backward-compat with run-tracker.tsx which calls:
- *   const hasRecorder = await isRunRecorderSupported()
- * Resolves immediately — there is no async work here, just wraps the sync check.
- */
-export async function isRunRecorderSupportedAsync(): Promise<boolean> {
-  return isRunRecorderSupported();
-}
-
-// ─── New namespaced API (runRecorder.xxx) ─────────────────────────────────────
+// ─── Namespaced API ───────────────────────────────────────────────────────────
 
 export const runRecorder = {
   async startTracking(options: { runId: string }): Promise<void> {
     if (!isRunRecorderSupported()) return;
-    return RunRecorder.startTracking(options);
+    return getPlugin().startTracking(options);
   },
 
   async stopTracking(): Promise<void> {
     if (!isRunRecorderSupported()) return;
-    return RunRecorder.stopTracking();
+    return getPlugin().stopTracking();
   },
 
   async getActiveSession(): Promise<ActiveSession> {
     if (!isRunRecorderSupported()) return { runId: null, active: false };
-    const r = await RunRecorder.getActiveSession();
+    const r = await getPlugin().getActiveSession();
     return { runId: r.runId ?? null, active: r.runId != null, startedAt: r.startedAt };
   },
 
   async getTrack(options: GetTrackOptions): Promise<GetTrackResult> {
     if (!isRunRecorderSupported()) return { points: [], nextIndex: options.sinceIndex ?? 0 };
-    const r = await RunRecorder.getTrack({ runId: options.runId, sinceIndex: options.sinceIndex ?? 0 });
+    const r = await getPlugin().getTrack({ runId: options.runId, sinceIndex: options.sinceIndex ?? 0 });
     const pts = r.points ?? [];
     return { points: pts, nextIndex: (options.sinceIndex ?? 0) + pts.length };
   },
 
   async clearTrack(options: { runId: string }): Promise<void> {
     if (!isRunRecorderSupported()) return;
-    return RunRecorder.clearTrack(options);
+    return getPlugin().clearTrack(options);
   },
 };
 
 // ─── Legacy flat exports (back-compat with run-tracker.tsx) ──────────────────
-// run-tracker.tsx on main imports these names directly. Keep them as thin
-// wrappers so no changes are needed in that file.
 
-/** @deprecated Use runRecorder.startTracking instead */
+/** @deprecated Use runRecorder.startTracking */
 export async function startRecording(runId: string): Promise<void> {
   return runRecorder.startTracking({ runId });
 }
 
-/** @deprecated Use runRecorder.stopTracking instead */
+/** @deprecated Use runRecorder.stopTracking */
 export async function stopRecording(): Promise<void> {
   return runRecorder.stopTracking();
 }
 
-/** @deprecated Use runRecorder.getActiveSession instead */
+/** @deprecated Use runRecorder.getActiveSession */
 export async function getActiveSession(): Promise<ActiveSession> {
   return runRecorder.getActiveSession();
 }
 
-/**
- * @deprecated Use runRecorder.getTrack instead.
- * Returns { points, nextIndex } matching the shape run-tracker.tsx expects.
- */
+/** @deprecated Use runRecorder.getTrack */
 export async function getTrack(
   runId: string,
   sinceIndex: number,
@@ -139,7 +144,7 @@ export async function getTrack(
   return runRecorder.getTrack({ runId, sinceIndex });
 }
 
-/** @deprecated Use runRecorder.clearTrack instead */
+/** @deprecated Use runRecorder.clearTrack */
 export async function clearRecording(runId: string): Promise<void> {
   return runRecorder.clearTrack({ runId });
 }
