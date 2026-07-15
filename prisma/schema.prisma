@@ -49,7 +49,6 @@ model User {
   sentInvites       RunInvite[] @relation("SentInvites")
   receivedInvites   RunInvite[] @relation("ReceivedInvites")
   earnedBadges      UserBadge[]
-  groupChats        GroupChatMessage[]
   runRatings        RunRating[]
   postLikes         PostLike[]
   postComments      PostComment[]
@@ -152,7 +151,7 @@ model RunGroup {
   updatedAt   DateTime @updatedAt
 
   members     GroupMember[]
-  chatMessages GroupChatMessage[]
+  chatMessages ChatMessage[]
   posts       FeedPost[]
   runSessions RunSession[]
   challenges  Challenge[]
@@ -231,7 +230,7 @@ model Notification {
   createdAt DateTime @default(now())
 
   user      User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
 }
@@ -264,32 +263,22 @@ model RunSession {
   @@index([userId])
 }
 
+// Unified message model for both DMs (recipientId set) and group chat (groupId set).
+// Exactly one of recipientId or groupId must be non-null.
 model ChatMessage {
   id          String   @id @default(cuid())
   senderId    String
-  recipientId String?
-  groupId     String?
+  recipientId String?  // set for DMs
+  groupId     String?  // set for group chat
   content     String
-  read        Boolean  @default(false)
+  read        Boolean  @default(false) // only meaningful for DMs
   createdAt   DateTime @default(now())
 
-  sender      User     @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
-  recipient   User?    @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender      User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User?     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
+  group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   @@index([senderId, recipientId])
-  @@index([groupId])
-}
-
-model GroupChatMessage {
-  id          String   @id @default(cuid())
-  groupId     String
-  senderId    String
-  content     String
-  createdAt   DateTime @default(now())
-
-  group       RunGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
-  sender      User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
   @@index([groupId])
 }
 
