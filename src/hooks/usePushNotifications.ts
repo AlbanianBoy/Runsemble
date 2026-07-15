@@ -2,8 +2,9 @@
 // Registers the device for FCM push notifications and uploads the token to the
 // server. Safe to call on every app mount — it's a no-op on web.
 // Tapping a notification deep-links into the app:
-//   - data.type === 'message' + data.senderId/senderName → opens DM sheet
-//   - any other notification → switches to Messages tab
+//   - data.type === 'message' + data.senderId/senderName → switches to Groups
+//     tab and opens the DM sheet with the sender
+//   - any other notification → switches to Groups tab (where DMs live)
 
 import { useEffect } from 'react'
 import { useRunsembleStore } from '@/lib/store'
@@ -22,7 +23,7 @@ async function registerPush({
   setActiveTab,
 }: {
   openDm: (partner: { id: string; name: string }) => void
-  setActiveTab: (tab: 'feed' | 'map' | 'hotspots' | 'groups' | 'messages' | 'profile') => void
+  setActiveTab: (tab: 'feed' | 'map' | 'hotspots' | 'groups' | 'profile') => void
 }) {
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
@@ -47,24 +48,29 @@ async function registerPush({
       console.error('FCM registration error:', err)
     })
 
-    // ── 2. Notification tap handler (deep linking) ─────────────────────────
-    // Fired when the user taps a notification while the app is backgrounded.
+    // ── 2. Notification tap handler (deep linking) ────────────────────────────
+    // Fired when the user taps a notification while the app is backgrounded
+    // OR cold-started via a notification.
     PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
       const data = action.notification.data as {
         type?: string
         senderId?: string
         senderName?: string
       }
+
+      // Always land on the Groups tab first (that's where DMs live).
+      setActiveTab('groups')
+
       if (data?.type === 'message' && data.senderId && data.senderName) {
-        // Open the DM sheet directly with the sender
-        openDm({ id: data.senderId, name: data.senderName })
-      } else {
-        // Fallback: go to the Messages tab
-        setActiveTab('messages')
+        // Small delay so the Groups tab and Zustand store are fully mounted
+        // before we try to open the DM sheet (matters on cold-start).
+        setTimeout(() => {
+          openDm({ id: data.senderId!, name: data.senderName! })
+        }, 300)
       }
     })
 
-    // ── 3. Permissions ────────────────────────────────────────────────────
+    // ── 3. Permissions ────────────────────────────────────────────────────────
     let permStatus = await PushNotifications.checkPermissions()
     if (permStatus.receive === 'prompt') {
       permStatus = await PushNotifications.requestPermissions()
@@ -74,7 +80,7 @@ async function registerPush({
       return
     }
 
-    // ── 4. Register ──────────────────────────────────────────────────────
+    // ── 4. Register ───────────────────────────────────────────────────────────
     await PushNotifications.register()
   } catch {
     // Not running inside Capacitor (plain browser) — ignore.

@@ -60,7 +60,6 @@ let cachedToken: { token: string; exp: number } | null = null
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.exp > Date.now() / 1000 + 60) return cachedToken.token
   const jwt = await makeJwt()
-  // urn:ietf:params:oauth:grant-type:jwt-bearer — note: oauth NOT oauth2
   const grantType = encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')
   const body = `grant_type=${grantType}&assertion=${jwt}`
   const res = await fetch(TOKEN_ENDPOINT, {
@@ -82,12 +81,22 @@ export interface PushPayload {
   token: string
   title: string
   body?: string | null
+  // Deep-link data — included in every message notification so the client
+  // can open the correct DM sheet when the notification is tapped.
+  senderId?: string
+  senderName?: string
 }
 
 export async function sendPush(payload: PushPayload): Promise<void> {
   if (!getPrivateKey()) return
   try {
     const accessToken = await getAccessToken()
+
+    // FCM data fields must all be strings.
+    const data: Record<string, string> = { type: 'message' }
+    if (payload.senderId) data.senderId = payload.senderId
+    if (payload.senderName) data.senderName = payload.senderName
+
     const res = await fetch(FCM_ENDPOINT, {
       method: 'POST',
       headers: {
@@ -97,10 +106,13 @@ export async function sendPush(payload: PushPayload): Promise<void> {
       body: JSON.stringify({
         message: {
           token: payload.token,
+          // notification block shows the visible push banner
           notification: {
             title: payload.title,
             body: payload.body ?? '',
           },
+          // data block is passed through to the app for deep-linking
+          data,
         },
       }),
     })
