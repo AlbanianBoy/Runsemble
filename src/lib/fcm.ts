@@ -60,9 +60,8 @@ let cachedToken: { token: string; exp: number } | null = null
 async function getAccessToken(): Promise<string> {
   if (cachedToken && cachedToken.exp > Date.now() / 1000 + 60) return cachedToken.token
   const jwt = await makeJwt()
-  // Build body as a plain string to avoid any URLSearchParams encoding quirks
-  // that cause Google to reject the grant_type.
-  const grantType = encodeURIComponent('urn:ietf:params:oauth2:grant-type:jwt-bearer')
+  // urn:ietf:params:oauth:grant-type:jwt-bearer — note: oauth NOT oauth2
+  const grantType = encodeURIComponent('urn:ietf:params:oauth:grant-type:jwt-bearer')
   const body = `grant_type=${grantType}&assertion=${jwt}`
   const res = await fetch(TOKEN_ENDPOINT, {
     method: 'POST',
