@@ -12,6 +12,7 @@ const config: CapacitorConfig = {
   server: {
     url: 'https://runsemble.net',
     cleartext: false,
+    errorPath: 'offline.html', // shown when runsemble.net is unreachable
   },
   backgroundColor: '#faf8f6',
   android: {
