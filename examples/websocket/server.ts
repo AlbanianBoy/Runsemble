@@ -2,12 +2,28 @@ import { createServer } from 'http'
 import { Server } from 'socket.io'
 
 const httpServer = createServer()
+
+// R-CBDF9: restrict CORS to known origins only — wildcard "*" would allow any
+// website to make credentialed cross-origin requests to the WebSocket server.
+const ALLOWED_ORIGINS = [
+  'https://runsemble.net',
+  'https://www.runsemble.net',
+  // Allow localhost in development only
+  ...(process.env.NODE_ENV !== 'production' ? ['http://localhost:3000', 'http://localhost:3001'] : []),
+]
+
 const io = new Server(httpServer, {
   // DO NOT change the path, it is used by Caddy to forward the request to the correct port
   path: '/',
   cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
+    origin: (origin, callback) => {
+      // Allow requests with no origin (e.g. native mobile app, curl)
+      if (!origin) return callback(null, true)
+      if (ALLOWED_ORIGINS.includes(origin)) return callback(null, true)
+      callback(new Error(`CORS: origin '${origin}' not allowed`))
+    },
+    methods: ['GET', 'POST'],
+    credentials: true,
   },
   pingTimeout: 60000,
   pingInterval: 25000,
