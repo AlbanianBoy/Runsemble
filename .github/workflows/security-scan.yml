@@ -1,0 +1,21 @@
+name: Security Scan
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+  security-events: write  # Required for SARIF upload to Security tab
+  pull-requests: write    # Required for PR comments
+
+jobs:
+  rafter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Raftersecurity/rafter-cli/github-action@v1
+        with:
+          api-key: ${{ secrets.RAFTER_API_KEY }}
+          # scan-mode: fast        # fast | plus  (default: fast)
+          # severity-threshold: high  # critical | high | medium | low | none
