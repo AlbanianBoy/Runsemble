@@ -20,6 +20,11 @@ export type NotificationType =
 export interface NotifySpec {
   userId: string
   actorId?: string | null
+  /**
+   * Display name of the actor. Only needed for a DM push: tapping it opens the
+   * conversation sheet, which needs a name to render before any fetch resolves.
+   */
+  actorName?: string | null
   type: NotificationType
   title: string
   body?: string | null
@@ -48,9 +53,21 @@ export async function notify(spec: NotifySpec): Promise<void> {
       db.user.findUnique({ where: { id: spec.userId }, select: { fcmToken: true } }),
     ])
 
-    // Fire push if the user has a registered device token.
+    // Fire push if the user has a registered device token. The type and entity
+    // travel with it: the client routes a tap on them, and a push that doesn't
+    // say what it is lands the user on whatever screen is hardcoded.
     if (user?.fcmToken) {
-      await sendPush({ token: user.fcmToken, title: spec.title, body: spec.body })
+      await sendPush({
+        token: user.fcmToken,
+        title: spec.title,
+        body: spec.body,
+        type: spec.type,
+        entityId: spec.entityId ?? null,
+        // For a DM the actor is the person to open a conversation with.
+        ...(spec.type === 'group_message' && spec.actorId
+          ? { senderId: spec.actorId, senderName: spec.actorName ?? 'Someone' }
+          : {}),
+      })
     }
   } catch (e) {
     console.error('notify failed (non-fatal):', e)

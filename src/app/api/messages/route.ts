@@ -133,6 +133,7 @@ export async function POST(request: NextRequest) {
     await notify({
       userId: recipientId,
       actorId: senderId,
+      actorName: sender?.name ?? null,
       type: 'group_message',
       title: `${sender?.name ?? 'Someone'} messaged you`,
       body: content.trim().slice(0, 60),

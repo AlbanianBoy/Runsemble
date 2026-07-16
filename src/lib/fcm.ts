@@ -81,8 +81,15 @@ export interface PushPayload {
   token: string
   title: string
   body?: string | null
-  // Deep-link data — included in every message notification so the client
-  // can open the correct DM sheet when the notification is tapped.
+  /**
+   * What actually happened — 'like', 'badge', 'group_message', and so on. The
+   * client routes a tap on this and refreshes the right data on arrival, so a
+   * push that misreports itself sends the user to the wrong screen.
+   */
+  type?: string
+  /** The thing the notification is about (post id, run id, sender id). */
+  entityId?: string | null
+  // Deep-link data for DMs specifically, so the client can open the right sheet.
   senderId?: string
   senderName?: string
 }
@@ -93,7 +100,11 @@ export async function sendPush(payload: PushPayload): Promise<void> {
     const accessToken = await getAccessToken()
 
     // FCM data fields must all be strings.
-    const data: Record<string, string> = { type: 'message' }
+    // This used to be hardcoded to 'message', which made every push claim to be
+    // a DM — a badge, a like and a hotspot reminder all arrived identically
+    // labelled, so the client had nothing to route on.
+    const data: Record<string, string> = { type: payload.type ?? 'message' }
+    if (payload.entityId) data.entityId = payload.entityId
     if (payload.senderId) data.senderId = payload.senderId
     if (payload.senderName) data.senderName = payload.senderName
 

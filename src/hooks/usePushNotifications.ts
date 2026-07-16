@@ -1,19 +1,35 @@
 // ─── usePushNotifications ───────────────────────────────────────────────────────
-// Registers the device for FCM push notifications and uploads the token to the
-// server. Safe to call on every app mount — it's a no-op on web.
-// Tapping a notification deep-links into the app:
-//   - data.type === 'message' + data.senderId/senderName → switches to Groups
-//     tab and opens the DM sheet with the sender
-//   - any other notification → switches to Groups tab (where DMs live)
+// Registers the device for FCM and uploads the token. No-op on web.
+//
+// Also the app's real-time layer, which it already had and wasn't using. A push
+// reaches the device in about a second; nothing listened for one arriving while
+// the app was open, so a delivered DM still sat there until the next 5s poll.
+// Now an arriving push invalidates whatever it made stale, and the existing poll
+// becomes the fallback for when a push is missed or permission was refused.
+//
+// This is why there's no SSE or WebSocket here: on serverless every open stream
+// holds a function invocation for its whole life, and with no pub/sub behind it
+// the handler would poll the database anyway — polling with extra steps, and a
+// bill. The push channel already exists, is already paid for, and already knows
+// when something happened.
 
 import { useEffect } from 'react'
+import { useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
+import { tabForPush, isDmPush, queryKeysForPush, type PushTab } from '@/lib/push-routing'
 
 export function usePushNotifications() {
   const { openDm, setActiveTab } = useRunsembleStore()
+  const queryClient = useQueryClient()
 
   useEffect(() => {
-    registerPush({ openDm, setActiveTab })
+    const invalidate = (type: string | undefined) => {
+      for (const key of queryKeysForPush(type)) {
+        // Prefix match: keys are ['conversations', userId] and the like.
+        queryClient.invalidateQueries({ queryKey: [key] })
+      }
+    }
+    registerPush({ openDm, setActiveTab, invalidate })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
@@ -21,9 +37,11 @@ export function usePushNotifications() {
 async function registerPush({
   openDm,
   setActiveTab,
+  invalidate,
 }: {
   openDm: (partner: { id: string; name: string }) => void
-  setActiveTab: (tab: 'feed' | 'map' | 'hotspots' | 'groups' | 'profile') => void
+  setActiveTab: (tab: PushTab) => void
+  invalidate: (type: string | undefined) => void
 }) {
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
@@ -48,20 +66,30 @@ async function registerPush({
       console.error('FCM registration error:', err)
     })
 
-    // ── 2. Notification tap handler (deep linking) ────────────────────────────
+    // ── 2. Arriving while the app is open ─────────────────────────────────────
+    // The push is the event; treat it as one. Without this the data it describes
+    // sits stale until a poll happens to notice.
+    PushNotifications.addListener('pushNotificationReceived', (notification) => {
+      const data = (notification.data ?? {}) as { type?: string }
+      invalidate(data.type)
+    })
+
+    // ── 3. Notification tap handler (deep linking) ────────────────────────────
     // Fired when the user taps a notification while the app is backgrounded
     // OR cold-started via a notification.
     PushNotifications.addListener('pushNotificationActionPerformed', (action) => {
-      const data = action.notification.data as {
+      const data = (action.notification.data ?? {}) as {
         type?: string
         senderId?: string
         senderName?: string
       }
 
-      // Always land on the Groups tab first (that's where DMs live).
-      setActiveTab('groups')
+      // Land where the thing actually is. This used to be Groups for everything,
+      // so a badge or a like took you to your conversations.
+      setActiveTab(tabForPush(data.type))
+      invalidate(data.type)
 
-      if (data?.type === 'message' && data.senderId && data.senderName) {
+      if (isDmPush(data)) {
         // Small delay so the Groups tab and Zustand store are fully mounted
         // before we try to open the DM sheet (matters on cold-start).
         setTimeout(() => {
