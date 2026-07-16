@@ -5,8 +5,8 @@ import { getSessionUser } from '@/lib/auth'
 import { canViewPost } from '@/lib/feed-access'
 
 // Toggle a like for a post on behalf of a user. Idempotent per (post, user):
-// calling it flips the like on/off and keeps the denormalised `likes` count in
-// sync with the real PostLike rows via a transaction so they can never drift.
+// calling it flips the like on/off. The PostLike rows are the only source of
+// truth — the count is derived, so there is no second copy to drift from.
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -29,18 +29,13 @@ export async function POST(
       where: { postId_userId: { postId: id, userId } },
     })
 
-    // Run the like toggle and counter update atomically so they can never drift.
     const liked = !existing
-    const [, updatedPost] = await db.$transaction([
-      existing
-        ? db.postLike.delete({ where: { id: existing.id } })
-        : db.postLike.create({ data: { postId: id, userId } }),
-      db.feedPost.update({
-        where: { id },
-        data: { likes: liked ? { increment: 1 } : { decrement: 1 } },
-        select: { likes: true },
-      }),
-    ])
+    if (existing) {
+      await db.postLike.delete({ where: { id: existing.id } })
+    } else {
+      await db.postLike.create({ data: { postId: id, userId } })
+    }
+    const likes = await db.postLike.count({ where: { postId: id } })
 
     // Notify the post author — outside the transaction since it's best-effort.
     if (liked && post.authorId !== userId) {
@@ -56,7 +51,7 @@ export async function POST(
       })
     }
 
-    return NextResponse.json({ liked, likes: updatedPost.likes })
+    return NextResponse.json({ liked, likes })
   } catch (error) {
     console.error('Error toggling like:', error)
     return NextResponse.json({ error: 'Failed to like post' }, { status: 500 })

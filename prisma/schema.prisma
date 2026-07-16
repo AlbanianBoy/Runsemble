@@ -64,7 +64,13 @@ model User {
   sessions          Session[]
   verificationTokens VerificationToken[]
 
-  @@index([xp]) // leaderboard ORDER BY xp DESC — avoids full table scan
+  // The leaderboard sorts by any of these; each needs its own index or the board
+  // degrades to a full scan + sort. xp is the default board, the rest are one tap away.
+  @@index([xp])
+  @@index([streak])
+  @@index([totalRuns])
+  @@index([totalDistanceKm])
+  @@index([totalPeopleRunWith])
 }
 
 // Login sessions — token lives in an httpOnly cookie.
@@ -144,7 +150,6 @@ model RunGroup {
   isPublic    Boolean  @default(true)
   coverImage  String?
   city        String   @default("Antwerp")
-  totalKmThisWeek Float @default(0) // legacy — km/week is computed from RunSessions
   memberCount Int      @default(0)
   lobbyStartedAt DateTime? // set when someone taps "Start together" in the group lobby
   createdBy   String?
@@ -180,8 +185,6 @@ model FeedPost {
   imageUrl    String?
   postType    String   @default("moment") // moment, milestone, question, challenge
   runSessionId String? // set when the post shares a tracked run (route card)
-  likes       Int      @default(0)
-  comments    Int      @default(0)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -279,6 +282,11 @@ model ChatMessage {
   recipient   User?     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
   group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
+  // "exactly one of recipientId / groupId" is enforced in the database by the
+  // CHECK constraint ChatMessage_dm_xor_group (added in
+  // 20260716120000_drop_stale_counters_add_indexes_xor). Prisma cannot express
+  // CHECK constraints, so `prisma db push` will not recreate it — use
+  // `migrate deploy`/`migrate dev`, or the guarantee is silently lost.
   @@index([senderId, recipientId])
   @@index([groupId])
 }

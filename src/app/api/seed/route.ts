@@ -317,7 +317,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        totalKmThisWeek: 42.5,
         memberCount: 5,
         createdBy: 'user-maya',
       },
@@ -328,7 +327,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        totalKmThisWeek: 68.0,
         memberCount: 4,
         createdBy: 'user-jonas',
       },
@@ -339,7 +337,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        totalKmThisWeek: 35.0,
         memberCount: 3,
         createdBy: 'user-maya',
       },
@@ -350,7 +347,6 @@ async function seed() {
         isPublic: false,
         coverImage: null,
         city: 'Antwerp',
-        totalKmThisWeek: 52.0,
         memberCount: 3,
         createdBy: 'user-kai',
       },
@@ -421,8 +417,6 @@ async function seed() {
         groupId: null,
         content: 'Just crushed 10K in the rain at Stadspark! Nothing beats the feeling of a tough run done.',
         postType: 'moment',
-        likes: 12,
-        comments: 3,
       },
       {
         id: 'post-2',
@@ -430,8 +424,6 @@ async function seed() {
         groupId: null,
         content: 'Milestone: Completed my first 10K today! 1:02:34 - not fast, but I did it! Thanks to everyone in the Morning Runners group for the support',
         postType: 'milestone',
-        likes: 28,
-        comments: 8,
       },
       {
         id: 'post-3',
@@ -439,8 +431,6 @@ async function seed() {
         groupId: 'group-4',
         content: 'Sub-39 10K today! 38:47. The speed work is paying off.',
         postType: 'milestone',
-        likes: 15,
-        comments: 5,
       },
       {
         id: 'post-4',
@@ -448,8 +438,6 @@ async function seed() {
         groupId: 'group-1',
         content: 'Beautiful sunrise run this morning with the crew. 6 of us showed up at 6AM - the energy was amazing!',
         postType: 'moment',
-        likes: 19,
-        comments: 4,
       },
       {
         id: 'post-5',
@@ -457,8 +445,6 @@ async function seed() {
         groupId: null,
         content: 'Any tips for a beginner dealing with shin splints? I just started running 3 weeks ago and my shins are killing me.',
         postType: 'question',
-        likes: 8,
-        comments: 12,
       },
       {
         id: 'post-6',
@@ -466,8 +452,6 @@ async function seed() {
         groupId: 'group-2',
         content: "Who's in for the 18K long run this Sunday? Route: Hobokense Polder -> Blokkersdijk -> Scheldekaaien and back. Pace: ~5:45/km",
         postType: 'challenge',
-        likes: 7,
-        comments: 6,
       },
       {
         id: 'post-7',
@@ -475,8 +459,6 @@ async function seed() {
         groupId: 'group-3',
         content: 'Found an amazing new trail section near Linkeroever! Roots, mud, and a hidden bridge - pure trail paradise.',
         postType: 'moment',
-        likes: 14,
-        comments: 2,
       },
       {
         id: 'post-8',
@@ -484,8 +466,6 @@ async function seed() {
         groupId: null,
         content: "Streak day 21! Three weeks of running every single day. The kids think I'm crazy but it feels incredible.",
         postType: 'milestone',
-        likes: 22,
-        comments: 7,
       },
       {
         id: 'post-9',
@@ -493,8 +473,6 @@ async function seed() {
         groupId: null,
         content: 'Yoga + easy 5K = perfect Saturday morning. Balance is everything.',
         postType: 'moment',
-        likes: 16,
-        comments: 3,
       },
       {
         id: 'post-10',
@@ -502,8 +480,6 @@ async function seed() {
         groupId: 'group-3',
         content: 'Trail Tuesday this week: Linkeroever forest loop, 7K. Bring your trail shoes and sense of adventure! Meeting at 18:30.',
         postType: 'challenge',
-        likes: 9,
-        comments: 4,
       },
     ],
   })
@@ -657,15 +633,16 @@ async function seed() {
     data: { isOfficial: true },
   })
 
-  // Backfill real PostLike rows so like counts are toggleable from the start.
-  const seededPosts = await db.feedPost.findMany({ select: { id: true, likes: true } })
+  // Give posts real PostLike rows so the counts are toggleable from the start.
+  // These rows ARE the count — there is no counter column to keep in step.
+  const seededPosts = await db.feedPost.findMany({ select: { id: true }, orderBy: { createdAt: 'asc' } })
   const seededUserIds = seededUsers.map((u) => u.id)
-  for (const p of seededPosts) {
-    const likers = seededUserIds.slice(0, Math.min(p.likes, seededUserIds.length))
+  for (const [i, p] of seededPosts.entries()) {
+    // A varied but deterministic spread, so the seeded feed doesn't look uniform.
+    const likers = seededUserIds.slice(0, (i * 3 + 2) % (seededUserIds.length + 1))
     if (likers.length > 0) {
       await db.postLike.createMany({ data: likers.map((userId) => ({ postId: p.id, userId })) })
     }
-    await db.feedPost.update({ where: { id: p.id }, data: { likes: likers.length } })
   }
 
   console.log('Seed complete!')

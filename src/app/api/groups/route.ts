@@ -31,7 +31,7 @@ export async function GET() {
     })
 
     // Honest stat: "km this week" is computed from members' real tracked runs
-    // since Monday (the stored totalKmThisWeek column is legacy seed data).
+    // since Monday. There is no stored counter to fall out of date.
     const weekStart = new Date()
     weekStart.setHours(0, 0, 0, 0)
     weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))

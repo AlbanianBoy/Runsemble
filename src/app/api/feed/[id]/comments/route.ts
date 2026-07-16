@@ -65,7 +65,6 @@ export async function POST(
     })
 
     const count = await db.postComment.count({ where: { postId: id } })
-    await db.feedPost.update({ where: { id }, data: { comments: count } })
 
     if (post.authorId !== authorId) {
       await notify({
