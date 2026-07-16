@@ -347,7 +347,7 @@ export function RunTracker() {
     }
     void reattachIfNeeded()
     return () => { cancelled = true }
-  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [])
 
   // Pull collected fixes into the run whenever the app is awake. Two possible
   // native sources, in order of preference:

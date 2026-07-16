@@ -30,7 +30,6 @@ export function usePushNotifications() {
       }
     }
     registerPush({ openDm, setActiveTab, invalidate })
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 }
 
