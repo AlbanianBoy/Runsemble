@@ -30,7 +30,7 @@ export function usePushNotifications() {
       }
     }
     registerPush({ openDm, setActiveTab, invalidate })
-  }, [])
+  }, [openDm, setActiveTab, queryClient])
 }
 
 async function registerPush({
