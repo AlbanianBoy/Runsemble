@@ -8,7 +8,10 @@ export type { RankTier }
 export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 export type OnboardingStep = 'welcome' | 'profile' | 'verify' | 'login' | 'runs' | 'complete' | 'done'
 export type PaceLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
-export type SchedulePreference = 'morning' | 'afternoon' | 'evening' | 'anytime'
+// Multi-select: stored as a string[] in the client; serialised as a
+// comma-separated string when sent to the server (e.g. "morning,evening").
+export type ScheduleSlot = 'morning' | 'afternoon' | 'evening'
+export type SchedulePreference = ScheduleSlot[]
 
 export interface UserProfile {
   id: string

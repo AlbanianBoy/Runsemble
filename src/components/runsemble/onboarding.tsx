@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation } from '@tanstack/react-query'
 import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRunsembleStore, type UserProfile, type PaceLevel, type SchedulePreference } from '@/lib/store'
+import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -17,8 +17,6 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { AudienceBadge, formatDuration } from './helpers'
 
 // ─── API → store mapping ─────────────────────────────────────────────────────
-// One place that turns a user object from any auth endpoint into the store's
-// profile shape, with safe defaults.
 interface DbUser {
   id: string; name: string; email: string; emailVerified?: boolean
   avatar?: string | null; bio?: string | null; city?: string
@@ -31,6 +29,13 @@ interface DbUser {
 }
 
 export function toUserProfile(u: DbUser): UserProfile {
+  // schedulePreference arrives from the DB as a comma-separated string.
+  // Split into an array, filtering empty strings so new users get [].
+  const scheduleRaw = u.schedulePreference ?? ''
+  const schedulePreference = scheduleRaw
+    ? (scheduleRaw.split(',').map((s) => s.trim()).filter(Boolean) as ScheduleSlot[])
+    : []
+
   return {
     id: u.id,
     name: u.name,
@@ -43,7 +48,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     lng: u.lng ?? null,
     preferredSport: u.preferredSport ?? 'running',
     paceLevel: (u.paceLevel ?? 'beginner') as PaceLevel,
-    schedulePreference: (u.schedulePreference ?? 'evening') as SchedulePreference,
+    schedulePreference,
     xp: u.xp ?? 0,
     streak: u.streak ?? 0,
     longestStreak: u.longestStreak ?? 0,
@@ -67,7 +72,7 @@ const fadeUp = {
 
 /** Step indicator dots used across the onboarding screens */
 function StepDots({ current }: { current: number }) {
-  const steps = 3 // welcome=0, profile=1, first runs=2
+  const steps = 3
   return (
     <div className="flex items-center justify-center gap-2">
       {Array.from({ length: steps }).map((_, i) => (
@@ -99,9 +104,7 @@ export function OnboardingWelcome() {
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden gradient-brand">
-      {/* Subtle animated background pattern */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        {/* Large soft circles */}
         <motion.div
           className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-white/5"
           animate={{ scale: [1, 1.15, 1], x: [0, 10, 0], y: [0, -10, 0] }}
@@ -119,7 +122,6 @@ export function OnboardingWelcome() {
         />
       </div>
 
-      {/* Content */}
       <div className="relative z-10 flex flex-col items-center w-full">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -131,18 +133,13 @@ export function OnboardingWelcome() {
           <p className="text-white/80 text-lg">Because together is better.</p>
         </motion.div>
 
-        {/* Step dots */}
         <div className="mt-6 mb-8">
           <StepDots current={0} />
         </div>
 
         <AnimatePresence mode="wait">
           {!showResponse ? (
-            <motion.div
-              key="q"
-              {...fadeUp}
-              className="w-full max-w-sm"
-            >
+            <motion.div key="q" {...fadeUp} className="w-full max-w-sm">
               <p className="text-white/90 text-center text-lg mb-6 font-medium">
                 When did you last feel good after a workout?
               </p>
@@ -163,8 +160,6 @@ export function OnboardingWelcome() {
                   </motion.button>
                 ))}
               </div>
-
-              {/* Skip link */}
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -174,8 +169,6 @@ export function OnboardingWelcome() {
               >
                 Skip for now
               </motion.button>
-
-              {/* Returning users */}
               <motion.button
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -187,11 +180,7 @@ export function OnboardingWelcome() {
               </motion.button>
             </motion.div>
           ) : (
-            <motion.div
-              key="r"
-              {...fadeUp}
-              className="w-full max-w-sm text-center"
-            >
+            <motion.div key="r" {...fadeUp} className="w-full max-w-sm text-center">
               <motion.p
                 className="text-white text-2xl font-semibold mb-2"
                 initial={{ opacity: 0, y: 10 }}
@@ -236,6 +225,12 @@ export function OnboardingWelcome() {
   )
 }
 
+const SCHEDULE_OPTIONS: { id: ScheduleSlot; label: string; emoji: string }[] = [
+  { id: 'morning',   label: 'Morning',   emoji: '🌅' },
+  { id: 'afternoon', label: 'Afternoon', emoji: '☀️' },
+  { id: 'evening',   label: 'Evening',   emoji: '🌙' },
+]
+
 export function OnboardingProfile() {
   const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
   const [name, setName] = useState('')
@@ -245,15 +240,22 @@ export function OnboardingProfile() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [city, setCity] = useState('Antwerp')
   const [paceLevel, setPaceLevel] = useState('beginner')
-  const [schedule, setSchedule] = useState('evening')
+  // No preset — user must make an explicit choice. Multiple slots allowed.
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>([])
   const [bio, setBio] = useState('')
   const [loading, setLoading] = useState(false)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'ok' | 'denied'>('idle')
 
+  // Schedule is a preference, not a requirement — don't block submission.
   const canSubmit = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
 
-  // Ask for location so "runners near you" and the map centre on the real user.
+  const toggleSchedule = (slot: ScheduleSlot) => {
+    setSchedule((prev) =>
+      prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]
+    )
+  }
+
   const requestLocation = () => {
     if (typeof navigator === 'undefined' || !('geolocation' in navigator)) {
       setGeoStatus('denied')
@@ -275,7 +277,6 @@ export function OnboardingProfile() {
     setLoading(true)
     setErrorMsg(null)
     try {
-      // Real account: hashed password + session cookie, via /api/auth/signup.
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -286,7 +287,8 @@ export function OnboardingProfile() {
           consent,
           city,
           paceLevel,
-          schedulePreference: schedule,
+          // Send as comma-separated string; the DB column is now plain String.
+          schedulePreference: schedule.join(','),
           bio,
           lat: coords?.lat,
           lng: coords?.lng,
@@ -299,8 +301,6 @@ export function OnboardingProfile() {
         return
       }
       setCurrentUser(toUserProfile(data.user))
-      // Confirm the email first (skippable), then pick first runs — nobody
-      // should leave onboarding without a run on the calendar.
       setOnboardingStep('verify')
     } catch {
       setErrorMsg('Network error — please try again')
@@ -310,19 +310,14 @@ export function OnboardingProfile() {
 
   return (
     <div className="min-h-screen flex flex-col p-6 bg-background">
-      <motion.div
-        {...fadeUp}
-        className="flex-1 max-w-md mx-auto w-full"
-      >
-        {/* Step dots at the top */}
+      <motion.div {...fadeUp} className="flex-1 max-w-md mx-auto w-full">
         <div className="mb-6">
           <StepDots current={1} />
         </div>
 
         <h2 className="text-2xl font-bold mb-1">Set up your profile</h2>
-        <p className="text-muted-foreground mb-6">
-          This takes 30 seconds. We promise.
-        </p>
+        <p className="text-muted-foreground mb-6">This takes 30 seconds. We promise.</p>
+
         <div className="space-y-5">
           <div>
             <Label htmlFor="name">Name</Label>
@@ -391,6 +386,8 @@ export function OnboardingProfile() {
               </p>
             </div>
           </button>
+
+          {/* Pace — single-select radio tiles (unchanged) */}
           <div>
             <Label>Your pace</Label>
             <RadioGroup
@@ -415,28 +412,38 @@ export function OnboardingProfile() {
               ))}
             </RadioGroup>
           </div>
+
+          {/* Schedule — multi-select checkbox tiles, no preset */}
           <div>
-            <Label>When do you like to move?</Label>
-            <RadioGroup
-              value={schedule}
-              onValueChange={setSchedule}
-              className="mt-2 grid grid-cols-3 gap-2"
-            >
-              {['morning', 'afternoon', 'evening'].map(s => (
-                <Label
-                  key={s}
-                  className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
-                    schedule === s
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'border-border hover:border-primary/30 hover:bg-muted/50'
-                  }`}
-                >
-                  <RadioGroupItem value={s} />
-                  <span className="text-sm font-medium capitalize">{s}</span>
-                </Label>
-              ))}
-            </RadioGroup>
+            <Label>When do you like to move? <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {SCHEDULE_OPTIONS.map(({ id, label, emoji }) => {
+                const checked = schedule.includes(id)
+                return (
+                  <button
+                    key={id}
+                    type="button"
+                    onClick={() => toggleSchedule(id)}
+                    className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
+                      checked
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                    }`}
+                  >
+                    <span className="text-xl">{emoji}</span>
+                    <span className="text-sm font-medium">{label}</span>
+                    <Checkbox
+                      checked={checked}
+                      tabIndex={-1}
+                      className="pointer-events-none"
+                      aria-hidden
+                    />
+                  </button>
+                )
+              })}
+            </div>
           </div>
+
           <div>
             <Label htmlFor="bio">
               Bio <span className="text-muted-foreground">(optional)</span>
@@ -451,7 +458,7 @@ export function OnboardingProfile() {
             />
           </div>
         </div>
-        {/* Consent — required, and honest about what we process */}
+
         <label className="mt-6 flex items-start gap-3 cursor-pointer">
           <Checkbox
             checked={consent}
@@ -491,8 +498,6 @@ export function OnboardingProfile() {
   )
 }
 
-// Step 3: nobody leaves onboarding without a run on the calendar. Shows the
-// official recurring runs (falls back to any upcoming) with one-tap Join.
 export function OnboardingRuns() {
   const { setOnboardingStep, updateProfile } = useRunsembleStore()
   const [joined, setJoined] = useState<Set<string>>(new Set())
@@ -515,7 +520,6 @@ export function OnboardingRuns() {
       }
     },
     onError: (e: Error, id) => {
-      // "Already joined" during onboarding just means: mark it joined.
       if (e.message.toLowerCase().includes('already')) {
         setJoined((prev) => new Set(prev).add(id))
         return
@@ -566,10 +570,7 @@ export function OnboardingRuns() {
                   onClick={() => !isJoined && joinMutation.mutate(h.id)}
                 >
                   {isJoined ? (
-                    <>
-                      <Check className="h-4 w-4 mr-1" />
-                      Joined
-                    </>
+                    <><Check className="h-4 w-4 mr-1" />Joined</>
                   ) : (
                     'Join'
                   )}
@@ -595,8 +596,6 @@ export function OnboardingRuns() {
   )
 }
 
-// After signup we email a 6-digit code. Confirming is skippable so a user is
-// never blocked (e.g. before the sending domain is verified in Resend).
 export function OnboardingVerifyEmail() {
   const { currentUser, updateProfile, setOnboardingStep } = useRunsembleStore()
   const [code, setCode] = useState('')
@@ -640,7 +639,6 @@ export function OnboardingVerifyEmail() {
           We sent a 6-digit code to{' '}
           <span className="font-medium text-foreground">{currentUser?.email}</span>. Enter it below.
         </p>
-
         <Label htmlFor="verify-code">Verification code</Label>
         <Input
           id="verify-code"
@@ -653,11 +651,9 @@ export function OnboardingVerifyEmail() {
           className="mt-1.5 text-center text-2xl tracking-[0.4em] font-semibold"
           onKeyDown={(e) => e.key === 'Enter' && verify()}
         />
-
         {errorMsg && (
           <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>
         )}
-
         <Button
           size="lg"
           className="w-full rounded-full font-semibold mt-6"
@@ -666,7 +662,6 @@ export function OnboardingVerifyEmail() {
         >
           {loading ? 'Verifying…' : 'Verify email'}
         </Button>
-
         <div className="mt-4 flex items-center justify-center gap-4 text-sm">
           <button
             onClick={resend}
@@ -730,7 +725,6 @@ export function OnboardingLogin() {
         <h1 className="text-2xl font-extrabold tracking-tight text-primary mb-1">Runsemble</h1>
         <h2 className="text-2xl font-bold mb-1">Welcome back</h2>
         <p className="text-muted-foreground mb-6">Log in and find your next run.</p>
-
         <div className="space-y-5">
           <div>
             <Label htmlFor="login-email">Email</Label>
@@ -764,11 +758,9 @@ export function OnboardingLogin() {
             </button>
           </div>
         </div>
-
         {errorMsg && (
           <p className="mt-4 text-sm text-destructive" role="alert">{errorMsg}</p>
         )}
-
         <Button
           size="lg"
           className="w-full rounded-full font-semibold mt-6"
@@ -777,7 +769,6 @@ export function OnboardingLogin() {
         >
           {loading ? 'Logging in…' : 'Log in'}
         </Button>
-
         <button
           onClick={() => setOnboardingStep('welcome')}
           className="block mx-auto mt-5 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
@@ -789,8 +780,6 @@ export function OnboardingLogin() {
   )
 }
 
-// Two-step reset: enter your email to get a code, then enter the code + a new
-// password. Reached from the login screen's "Forgot password?" link.
 function ForgotPasswordForm({
   initialEmail,
   onBack,
@@ -847,7 +836,6 @@ function ForgotPasswordForm({
           ← Back to log in
         </button>
         <h2 className="text-2xl font-bold mb-1">Reset password</h2>
-
         {stage === 'email' ? (
           <>
             <p className="text-muted-foreground mb-6">
