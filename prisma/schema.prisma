@@ -22,11 +22,13 @@ enum PaceLevel {
   advanced
 }
 
-// NOTE: SchedulePreference was a single-value enum. It is now a plain String
-// column storing a comma-separated list of slots (e.g. "morning,evening") so
-// users can select multiple time windows during onboarding. The old enum is
-// removed; existing rows will be migrated to plain strings by the migration
-// that accompanies this schema change.
+// NOTE: SchedulePreference was a single-value enum. It has been changed to a
+// plain String column so users can select multiple time slots (stored as a
+// comma-separated list, e.g. "morning,evening"). The enum is intentionally
+// removed — do not re-add it. The migration must:
+//   1. ALTER TABLE "User" ALTER COLUMN "schedulePreference" TYPE TEXT;
+//   2. ALTER TABLE "User" ALTER COLUMN "schedulePreference" SET DEFAULT '';
+//   3. DROP TYPE IF EXISTS "SchedulePreference";
 
 enum SportType {
   running
@@ -78,7 +80,7 @@ model User {
   emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
   paceLevel         PaceLevel @default(beginner)
-  schedulePreference String   @default("") // comma-separated: "morning", "morning,evening", etc.
+  schedulePreference String   @default("")  // comma-separated: "morning", "morning,evening", etc.
   xp                Int       @default(0)
   streak            Int       @default(0)
   longestStreak     Int       @default(0)
@@ -336,11 +338,6 @@ model ChatMessage {
   recipient   User?     @relation("ReceivedMessages", fields: [recipientId], references: [id], onDelete: Cascade)
   group       RunGroup? @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
-  // "exactly one of recipientId / groupId" is enforced in the database by the
-  // CHECK constraint ChatMessage_dm_xor_group (added in
-  // 20260716120000_drop_stale_counters_add_indexes_xor). Prisma cannot express
-  // CHECK constraints, so `prisma db push` will not recreate it — use
-  // `migrate deploy`/`migrate dev`, or the guarantee is silently lost.
   @@index([senderId, recipientId])
   @@index([groupId])
 }
@@ -382,12 +379,9 @@ model RunRating {
   hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Prevents a user from submitting multiple ratings for the same hotspot.
   @@unique([hotspotId, userId])
 }
 
-// A running-buddy relationship, formed after running together. Directional rows
-// (one per direction) so each user sees the other in their buddy list.
 model Buddy {
   id        String   @id @default(cuid())
   userId    String
@@ -414,8 +408,6 @@ model Block {
   @@unique([blockerId, blockedId])
 }
 
-// Community challenges — progress is computed on read from RunSessions in range,
-// so there's no counter to keep in sync.
 model Challenge {
   id          String   @id @default(cuid())
   title       String
