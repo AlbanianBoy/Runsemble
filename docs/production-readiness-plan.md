@@ -254,6 +254,26 @@ the bottom so nobody re-fixes them.
     from before the tracking fixes. Density estimates from that sample are indicative, not
     solid.)*
 
+## Found while working (not in either audit)
+
+- **The functions ran on the wrong continent — FIXED 2026-07-16 (`vercel.json` → `regions:
+  ["fra1"]`).** Vercel defaults to `iad1` (Washington DC) and nothing had overridden it, while
+  Neon lives in `eu-central-1` (Frankfurt) and the users are in Antwerp. Every request went
+  Antwerp → Washington → Frankfurt *per sequential query* → back. Measured from Belgium:
+  | | before (`iad1`) | after (`fra1`) |
+  | --- | --- | --- |
+  | `/api/leaderboard` | 259 ms | **70 ms** |
+  | `/api/feed?limit=1` | 451 ms | **192 ms** |
+  A static file was 49 ms throughout, which is what showed the gap was the *function's*
+  distance from the database, not the user's connection.
+  **Keep `vercel.json` and the Neon region in the same place.** If the database ever moves,
+  this moves with it, or the Atlantic comes back. Check with `x-vercel-id` on any response:
+  it reads `<edge>::<compute>::<id>` — the **second** segment is where the function ran. The
+  first is only the nearest edge and will happily say `fra1` while the function is in Virginia.
+- **`vercel.json` is schema-validated with `additionalProperties: false`.** A `"//comment"`
+  key fails the deploy *before the build starts* (`Builds: . [0ms]`), with production silently
+  staying on the last good build. JSON has no comments; explanations go in the commit message.
+
 ## Traps — things that look wrong and are not
 
 - **`BLOBB_STORE_ID` (double B) is correct. Do not "fix" it to `BLOB_STORE_ID`.** Vercel
