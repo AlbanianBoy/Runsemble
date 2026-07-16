@@ -175,9 +175,32 @@ the bottom so nobody re-fixes them.
     job or at least `after()`), so run saves stay fast.
 18. **Real-time layer**: chat/lobby currently poll. At 10x users move to SSE or a hosted
     websocket (the `examples/websocket/` server is a prototype, not deployed).
-19. **API integration tests** (login, run POST, feed, messages) — unit coverage of the pure
-    logic is already decent (9 test files); the API layer has zero.
+19. ~~**API integration tests.**~~ **STARTED (2026-07-16)** — `src/app/api/__tests__/`, 22 tests
+    covering auth guards on every private route, the GDPR export end-to-end, and enum/input
+    validation. Both bugs found on 2026-07-16 lived in this layer, and neither failed a build.
+    **The mock Prisma client (`helpers/mock-db.ts`) takes its models from `Prisma.ModelName`,
+    the real generated list — do not "simplify" it into a proxy that conjures any model on
+    demand.** That fidelity is the point: a permissive mock answers
+    `db.groupChatMessage.findMany()` and passes a green test for a route that 500s on every
+    real request. Both guarantees are mutation-tested (remove the `/api/users` guard → the
+    suite fails; restore the deleted-model call → it reproduces the exact production
+    TypeError). No database needed, so CI runs it without secrets.
+    **Still uncovered:** login/signup, the XP + badge award loop, the messages conversation
+    list (raw SQL, so a mock proves little — wants a real test DB), and the like-toggle race.
 20. **GpsPoint table or PostGIS** if geospatial features ("runs near me") get prioritized.
+
+## Traps — things that look wrong and are not
+
+- **`BLOBB_STORE_ID` (double B) is correct. Do not "fix" it to `BLOB_STORE_ID`.** Vercel
+  derives the env prefix from the store name, and the store is `runsemble-blobb`. The
+  single-B name matches no variable in this project. Getting this wrong has no visible
+  symptom — no error, no failed deploy — photos just quietly go back into Postgres as
+  base64. `src/lib/__tests__/image-store.test.ts` pins it; that test failing means someone
+  "corrected" the name.
+- **`src/app/api/__tests__/helpers/mock-db.ts` derives its models from `Prisma.ModelName`
+  on purpose.** It looks over-engineered next to a plain proxy. It isn't — see item 19.
+- **`next.config.ts` has no `typescript.ignoreBuildErrors`, deliberately.** Re-adding it to
+  get a build through would re-open the hole that shipped a 500 on every GDPR export.
 
 ## Audit claims that are FALSE or STALE — do not "fix" these
 
