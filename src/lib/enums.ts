@@ -34,6 +34,48 @@ export function isOneOf<const T extends readonly string[]>(
 }
 
 /**
+ * True when `value` is a comma-separated *set* drawn from `allowed` — "morning",
+ * "morning,evening", or "" for none.
+ *
+ * schedulePreference is stored this way: it used to be a single enum, then
+ * onboarding became multi-select (you might run mornings *and* evenings) and the
+ * column became a plain String. Validating it with isOneOf rejected exactly the
+ * combinations the change existed to allow.
+ *
+ * Empty means no preference, which is the column default and a legitimate answer.
+ * Duplicates are rejected — a set that repeats itself is a bug upstream, not a
+ * preference.
+ */
+export function isCsvSubsetOf<const T extends readonly string[]>(
+  allowed: T,
+  value: unknown
+): boolean {
+  if (typeof value !== 'string') return false
+  if (value === '') return true
+  const parts = value.split(',')
+  if (new Set(parts).size !== parts.length) return false
+  return parts.every((p) => (allowed as readonly string[]).includes(p))
+}
+
+/**
+ * Check comma-separated set fields against their value sets. Mirrors
+ * validateEnumFields, and skips fields that aren't present.
+ */
+export function validateCsvEnumFields(
+  body: Record<string, unknown>,
+  fields: Record<string, readonly string[]>
+): string | null {
+  for (const [field, allowed] of Object.entries(fields)) {
+    const value = body[field]
+    if (value === undefined || value === null) continue
+    if (!isCsvSubsetOf(allowed, value)) {
+      return `${field} must be a comma-separated selection of: ${allowed.join(', ')}`
+    }
+  }
+  return null
+}
+
+/**
  * Check request fields against their value sets.
  *
  * Only checks fields that are present, so it suits PATCH bodies where any

@@ -3,12 +3,24 @@ import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { PACE_LEVELS, SCHEDULE_PREFERENCES, validateEnumFields } from '@/lib/enums'
+import {
+  PACE_LEVELS,
+  SCHEDULE_PREFERENCES,
+  validateEnumFields,
+  validateCsvEnumFields,
+} from '@/lib/enums'
 
-// paceLevel and schedulePreference are enums in the database. The allowlist
-// below governs which *fields* a client may set, not which values — so without
-// this, a bad value reaches Prisma and surfaces as a 500 instead of a 400.
-const ENUM_FIELDS = { paceLevel: PACE_LEVELS, schedulePreference: SCHEDULE_PREFERENCES }
+// The allowlist further down governs which *fields* a client may set, not which
+// values — so without these checks a bad value reaches Prisma and surfaces as a
+// 500 instead of a 400.
+//
+// paceLevel is a single enum value.
+const ENUM_FIELDS = { paceLevel: PACE_LEVELS }
+// schedulePreference is NOT one value. Onboarding is multi-select — you might run
+// mornings and evenings — so it's a comma-separated set in a plain String column
+// ("morning,evening"), and "" means no preference. Validating it as a single enum
+// rejected every multi-select answer, which was the whole point of the feature.
+const CSV_ENUM_FIELDS = { schedulePreference: SCHEDULE_PREFERENCES }
 
 export async function GET(
   _request: NextRequest,
@@ -76,7 +88,8 @@ export async function PATCH(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const invalid = validateEnumFields(body, ENUM_FIELDS)
+    const invalid =
+      validateEnumFields(body, ENUM_FIELDS) ?? validateCsvEnumFields(body, CSV_ENUM_FIELDS)
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
     // Build update data from provided fields
@@ -160,7 +173,8 @@ export async function PUT(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    const invalid = validateEnumFields(body, ENUM_FIELDS)
+    const invalid =
+      validateEnumFields(body, ENUM_FIELDS) ?? validateCsvEnumFields(body, CSV_ENUM_FIELDS)
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
     const updateData: Record<string, unknown> = {}

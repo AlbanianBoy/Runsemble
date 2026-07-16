@@ -60,6 +60,32 @@ describe('PATCH /api/users/[id] — profile enums', () => {
     expect(res.status).toBe(400)
   })
 
+  // schedulePreference stopped being one value when onboarding became
+  // multi-select, and the validator didn't notice. Every one of these was a 400
+  // in production: you could tick one box, and only one.
+  describe('schedulePreference is a set, not a single value', () => {
+    it.each([
+      ['morning,evening', 'two slots — the reason multi-select exists'],
+      ['morning,afternoon,evening', 'all three'],
+      ['', 'none — the column default, and a real answer'],
+      ['afternoon', 'still accepts a single slot'],
+    ])('accepts %j (%s)', async (value) => {
+      const { PATCH } = await import('@/app/api/users/[id]/route')
+      const res = await PATCH(patch('/api/users/u1', { schedulePreference: value }), { params })
+      expect(res.status).toBe(200)
+    })
+
+    it.each([
+      ['morning,midnight', 'one bad member poisons the set'],
+      ['morning,morning', 'a set that repeats itself is a bug upstream'],
+      ['morning, evening', 'stray whitespace is not a slot'],
+    ])('rejects %j (%s)', async (value) => {
+      const { PATCH } = await import('@/app/api/users/[id]/route')
+      const res = await PATCH(patch('/api/users/u1', { schedulePreference: value }), { params })
+      expect(res.status).toBe(400)
+    })
+  })
+
   it('accepts a valid value', async () => {
     const { PATCH } = await import('@/app/api/users/[id]/route')
     const res = await PATCH(patch('/api/users/u1', { paceLevel: 'advanced' }), { params })
