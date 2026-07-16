@@ -113,10 +113,11 @@ export function ProfileTab() {
     setEditBio(currentUser.bio || '')
     setEditCity(currentUser.city)
     setEditPaceLevel(currentUser.paceLevel)
-    // schedulePreference is stored as a comma-string in the DB / store
-    const stored = currentUser.schedulePreference
+    // schedulePreference may be typed narrowly in the store — cast to unknown
+    // first so TypeScript accepts the typeof / Array.isArray narrowing below.
+    const stored = currentUser.schedulePreference as unknown
     const parsed = Array.isArray(stored)
-      ? stored
+      ? (stored as string[])
       : typeof stored === 'string' && stored.length > 0
         ? stored.split(',')
         : []
