@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { storeImage } from '@/lib/image-store'
 
 export async function GET(request: NextRequest) {
   try {
@@ -133,8 +134,8 @@ export async function POST(request: NextRequest) {
       if (!member) return NextResponse.json({ error: 'Join the group to post in it' }, { status: 403 })
     }
 
-    // Photos arrive as client-compressed JPEG data URLs (prototype storage —
-    // move to blob storage before production scale). Cap the size regardless.
+    // Photos arrive as client-compressed JPEG data URLs. Cap the size before we
+    // do anything with the bytes.
     if (imageUrl !== undefined && imageUrl !== null) {
       if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:image/')) {
         return NextResponse.json({ error: 'Invalid image' }, { status: 400 })
@@ -144,12 +145,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Hand the photo to blob storage when it's configured, so the row holds a URL
+    // instead of the whole image. Falls back to the inline data URL otherwise.
+    const storedImageUrl = imageUrl ? await storeImage(imageUrl) : null
+
     const post = await db.feedPost.create({
       data: {
         authorId: me.id,
         groupId: groupId ?? null,
         content,
-        imageUrl: imageUrl ?? null,
+        imageUrl: storedImageUrl,
         postType: postType ?? 'moment',
       },
       include: {
