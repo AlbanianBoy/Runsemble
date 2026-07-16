@@ -43,6 +43,32 @@ async function permissionAlreadyGranted(): Promise<boolean> {
 }
 
 /**
+ * Read the device's position, or null if it can't be had.
+ *
+ * `allowPrompt` decides whether the permission dialog may appear. Passing false
+ * means "only if we already have permission" — for background refreshes the user
+ * didn't ask for. Passing true is for moments where the user has just asked for
+ * something that needs their location, and a dialog is the expected answer
+ * rather than an ambush.
+ */
+export async function readPosition({
+  allowPrompt,
+}: {
+  allowPrompt: boolean
+}): Promise<{ lat: number; lng: number } | null> {
+  if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return null
+  if (!allowPrompt && !(await permissionAlreadyGranted())) return null
+
+  return new Promise((resolve) => {
+    navigator.geolocation.getCurrentPosition(
+      ({ coords }) => resolve({ lat: coords.latitude, lng: coords.longitude }),
+      () => resolve(null), // denied, unavailable, or timed out — callers degrade
+      { timeout: TIMEOUT_MS, maximumAge: MAX_AGE_MS, enableHighAccuracy: false }
+    )
+  })
+}
+
+/**
  * @param userId       signed-in user, or undefined while the store hydrates
  * @param hasCoords    whether this user already has a stored position — our proxy
  *                     for "they granted location once", so we never prompt
@@ -56,30 +82,20 @@ export function useLocationRefresh(
 ) {
   useEffect(() => {
     if (!userId || !hasCoords) return
-    if (typeof navigator === 'undefined' || !('geolocation' in navigator)) return
 
     let cancelled = false
 
     void (async () => {
-      if (!(await permissionAlreadyGranted()) || cancelled) return
-
-      navigator.geolocation.getCurrentPosition(
-        async ({ coords }) => {
-          if (cancelled) return
-          const next = { lat: coords.latitude, lng: coords.longitude }
-          try {
-            await apiSend(`/api/users/${userId}`, 'PATCH', next)
-            if (!cancelled) onUpdate?.(next)
-          } catch {
-            // Offline or the request failed — the old position stays. Not worth
-            // telling the user about something they didn't ask for.
-          }
-        },
-        () => {
-          // Denied or timed out. Silent by design.
-        },
-        { timeout: TIMEOUT_MS, maximumAge: MAX_AGE_MS, enableHighAccuracy: false }
-      )
+      // allowPrompt: false — the user didn't ask for this, so it stays invisible.
+      const next = await readPosition({ allowPrompt: false })
+      if (!next || cancelled) return
+      try {
+        await apiSend(`/api/users/${userId}`, 'PATCH', next)
+        if (!cancelled) onUpdate?.(next)
+      } catch {
+        // Offline or the request failed — the old position stays. Not worth
+        // telling the user about something they didn't ask for.
+      }
     })()
 
     return () => {

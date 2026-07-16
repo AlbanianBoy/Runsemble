@@ -10,6 +10,7 @@ import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { ANTWERP_CENTER, haversineKm, distanceLabel, type LatLng } from '@/lib/geo'
 import { isAvailableNow, isComingUp, availableFromLabel, AVAILABLE_NOW_MINUTES } from '@/lib/availability'
+import { readPosition } from '@/lib/use-location-refresh'
 import type {
   ApiHotspot,
   ApiUser,
@@ -196,11 +197,26 @@ export function MapTab() {
     setAvailability(true, AVAILABLE_NOW_MINUTES)
     updateProfile({ isAvailable: true, availableFrom: null })
     if (currentUser?.id) {
-      apiSend(`/api/users/${currentUser.id}`, 'PUT', {
-        isAvailable: true,
-        availableFrom: null,
-        availableUntil: new Date(Date.now() + AVAILABLE_NOW_MINUTES * 60_000).toISOString(),
-      }).catch(() => {})
+      const userId = currentUser.id
+      // Going available means "I'm here and free to run now", so where you are is
+      // the whole point. Without this you could go available carrying whatever
+      // position you signed up with — or none at all, in which case the map's
+      // `u.lat != null` filter hid you completely: available and invisible.
+      //
+      // This is also the one moment where asking for location is expected rather
+      // than an ambush, so allowPrompt is true here and nowhere else.
+      void (async () => {
+        const coords = await readPosition({ allowPrompt: true })
+        await apiSend(`/api/users/${userId}`, 'PUT', {
+          isAvailable: true,
+          availableFrom: null,
+          availableUntil: new Date(Date.now() + AVAILABLE_NOW_MINUTES * 60_000).toISOString(),
+          // Only send coordinates we actually got — never null them out, or a
+          // refused prompt would erase a position we already had.
+          ...(coords ?? {}),
+        }).catch(() => {})
+        if (coords) updateProfile(coords)
+      })()
     }
     setAvailSheetOpen(false)
   }
