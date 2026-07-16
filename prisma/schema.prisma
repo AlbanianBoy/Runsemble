@@ -22,11 +22,11 @@ enum PaceLevel {
   advanced
 }
 
-enum SchedulePreference {
-  morning
-  afternoon
-  evening
-}
+// NOTE: SchedulePreference was a single-value enum. It is now a plain String
+// column storing a comma-separated list of slots (e.g. "morning,evening") so
+// users can select multiple time windows during onboarding. The old enum is
+// removed; existing rows will be migrated to plain strings by the migration
+// that accompanies this schema change.
 
 enum SportType {
   running
@@ -78,7 +78,7 @@ model User {
   emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
   paceLevel         PaceLevel @default(beginner)
-  schedulePreference SchedulePreference @default(evening)
+  schedulePreference String   @default("") // comma-separated: "morning", "morning,evening", etc.
   xp                Int       @default(0)
   streak            Int       @default(0)
   longestStreak     Int       @default(0)

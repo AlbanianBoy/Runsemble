@@ -31,6 +31,13 @@ interface DbUser {
 }
 
 export function toUserProfile(u: DbUser): UserProfile {
+  // schedulePreference is stored as a comma-separated string in the DB;
+  // split it back to an array, filtering empty strings from default "" rows.
+  const scheduleRaw = u.schedulePreference ?? ''
+  const scheduleArr: SchedulePreference = scheduleRaw
+    ? scheduleRaw.split(',').map((s) => s.trim()).filter(Boolean)
+    : []
+
   return {
     id: u.id,
     name: u.name,
@@ -43,7 +50,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     lng: u.lng ?? null,
     preferredSport: u.preferredSport ?? 'running',
     paceLevel: (u.paceLevel ?? 'beginner') as PaceLevel,
-    schedulePreference: (u.schedulePreference ?? 'evening') as SchedulePreference,
+    schedulePreference: scheduleArr,
     xp: u.xp ?? 0,
     streak: u.streak ?? 0,
     longestStreak: u.longestStreak ?? 0,
@@ -245,13 +252,20 @@ export function OnboardingProfile() {
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
   const [city, setCity] = useState('Antwerp')
   const [paceLevel, setPaceLevel] = useState('beginner')
-  const [schedule, setSchedule] = useState('evening')
+  // No preset — user must make an explicit choice. Multi-select via array.
+  const [schedule, setSchedule] = useState<string[]>([])
   const [bio, setBio] = useState('')
   const [loading, setLoading] = useState(false)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'ok' | 'denied'>('idle')
 
   const canSubmit = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
+
+  const toggleSchedule = (slot: string) => {
+    setSchedule((prev) =>
+      prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]
+    )
+  }
 
   // Ask for location so "runners near you" and the map centre on the real user.
   const requestLocation = () => {
@@ -286,7 +300,8 @@ export function OnboardingProfile() {
           consent,
           city,
           paceLevel,
-          schedulePreference: schedule,
+          // Send as comma-separated string; DB column is String.
+          schedulePreference: schedule.join(','),
           bio,
           lat: coords?.lat,
           lng: coords?.lng,
@@ -415,28 +430,35 @@ export function OnboardingProfile() {
               ))}
             </RadioGroup>
           </div>
+
+          {/* Schedule — multi-select checkboxes, no default selection */}
           <div>
-            <Label>When do you like to move?</Label>
-            <RadioGroup
-              value={schedule}
-              onValueChange={setSchedule}
-              className="mt-2 grid grid-cols-3 gap-2"
-            >
-              {['morning', 'afternoon', 'evening'].map(s => (
-                <Label
-                  key={s}
-                  className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
-                    schedule === s
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'border-border hover:border-primary/30 hover:bg-muted/50'
-                  }`}
-                >
-                  <RadioGroupItem value={s} />
-                  <span className="text-sm font-medium capitalize">{s}</span>
-                </Label>
-              ))}
-            </RadioGroup>
+            <Label>When do you like to move? <span className="text-muted-foreground font-normal">(pick all that apply)</span></Label>
+            <div className="mt-2 grid grid-cols-3 gap-2">
+              {['morning', 'afternoon', 'evening'].map((s) => {
+                const checked = schedule.includes(s)
+                return (
+                  <label
+                    key={s}
+                    onClick={() => toggleSchedule(s)}
+                    className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 select-none ${
+                      checked
+                        ? 'border-primary bg-primary/5 shadow-sm'
+                        : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                    }`}
+                  >
+                    <Checkbox
+                      checked={checked}
+                      onCheckedChange={() => toggleSchedule(s)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <span className="text-sm font-medium capitalize">{s}</span>
+                  </label>
+                )
+              })}
+            </div>
           </div>
+
           <div>
             <Label htmlFor="bio">
               Bio <span className="text-muted-foreground">(optional)</span>

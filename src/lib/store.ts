@@ -8,7 +8,10 @@ export type { RankTier }
 export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 export type OnboardingStep = 'welcome' | 'profile' | 'verify' | 'login' | 'runs' | 'complete' | 'done'
 export type PaceLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
-export type SchedulePreference = 'morning' | 'afternoon' | 'evening' | 'anytime'
+// schedulePreference is now a string array; each element is one of
+// 'morning' | 'afternoon' | 'evening'. Stored in the DB as a comma-separated
+// string and parsed back to an array on read.
+export type SchedulePreference = string[]
 
 export interface UserProfile {
   id: string
