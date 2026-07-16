@@ -5,7 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target, Download, LogOut, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
-import { useRunsembleStore, getRankFromXP, type PaceLevel, type SchedulePreference } from '@/lib/store'
+import { useRunsembleStore, getRankFromXP, type PaceLevel } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { BadgesResponse } from '@/lib/types'
 import { Leaderboard } from './leaderboard'
@@ -22,11 +22,18 @@ import { Skeleton } from '@/components/ui/skeleton'
 import { Input } from '@/components/ui/input'
 import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
+import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials } from './helpers'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
+
+const SCHEDULE_OPTIONS = [
+  { value: 'morning', label: 'Morning', desc: 'Early bird runs' },
+  { value: 'afternoon', label: 'Afternoon', desc: 'Midday energy' },
+  { value: 'evening', label: 'Evening', desc: 'Sunset sessions' },
+] as const
 
 export function ProfileTab() {
   const { currentUser, updateProfile, profileView, setProfileView } = useRunsembleStore()
@@ -38,7 +45,7 @@ export function ProfileTab() {
   const [editBio, setEditBio] = useState('')
   const [editCity, setEditCity] = useState('')
   const [editPaceLevel, setEditPaceLevel] = useState<PaceLevel>('beginner')
-  const [editSchedule, setEditSchedule] = useState<SchedulePreference>('evening')
+  const [editSchedule, setEditSchedule] = useState<string[]>([])
 
   // Availability — derived from store
   const isAvailable = currentUser?.isAvailable ?? false
@@ -106,8 +113,21 @@ export function ProfileTab() {
     setEditBio(currentUser.bio || '')
     setEditCity(currentUser.city)
     setEditPaceLevel(currentUser.paceLevel)
-    setEditSchedule(currentUser.schedulePreference)
+    // schedulePreference is stored as a comma-string in the DB / store
+    const stored = currentUser.schedulePreference
+    const parsed = Array.isArray(stored)
+      ? stored
+      : typeof stored === 'string' && stored.length > 0
+        ? stored.split(',')
+        : []
+    setEditSchedule(parsed)
     setEditOpen(true)
+  }
+
+  const toggleScheduleSlot = (slot: string) => {
+    setEditSchedule(prev =>
+      prev.includes(slot) ? prev.filter(s => s !== slot) : [...prev, slot]
+    )
   }
 
   const handleSaveProfile = async () => {
@@ -119,12 +139,13 @@ export function ProfileTab() {
       bio: editBio.trim() || null,
       city: editCity.trim() || 'Antwerp',
       paceLevel: editPaceLevel,
-      schedulePreference: editSchedule,
+      // DB column is String — persist as comma-separated
+      schedulePreference: editSchedule.join(','),
     }
 
     updateMutation.mutate(updates, {
       onSuccess: () => {
-        updateProfile(updates)
+        updateProfile({ ...updates, schedulePreference: editSchedule as never })
         setEditOpen(false)
       },
     })
@@ -157,9 +178,6 @@ export function ProfileTab() {
     }
   }
 
-  // Invite a friend — native share sheet on mobile, clipboard fallback on desktop.
-  // The single cheapest growth lever for a local pilot: get members to bring the
-  // people they already run with.
   const handleInviteFriend = async () => {
     const url = 'https://runsemble.net'
     const text = 'Come run with me on Runsemble — find runners near you and never run alone. Because together is better. 🏃'
@@ -204,6 +222,12 @@ export function ProfileTab() {
   const rank = getRankFromXP(currentUser.xp)
   const xpProgress = rank.progress * 100
 
+  // Render schedulePreference as a readable label regardless of whether it's
+  // an array (new) or a plain string (old persisted value).
+  const scheduleLabel = Array.isArray(currentUser.schedulePreference)
+    ? (currentUser.schedulePreference as string[]).join(', ')
+    : String(currentUser.schedulePreference || '')
+
   return (
     <div className="space-y-5 pb-4">
       {/* Profile header */}
@@ -229,10 +253,10 @@ export function ProfileTab() {
           </motion.div>
         </div>
         {currentUser.bio && <p className="text-sm text-muted-foreground mt-1">{currentUser.bio}</p>}
-        <div className="flex items-center justify-center gap-2 mt-2">
+        <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
           <Badge variant="secondary" className="text-xs">{currentUser.city}</Badge>
           <Badge variant="secondary" className="text-xs capitalize">{currentUser.paceLevel}</Badge>
-          <Badge variant="secondary" className="text-xs capitalize">{currentUser.schedulePreference}</Badge>
+          {scheduleLabel && <Badge variant="secondary" className="text-xs capitalize">{scheduleLabel}</Badge>}
         </div>
       </div>
 
@@ -555,47 +579,32 @@ export function ProfileTab() {
               </RadioGroup>
             </div>
 
-            {/* Schedule Preference */}
+            {/* Schedule Preference — multi-select checkboxes */}
             <div className="space-y-2.5">
-              <Label>Schedule Preference</Label>
-              <RadioGroup
-                value={editSchedule}
-                onValueChange={(v) => setEditSchedule(v as SchedulePreference)}
-                className="space-y-2"
-              >
-                {([
-                  { value: 'morning', label: 'Morning', desc: 'Early bird runs' },
-                  { value: 'afternoon', label: 'Afternoon', desc: 'Midday energy' },
-                  { value: 'evening', label: 'Evening', desc: 'Sunset sessions' },
-                ] as const).map((option) => (
-                  <Label
-                    key={option.value}
-                    htmlFor={`schedule-${option.value}`}
-                    className={`flex items-center justify-between rounded-lg border p-3 cursor-pointer transition-colors ${
-                      editSchedule === option.value
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border hover:bg-muted/50'
-                    }`}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <RadioGroupItem value={option.value} id={`schedule-${option.value}`} className="sr-only" />
-                      <span
-                        className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                          editSchedule === option.value
-                            ? 'border-primary bg-primary'
-                            : 'border-muted-foreground/30'
-                        }`}
-                      >
-                        {editSchedule === option.value && (
-                          <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
-                        )}
-                      </span>
-                      <span className="text-sm font-medium">{option.label}</span>
-                    </div>
-                    <span className="text-xs text-muted-foreground">{option.desc}</span>
-                  </Label>
-                ))}
-              </RadioGroup>
+              <Label>When do you like to move?</Label>
+              <div className="grid grid-cols-3 gap-2">
+                {SCHEDULE_OPTIONS.map((opt) => {
+                  const active = editSchedule.includes(opt.value)
+                  return (
+                    <label
+                      key={opt.value}
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
+                        active
+                          ? 'border-primary bg-primary/5 shadow-sm'
+                          : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                      }`}
+                    >
+                      <Checkbox
+                        checked={active}
+                        onCheckedChange={() => toggleScheduleSlot(opt.value)}
+                        className="sr-only"
+                      />
+                      <span className="text-sm font-medium capitalize">{opt.label}</span>
+                      <span className="text-[10px] text-muted-foreground text-center">{opt.desc}</span>
+                    </label>
+                  )
+                })}
+              </div>
             </div>
           </div>
 
