@@ -369,7 +369,7 @@ export function RunTracker() {
         const { points, nextIndex } = await getRecorderTrack(clientRunIdRef.current, recorderIndexRef.current)
         recorderIndexRef.current = nextIndex
         if (cancelled || phaseRef.current !== 'running') return
-        for (const p of points) ingestRef.current(p.lat, p.lng, p.acc, p.t)
+        for (const p of points) ingestRef.current(p.lat, p.lng, p.acc ?? null, p.t)
         return
       }
       if (!bufferSupportedRef.current) return

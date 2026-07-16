@@ -1,5 +1,5 @@
 {
-  "name": "nextjs_tailwind_shadcn_ts",
+  "name": "runsemble",
   "version": "0.2.0",
   "private": true,
   "scripts": {
@@ -7,6 +7,7 @@
     "build": "prisma generate && next build && cp -r .next/static .next/standalone/.next/ && cp -r public .next/standalone/",
     "start": "NODE_ENV=production bun .next/standalone/server.js 2>&1 | tee server.log",
     "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "probe": "node scripts/security-probe.mjs",
     "db:push": "prisma db push",

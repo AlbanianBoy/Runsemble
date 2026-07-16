@@ -29,6 +29,11 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      # `next build` typechecks too, but only after a slow compile — this fails
+      # fast and covers files the build never reaches.
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Test
         run: npm run test
 
