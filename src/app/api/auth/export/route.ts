@@ -19,12 +19,17 @@ export async function GET() {
         db.userBadge.findMany({ where: { userId } }),
         db.buddy.findMany({ where: { userId } }),
         db.notification.findMany({ where: { userId } }),
-        db.chatMessage.findMany({ where: { OR: [{ senderId: userId }, { recipientId: userId }] } }),
+        // DMs and group messages share the ChatMessage table: groupId is null for
+        // a DM, set for group chat. Keep them split so each export key means what
+        // its name says.
+        db.chatMessage.findMany({
+          where: { groupId: null, OR: [{ senderId: userId }, { recipientId: userId }] },
+        }),
         db.hotspotParticipant.findMany({ where: { userId } }),
         db.groupMember.findMany({ where: { userId } }),
         db.runRating.findMany({ where: { userId } }),
         db.challengeParticipant.findMany({ where: { userId } }),
-        db.groupChatMessage.findMany({ where: { senderId: userId } }),
+        db.chatMessage.findMany({ where: { senderId: userId, groupId: { not: null } } }),
         db.runInvite.findMany({ where: { OR: [{ senderId: userId }, { recipientId: userId }] } }),
       ])
 

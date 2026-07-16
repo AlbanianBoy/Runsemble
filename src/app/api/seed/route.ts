@@ -9,7 +9,7 @@ async function seed() {
   await db.runRating.deleteMany()
   await db.hotspotParticipant.deleteMany()
   await db.userBadge.deleteMany()
-  await db.groupChatMessage.deleteMany()
+  // ChatMessage covers both DMs and group chat, so one wipe clears both.
   await db.chatMessage.deleteMany()
   await db.runInvite.deleteMany()
   await db.feedPost.deleteMany()
@@ -549,8 +549,8 @@ async function seed() {
 
   console.log(`Created ${badges.count} badges`)
 
-  // 9. Create group chat messages
-  const groupChats = await db.groupChatMessage.createMany({
+  // 9. Create group chat messages (ChatMessage rows with groupId set, recipientId null)
+  const groupChats = await db.chatMessage.createMany({
     data: [
       // Antwerp Morning Runners chat
       { id: 'gc-1', groupId: 'group-1', senderId: 'user-maya', content: "Good morning crew! Who's joining the Stadspark loop today?" },
@@ -708,17 +708,6 @@ export async function POST() {
   }
 }
 
-export async function GET() {
-  const blocked = guardProduction()
-  if (blocked) return blocked
-  try {
-    const result = await seed()
-    return NextResponse.json({ success: true, ...result })
-  } catch (error) {
-    console.error('Seed failed:', error)
-    return NextResponse.json(
-      { success: false, error: error instanceof Error ? error.message : 'Seed failed' },
-      { status: 500 }
-    )
-  }
-}
+// Deliberately POST-only. Seeding wipes the database, and a GET is reachable by
+// anything that follows a link — a crawler, a prefetch, a pasted URL. The
+// production guards above are the safety net, not the design.
