@@ -8,25 +8,28 @@ import { put } from '@vercel/blob'
 //
 // When a Blob store is configured we upload the bytes there and persist only the
 // URL. When it isn't, we keep the old inline behaviour — so this ships safely
-// before the store exists, and starts storing URLs the moment BLOB_READ_WRITE_TOKEN
-// is present. Both forms render from an <img src>, so readers need no change and
+// before the store exists, and starts storing URLs the moment the store is
+// connected. Both forms render from an <img src>, so readers need no change and
 // rows written under the old scheme keep working.
 
 /**
- * True when a Vercel Blob store is reachable.
+ * True when the public Vercel Blob store (runsemble-blobb) is reachable.
  *
- * Two ways to authenticate, and the modern one has no token at all:
- *   - OIDC — connecting a store sets BLOB_STORE_ID, and Vercel injects a
- *     short-lived VERCEL_OIDC_TOKEN at runtime. This is what our project uses.
- *   - BLOB_READ_WRITE_TOKEN — the older static token, still supported.
- *
- * Checking only for the token would mean a correctly connected store never gets
- * used, and every photo would keep going into Postgres with nothing to show that
- * anything was wrong. BLOB_STORE_ID isn't set for local dev, so `bun run dev`
- * still takes the inline path.
+ * Connecting the store injects BLOBB_STORE_ID (double-B prefix, matching the
+ * store name) plus OIDC auth via VERCEL_OIDC_TOKEN at runtime. We also support
+ * the older static BLOB_READ_WRITE_TOKEN for local overrides.
  */
 export function isBlobConfigured(): boolean {
-  return !!process.env.BLOB_READ_WRITE_TOKEN || !!process.env.BLOB_STORE_ID
+  return (
+    !!process.env.BLOBB_STORE_ID ||
+    !!process.env.BLOB_STORE_ID ||
+    !!process.env.BLOB_READ_WRITE_TOKEN
+  )
+}
+
+/** The store ID for the public runsemble-blobb store, whichever env var name Vercel chose. */
+function getBlobStoreId(): string | undefined {
+  return process.env.BLOBB_STORE_ID ?? process.env.BLOB_STORE_ID
 }
 
 const DATA_URL = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i
@@ -45,12 +48,17 @@ export async function storeImage(dataUrl: string): Promise<string> {
   if (!match) return dataUrl // already a URL, or not base64 — nothing to move
 
   const [, contentType, base64] = match
+  const storeId = getBlobStoreId()
+
   try {
     const ext = contentType.slice('image/'.length).replace('jpeg', 'jpg')
     const { url } = await put(`posts/${randomUUID()}.${ext}`, Buffer.from(base64, 'base64'), {
       access: 'public',
       contentType,
       addRandomSuffix: false,
+      // Pass the store ID explicitly so the SDK always targets the public store
+      // and never auto-resolves to a stale private binding.
+      ...(storeId ? { storeId } : {}),
     })
     return url
   } catch (error) {
