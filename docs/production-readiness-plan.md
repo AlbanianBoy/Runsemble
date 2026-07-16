@@ -147,8 +147,19 @@ the bottom so nobody re-fixes them.
 
 ## Tier 3 — Scale & polish (post-launch, prioritize by user feedback)
 
-15. **Cursor pagination** for `/api/feed` (currently newest-100) and `/api/users`
-    (currently take-500-with-includes; fine for one city, breaks at multi-city).
+15. ~~**Cursor pagination.**~~ **DONE for `/api/feed` (2026-07-16).** Keyset, not offset:
+    `skip` counts from the top, so a post published while you read shifts everything down and
+    page 2 repeats a row from page 1. `?cursor` + `?limit` (capped 100), returns `nextCursor`;
+    asks for `limit + 1` and treats the extra row as "there's more" (cheaper than a `count()`,
+    and it can't disagree with the rows just fetched). `orderBy` is `[createdAt desc, id desc]`
+    — **the id tiebreak is load-bearing**: without it two posts sharing a timestamp have no
+    defined order and a page boundary between them repeats one and drops the other. Default
+    page stays 100 so old callers are unaffected. Client uses `useInfiniteQuery` (20/page).
+    Verified against production data: `limit=1` returns a cursor, that cursor yields a
+    *different* post, and a no-param request still returns everything with `nextCursor: null`.
+    **`/api/users` deliberately left at `take: 500`** — it's bounded and documented, the map
+    and people views want a whole local set rather than pages, and paging it would change
+    those UIs for no gain at one city. Revisit at multi-city.
 15b. **Private-group photos rely on an unguessable URL, not on authorisation.**
     Post photos are stored with `access: 'public'` (decided 2026-07-16: ship public now,
     revisit when private groups get real usage). The URL only reaches viewers who pass
@@ -186,8 +197,22 @@ the bottom so nobody re-fixes them.
       each is conditional; typically 0–1 fire per run.
     If run saves ever do measure slow, the honest fix is fewer round trips (the handler makes
     ~8–12 sequential Neon queries), not moving work the response depends on.
-18. **Real-time layer**: chat/lobby currently poll. At 10x users move to SSE or a hosted
-    websocket (the `examples/websocket/` server is a prototype, not deployed).
+18. ~~**Real-time layer.**~~ **DONE (2026-07-16) — but not with SSE or a WebSocket.**
+    The app already had a real-time channel and wasn't listening to it. FCM push reaches the
+    device in ~1s; there was no `pushNotificationReceived` handler, so a DM already delivered
+    still waited up to 5s for the next poll. An arriving push now invalidates exactly what it
+    made stale (`src/lib/push-routing.ts`), with the existing polls left as the fallback for a
+    missed push or refused permission.
+    **Why not SSE, which this item proposed:** on serverless every open stream holds a
+    function invocation for its whole life, and *there is no pub/sub behind it* — so the SSE
+    handler would poll the database anyway. That's polling with extra steps and a bill.
+    A hosted service (Pusher/Ably/Supabase Realtime) would genuinely work but needs an account
+    to provision; the `examples/websocket/` socket.io prototype needs a long-running host and
+    is wired into no build.
+    Fixed two bugs found on the way: `sendPush` hardcoded `data.type = 'message'` so every
+    push claimed to be a DM, and the tap handler navigated to Groups unconditionally — so
+    "you earned a badge" opened your conversations. `notify()` also never forwarded the
+    sender's name, so the DM deep-link could not have fired even with a correct type.
 19. ~~**API integration tests.**~~ **STARTED (2026-07-16)** — `src/app/api/__tests__/`, 22 tests
     covering auth guards on every private route, the GDPR export end-to-end, and enum/input
     validation. Both bugs found on 2026-07-16 lived in this layer, and neither failed a build.
@@ -207,7 +232,27 @@ the bottom so nobody re-fixes them.
     **Still uncovered:** login/signup and password reset (security-critical, worth doing next),
     the messages conversation list (raw SQL — a mock proves little, wants a real test DB), and
     XP/rank-up maths at the API level (`src/lib/__tests__/xp.test.ts` covers the pure part).
-20. **GpsPoint table or PostGIS** if geospatial features ("runs near me") get prioritized.
+20. **GpsPoint table or PostGIS — NOT BUILT, deliberately. The item's own precondition
+    ("*if* geospatial features get prioritized") is unmet.** Checked 2026-07-16: nothing in the
+    codebase queries a route by location. There is no "runs near me", no `ST_*`, no plan for
+    one in code — the only greps that hit are the word "nearby" in the privacy policy.
+    **It is safely deferrable, and that is the actual argument.** A `GpsPoint` table is
+    *derivable from what is already stored* — paths are kept as JSON on `RunSession`, so
+    whenever a geospatial feature is real, backfill it from those rows. Building it now buys
+    nothing and costs a lot: at measured density it's on the order of **millions of rows a
+    year at 1000 users**, written on every run save, read by nobody.
+    **What is NOT derivable is the part worth your attention.** Two things are discarded at
+    save and can never be recovered by any future schema:
+    - `run-tracker.tsx` thins the path 3:1 (`filter((_, i) => i % 3 === 0)`) — two thirds of
+      every route is thrown away permanently.
+    - Per-point `accuracy` and provider are dropped; only `{lat, lng}` (rounded to 5 dp) is
+      kept, so no old run can ever be re-filtered or re-scored for quality.
+    If geospatial or route-quality features are ever wanted, the constraint will be the data
+    thrown away today, not the table it isn't in. That decision is worth making on purpose —
+    see item 16 — and it is cheap now and impossible later.
+    *(Measurement caveat: only 2 runs are stored, totalling 3.6 km and 14 points — old data
+    from before the tracking fixes. Density estimates from that sample are indicative, not
+    solid.)*
 
 ## Traps — things that look wrong and are not
 
