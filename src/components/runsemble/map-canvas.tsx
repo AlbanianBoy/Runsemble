@@ -1,26 +1,29 @@
 'use client'
 
-// ─── MapCanvas ────────────────────────────────────────────────────────────────
-// The real, geographic map at the heart of Runsemble. Renders an OpenStreetMap
-// basemap (CARTO Voyager tiles — free, no API key) and plots:
+// ─── MapCanvas ───────────────────────────────────────────────────────────────────────────────
+// Renders an OpenStreetMap basemap and plots:
 //   • hotspots at their true lat/lng
-//   • nearby available runners at PRIVACY-FUZZED coordinates (~200m grid) with a
-//     soft "approximate area" circle, exactly as the concept promises
-//   • the current user's own position
+//   • nearby available runners at PRIVACY-FUZZED coordinates (~200m grid)
+//   • the current user’s own position
 //
-// Loaded via next/dynamic with { ssr: false } from map-tab, because Leaflet
-// touches `window` and must never run during server rendering.
+// Cluster behaviour: when 2+ runners share the same fuzzed grid cell (within
+// CLUSTER_THRESHOLD degrees) a single cluster marker is shown instead. Tapping
+// it flies the map in by 2 zoom levels so the individual markers separate.
+// Only when a runner marker is alone does tapping open the profile sheet.
+//
+// Loaded via next/dynamic with { ssr: false } from map-tab.
 
-import { MapContainer, TileLayer, Marker, Circle } from 'react-leaflet'
-import { Fragment } from 'react'
+import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
+import { Fragment, useCallback } from 'react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { ANTWERP_CENTER, fuzzCoord, type LatLng } from '@/lib/geo'
 import type { ApiHotspot, ApiUser } from '@/lib/types'
 
-// Hex palette mirroring helpers.getAvatarColor order, so a person's colour on
-// the map matches their colour everywhere else in the app. (Tailwind utility
-// classes aren't reliable inside Leaflet-injected markup, so we use hex here.)
+// How close two fuzzed coordinates must be (in degrees) to be treated as the
+// same cluster. 0.002° ≈ 200 m, matching the fuzz grid cell size.
+const CLUSTER_THRESHOLD = 0.002
+
 const HEX_COLORS = [
   '#14b8a6', '#d97706', '#059669', '#f43f5e', '#8b5cf6',
   '#14b8a6', '#ec4899', '#ca8a04', '#ef4444', '#0891b2',
@@ -69,6 +72,21 @@ function avatarIcon(name: string, size = 34, ring = '#fff'): L.DivIcon {
   })
 }
 
+function clusterIcon(count: number, color: string): L.DivIcon {
+  return L.divIcon({
+    className: 'rs-divicon',
+    html: `
+      <div style="position:relative;width:40px;height:40px;">
+        <span class="rs-pulse" style="position:absolute;inset:-6px;border-radius:999px;background:${color}33;"></span>
+        <div style="position:relative;width:40px;height:40px;border-radius:999px;background:${color};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;color:#fff;font-size:13px;font-weight:800;font-family:inherit;">
+          ${count}
+        </div>
+      </div>`,
+    iconSize: [40, 40],
+    iconAnchor: [20, 20],
+  })
+}
+
 function youIcon(name: string, available: boolean): L.DivIcon {
   const bg = available ? '#10b981' : '#9ca3af'
   return L.divIcon({
@@ -84,6 +102,94 @@ function youIcon(name: string, available: boolean): L.DivIcon {
     iconSize: [40, 40],
     iconAnchor: [20, 20],
   })
+}
+
+// ─── Cluster key ────────────────────────────────────────────────────────────────────────────
+function clusterKey(lat: number, lng: number): string {
+  // Snap to CLUSTER_THRESHOLD grid — same cell = same key.
+  const r = 1 / CLUSTER_THRESHOLD
+  return `${Math.round(lat * r)},${Math.round(lng * r)}`
+}
+
+interface RunnerCluster {
+  key: string
+  lat: number
+  lng: number
+  runners: ApiUser[]
+}
+
+function buildClusters(runners: ApiUser[]): RunnerCluster[] {
+  const map = new Map<string, RunnerCluster>()
+  for (const u of runners) {
+    if (u.lat == null || u.lng == null) continue
+    const fuzzed = fuzzCoord({ lat: u.lat, lng: u.lng }, 200)
+    const key = clusterKey(fuzzed.lat, fuzzed.lng)
+    if (map.has(key)) {
+      map.get(key)!.runners.push(u)
+    } else {
+      map.set(key, { key, lat: fuzzed.lat, lng: fuzzed.lng, runners: [u] })
+    }
+  }
+  return Array.from(map.values())
+}
+
+// ─── Inner component (has access to useMap) ────────────────────────────────────────────────────
+function RunnerMarkers({
+  clusters,
+  onSelectRunner,
+}: {
+  clusters: RunnerCluster[]
+  onSelectRunner: (u: ApiUser) => void
+}) {
+  const leafletMap = useMap()
+
+  const handleClusterClick = useCallback(
+    (cluster: RunnerCluster) => {
+      if (cluster.runners.length === 1) {
+        // Single runner — open profile sheet.
+        onSelectRunner(cluster.runners[0])
+      } else {
+        // Multiple runners at the same cell — zoom in to separate them.
+        leafletMap.flyTo(
+          [cluster.lat, cluster.lng],
+          Math.min(leafletMap.getZoom() + 2, leafletMap.getMaxZoom()),
+          { duration: 0.5 }
+        )
+      }
+    },
+    [leafletMap, onSelectRunner]
+  )
+
+  return (
+    <>
+      {clusters.map((cluster) => {
+        const isCluster = cluster.runners.length > 1
+        const representativeName = cluster.runners[0].name
+        const icon = isCluster
+          ? clusterIcon(cluster.runners.length, colorForName(representativeName))
+          : avatarIcon(representativeName)
+        return (
+          <Fragment key={cluster.key}>
+            <Circle
+              center={[cluster.lat, cluster.lng]}
+              radius={200}
+              pathOptions={{
+                color: colorForName(representativeName),
+                weight: 1,
+                opacity: 0.35,
+                fillOpacity: 0.08,
+              }}
+            />
+            <Marker
+              position={[cluster.lat, cluster.lng]}
+              icon={icon}
+              eventHandlers={{ click: () => handleClusterClick(cluster) }}
+            />
+          </Fragment>
+        )
+      })}
+    </>
+  )
 }
 
 export interface MapCanvasProps {
@@ -105,6 +211,8 @@ export default function MapCanvas({
   onSelectHotspot,
   onSelectRunner,
 }: MapCanvasProps) {
+  const clusters = buildClusters(runners)
+
   return (
     <MapContainer
       center={[me.lat, me.lng]}
@@ -130,25 +238,8 @@ export default function MapCanvas({
         />
       ))}
 
-      {/* Nearby runners — privacy-fuzzed to a ~200m grid + approximate-area halo */}
-      {runners.map((u) => {
-        if (u.lat == null || u.lng == null) return null
-        const fuzzed = fuzzCoord({ lat: u.lat, lng: u.lng }, 200)
-        return (
-          <Fragment key={u.id}>
-            <Circle
-              center={[fuzzed.lat, fuzzed.lng]}
-              radius={200}
-              pathOptions={{ color: colorForName(u.name), weight: 1, opacity: 0.35, fillOpacity: 0.08 }}
-            />
-            <Marker
-              position={[fuzzed.lat, fuzzed.lng]}
-              icon={avatarIcon(u.name)}
-              eventHandlers={{ click: () => onSelectRunner(u) }}
-            />
-          </Fragment>
-        )
-      })}
+      {/* Runners with cluster-zoom behaviour */}
+      <RunnerMarkers clusters={clusters} onSelectRunner={onSelectRunner} />
 
       {/* You */}
       <Marker position={[me.lat, me.lng]} icon={youIcon(myName, available)} />
