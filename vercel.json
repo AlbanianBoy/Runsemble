@@ -1,6 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "buildCommand": "prisma generate && next build",
-  "//regions": "Run next to the database. Vercel defaults to iad1 (Washington DC) while Neon is in eu-central-1 (Frankfurt) and the users are in Antwerp, so every query crossed the Atlantic twice — measured from Belgium: a static file 49ms, /api/feed 451ms. Most of that gap was ~90ms per sequential query to reach the DB. fra1 is Frankfurt: same city as the database, ~15ms from Antwerp.",
   "regions": ["fra1"]
 }
