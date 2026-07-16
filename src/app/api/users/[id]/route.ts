@@ -3,6 +3,12 @@ import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { PACE_LEVELS, SCHEDULE_PREFERENCES, validateEnumFields } from '@/lib/enums'
+
+// paceLevel and schedulePreference are enums in the database. The allowlist
+// below governs which *fields* a client may set, not which values — so without
+// this, a bad value reaches Prisma and surfaces as a 500 instead of a 400.
+const ENUM_FIELDS = { paceLevel: PACE_LEVELS, schedulePreference: SCHEDULE_PREFERENCES }
 
 export async function GET(
   _request: NextRequest,
@@ -69,6 +75,9 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+
+    const invalid = validateEnumFields(body, ENUM_FIELDS)
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
     // Build update data from provided fields
     const updateData: Record<string, unknown> = {}
@@ -150,6 +159,9 @@ export async function PUT(
     if (!user) {
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
+
+    const invalid = validateEnumFields(body, ENUM_FIELDS)
+    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
     const updateData: Record<string, unknown> = {}
     const allowedFields = [

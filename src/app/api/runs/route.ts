@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { awardXpAmount, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
 
 // List YOUR tracked runs (newest first). GPS traces are private — session only.
 export async function GET() {
@@ -37,6 +38,10 @@ export async function POST(request: NextRequest) {
     const userId = me.id
 
     const body = await request.json()
+
+    const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
+    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
+
     const {
       clientRunId = null,
       distanceKm = 0,

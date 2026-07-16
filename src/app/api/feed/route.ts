@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { storeImage } from '@/lib/image-store'
+import { POST_TYPES, validateEnumFields } from '@/lib/enums'
 
 export async function GET(request: NextRequest) {
   try {
@@ -124,6 +125,9 @@ export async function POST(request: NextRequest) {
     if (overLimit(content, LIMITS.post)) {
       return NextResponse.json({ error: 'Post is too long' }, { status: 400 })
     }
+
+    const invalidEnum = validateEnumFields(body, { postType: POST_TYPES })
+    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
 
     // Posting into a group requires membership — otherwise a non-member could
     // drop posts into any group (including private ones) by passing its id.

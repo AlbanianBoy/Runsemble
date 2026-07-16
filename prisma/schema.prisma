@@ -7,6 +7,60 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Closed value sets ────────────────────────────────────────────────────────
+// These were String columns carrying a "// a, b, c" comment. A comment is not a
+// constraint: a bug or a hand-written PATCH could store any string at all, and
+// nothing downstream would notice until a comparison silently stopped matching.
+//
+// src/lib/enums.ts mirrors these for request validation (so bad input is a 400,
+// not a Prisma crash); src/lib/__tests__/enums.test.ts asserts the two stay in
+// step, so adding a value here without updating the validator fails the tests.
+
+enum PaceLevel {
+  beginner
+  intermediate
+  advanced
+}
+
+enum SchedulePreference {
+  morning
+  afternoon
+  evening
+}
+
+enum SportType {
+  running
+  trail
+  walking
+}
+
+enum PostType {
+  moment
+  milestone
+  question
+  challenge
+}
+
+enum GroupRole {
+  member
+  admin
+  owner
+}
+
+// "here" = checked in at the lobby.
+enum ParticipantStatus {
+  joined
+  here
+  completed
+  cancelled
+}
+
+enum InviteStatus {
+  pending
+  accepted
+  declined
+}
+
 model User {
   id                String    @id @default(cuid())
   name              String
@@ -23,8 +77,8 @@ model User {
   emailVerified     Boolean   @default(false) // confirmed via 6-digit code
   emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
-  paceLevel         String    @default("beginner") // beginner, intermediate, advanced, any
-  schedulePreference String   @default("evening") // morning, afternoon, evening
+  paceLevel         PaceLevel @default(beginner)
+  schedulePreference SchedulePreference @default(evening)
   xp                Int       @default(0)
   streak            Int       @default(0)
   longestStreak     Int       @default(0)
@@ -110,7 +164,7 @@ model Hotspot {
   location    String
   lat         Float
   lng         Float
-  sportType   String    @default("running")
+  sportType   SportType @default(running)
   distanceKm  Float     @default(5.0)
   paceRange   String    @default("any")
   startTime   DateTime
@@ -134,7 +188,7 @@ model HotspotParticipant {
   hotspotId   String
   userId      String
   joinedAt    DateTime @default(now())
-  status      String   @default("joined") // joined, here (checked in at lobby), completed, cancelled
+  status      ParticipantStatus @default(joined)
   checkedInAt DateTime?
 
   hotspot     Hotspot  @relation(fields: [hotspotId], references: [id], onDelete: Cascade)
@@ -167,7 +221,7 @@ model GroupMember {
   id          String   @id @default(cuid())
   groupId     String
   userId      String
-  role        String   @default("member") // member, admin, owner
+  role        GroupRole @default(member)
   joinedAt    DateTime @default(now())
   checkedInAt DateTime? // lobby presence; fresh within 2h counts as "here"
 
@@ -183,7 +237,7 @@ model FeedPost {
   groupId     String?
   content     String
   imageUrl    String?
-  postType    String   @default("moment") // moment, milestone, question, challenge
+  postType    PostType @default(moment)
   runSessionId String? // set when the post shares a tracked run (route card)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -245,7 +299,7 @@ model RunSession {
   userId        String
   hotspotId     String?   // set when the run is tied to a hotspot
   groupId       String?   // set when the run is tied to a group
-  sportType     String    @default("running")
+  sportType     SportType @default(running)
   distanceKm    Float     @default(0)
   durationSec   Int       @default(0)
   avgPaceSecPerKm Int     @default(0) // seconds per km; 0 when distance is 0
@@ -296,7 +350,7 @@ model RunInvite {
   senderId    String
   recipientId String
   message     String?
-  status      String   @default("pending") // pending, accepted, declined
+  status      InviteStatus @default(pending)
   createdAt   DateTime @default(now())
 
   sender      User     @relation("SentInvites", fields: [senderId], references: [id], onDelete: Cascade)

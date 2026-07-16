@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { sweepHotspotReminders } from '@/lib/hotspot-reminders'
+import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
 
 export async function GET() {
   try {
@@ -113,6 +114,9 @@ export async function POST(request: NextRequest) {
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
 
     const body = await request.json()
+
+    const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
+    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
 
     const {
       name,
