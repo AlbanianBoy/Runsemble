@@ -1,16 +1,25 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { getRankFromXP, type RankTier } from './ranks'
+import type {
+  PaceLevel as PaceLevelValue,
+  SchedulePreference as ScheduleSlotValue,
+} from './enums'
 
 export { getRankFromXP }
 export type { RankTier }
 
 export type TabType = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 export type OnboardingStep = 'welcome' | 'profile' | 'verify' | 'login' | 'runs' | 'complete' | 'done'
-export type PaceLevel = 'beginner' | 'intermediate' | 'advanced' | 'any'
+// Pinned to src/lib/enums.ts, which mirrors the database. These used to be
+// written out by hand here, and drifted: the enum lacked 'any' while this type
+// had it, so "Any pace" typechecked in the UI and 500'd at the database.
+// enums.ts holds plain literals and imports no Prisma client, so this costs the
+// browser bundle nothing.
+export type PaceLevel = PaceLevelValue
 // Multi-select: stored as a string[] in the client; serialised as a
 // comma-separated string when sent to the server (e.g. "morning,evening").
-export type ScheduleSlot = 'morning' | 'afternoon' | 'evening'
+export type ScheduleSlot = ScheduleSlotValue
 export type SchedulePreference = ScheduleSlot[]
 
 export interface UserProfile {

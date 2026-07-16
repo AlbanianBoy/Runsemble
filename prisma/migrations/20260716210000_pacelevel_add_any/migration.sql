@@ -1,0 +1,15 @@
+-- Restore 'any' as a PaceLevel.
+--
+-- 20260716130000_enum_closed_value_sets turned paceLevel from a String into an
+-- enum and took the members from the values then present in the table — two rows,
+-- both 'beginner'. But onboarding offers a fourth option, "Any pace", and posts
+-- it to /api/auth/signup, which writes it straight through. So from that
+-- migration onward, choosing "Any pace" made signup fail: Postgres answered
+-- `invalid input value for enum "PaceLevel": "any"` and the route returned 500.
+--
+-- 'any' is a real answer meaning "I'll run with anyone" — map-tab matches a user
+-- with paceLevel 'any' against every pace filter, and store.ts has always had it
+-- in the type. It should never have been dropped.
+--
+-- ADD VALUE is safe here: it appends a label and rewrites no rows.
+ALTER TYPE "PaceLevel" ADD VALUE IF NOT EXISTS 'any';

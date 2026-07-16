@@ -16,10 +16,15 @@ datasource db {
 // not a Prisma crash); src/lib/__tests__/enums.test.ts asserts the two stay in
 // step, so adding a value here without updating the validator fails the tests.
 
+// 'any' means "I'll run with anyone" — it is a real answer, offered in
+// onboarding, and the map treats it as matching every pace filter. It was
+// missing when this enum was introduced because the values were taken from the
+// two rows then in the table rather than from the code that writes them.
 enum PaceLevel {
   beginner
   intermediate
   advanced
+  any
 }
 
 // NOTE: SchedulePreference was a single-value enum. It has been changed to a

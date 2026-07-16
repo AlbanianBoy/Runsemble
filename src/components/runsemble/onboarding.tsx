@@ -6,6 +6,7 @@ import { useQuery, useMutation } from '@tanstack/react-query'
 import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot } from '@/lib/store'
+import { PACE_LEVELS, SCHEDULE_PREFERENCES } from '@/lib/enums'
 import { apiGet, apiSend } from '@/lib/api'
 import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -225,11 +226,26 @@ export function OnboardingWelcome() {
   )
 }
 
-const SCHEDULE_OPTIONS: { id: ScheduleSlot; label: string; emoji: string }[] = [
-  { id: 'morning',   label: 'Morning',   emoji: '🌅' },
-  { id: 'afternoon', label: 'Afternoon', emoji: '☀️' },
-  { id: 'evening',   label: 'Evening',   emoji: '🌙' },
-]
+// Built from SCHEDULE_PREFERENCES rather than written out again, so the tiles and
+// the values the API accepts cannot drift apart. Record<ScheduleSlot, …> is the
+// load-bearing part: add a slot to enums.ts and this stops compiling until it has
+// a label here. Hand-written, a new slot would render fine and 400 on save.
+const SCHEDULE_META: Record<ScheduleSlot, { label: string; emoji: string }> = {
+  morning:   { label: 'Morning',   emoji: '🌅' },
+  afternoon: { label: 'Afternoon', emoji: '☀️' },
+  evening:   { label: 'Evening',   emoji: '🌙' },
+}
+const SCHEDULE_OPTIONS = SCHEDULE_PREFERENCES.map((id) => ({ id, ...SCHEDULE_META[id] }))
+
+// Same deal for pace. This list literally included 'any' while the database enum
+// did not, so "Any pace" typechecked, rendered, and then failed signup with a 500.
+const PACE_META: Record<PaceLevel, { label: string }> = {
+  beginner:     { label: 'Beginner' },
+  intermediate: { label: 'Intermediate' },
+  advanced:     { label: 'Advanced' },
+  any:          { label: 'Any pace' },
+}
+const PACE_OPTIONS = PACE_LEVELS.map((id) => ({ id, ...PACE_META[id] }))
 
 export function OnboardingProfile() {
   const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
@@ -395,19 +411,17 @@ export function OnboardingProfile() {
               onValueChange={setPaceLevel}
               className="mt-2 grid grid-cols-2 gap-2"
             >
-              {['beginner', 'intermediate', 'advanced', 'any'].map(p => (
+              {PACE_OPTIONS.map(({ id, label }) => (
                 <Label
-                  key={p}
+                  key={id}
                   className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
-                    paceLevel === p
+                    paceLevel === id
                       ? 'border-primary bg-primary/5 shadow-sm'
                       : 'border-border hover:border-primary/30 hover:bg-muted/50'
                   }`}
                 >
-                  <RadioGroupItem value={p} />
-                  <span className="text-sm font-medium capitalize">
-                    {p === 'any' ? 'Any pace' : p}
-                  </span>
+                  <RadioGroupItem value={id} />
+                  <span className="text-sm font-medium">{label}</span>
                 </Label>
               ))}
             </RadioGroup>

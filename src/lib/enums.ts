@@ -9,7 +9,9 @@
 // client into the browser bundle. src/lib/__tests__/enums.test.ts asserts every
 // set here matches the schema exactly, so the two cannot drift apart in silence.
 
-export const PACE_LEVELS = ['beginner', 'intermediate', 'advanced'] as const
+// 'any' = "I'll run with anyone". A real choice in onboarding, and the map
+// matches it against every pace filter — not a placeholder for "unset".
+export const PACE_LEVELS = ['beginner', 'intermediate', 'advanced', 'any'] as const
 export const SCHEDULE_PREFERENCES = ['morning', 'afternoon', 'evening'] as const
 export const SPORT_TYPES = ['running', 'trail', 'walking'] as const
 export const POST_TYPES = ['moment', 'milestone', 'question', 'challenge'] as const

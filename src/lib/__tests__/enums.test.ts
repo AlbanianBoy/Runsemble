@@ -70,10 +70,19 @@ describe('validateEnumFields', () => {
     expect(validateEnumFields({ paceLevel: null }, fields)).toBeNull()
   })
 
+  // Derived from PACE_LEVELS rather than spelled out: this test is about the
+  // message naming the field and listing what's allowed, not about which values
+  // are allowed today. Hardcoding the list makes a legitimate change to it fail a
+  // test that has no opinion on it — which is exactly what happened when 'any'
+  // was restored.
   it('names the offending field and its allowed values', () => {
     expect(validateEnumFields({ paceLevel: 'fast' }, fields)).toBe(
-      'paceLevel must be one of: beginner, intermediate, advanced'
+      `paceLevel must be one of: ${PACE_LEVELS.join(', ')}`
     )
+  })
+
+  it('accepts "any" — "I\'ll run with anyone" is a real answer, not a placeholder', () => {
+    expect(validateEnumFields({ paceLevel: 'any' }, fields)).toBeNull()
   })
 
   it('catches a bad value on any field, not just the first', () => {
