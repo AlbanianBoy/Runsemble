@@ -9,6 +9,7 @@ const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
 afterEach(() => {
   delete process.env.BLOB_READ_WRITE_TOKEN
   delete process.env.BLOB_STORE_ID
+  delete process.env.BLOBB_STORE_ID
   put.mockReset()
 })
 
@@ -22,10 +23,19 @@ describe('isBlobConfigured', () => {
     expect(isBlobConfigured()).toBe(true)
   })
 
-  // The regression that matters: connecting a store on Vercel sets BLOB_STORE_ID
-  // and authenticates over OIDC — no BLOB_READ_WRITE_TOKEN is ever created. Gating
-  // on the token alone meant a connected store was never used and every photo
-  // silently kept landing in Postgres.
+  // BLOBB_STORE_ID is not a typo, however much it looks like one. Vercel derives
+  // the env prefix from the store name, and ours is "runsemble-blobb" — so the
+  // double B is the variable production actually runs on. "Correcting" it to
+  // BLOB_STORE_ID matches nothing, and the only symptom is photos quietly going
+  // back into Postgres: no error, no failed deploy, nothing to notice. This test
+  // is here so that edit fails out loud instead.
+  it('is true with BLOBB_STORE_ID alone — the double-B name production uses', () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    expect(isBlobConfigured()).toBe(true)
+  })
+
+  // The single-B name is kept as a fallback for a store connected with the
+  // default prefix.
   it('is true with BLOB_STORE_ID alone (OIDC auth, no token exists)', () => {
     process.env.BLOB_STORE_ID = 'store_mF86AesQYNga'
     expect(isBlobConfigured()).toBe(true)
@@ -42,6 +52,24 @@ describe('storeImage without a blob store', () => {
 })
 
 describe('storeImage with an OIDC-authenticated store', () => {
+  it('uploads via BLOBB_STORE_ID and passes that store id to put()', async () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    put.mockResolvedValue({ url: 'https://blob.example/posts/x.jpg' })
+
+    expect(await storeImage(JPEG)).toBe('https://blob.example/posts/x.jpg')
+    // Named explicitly so the SDK targets this store rather than auto-resolving.
+    expect(put.mock.calls[0][2]).toMatchObject({ storeId: 'store_vL0SkP1e6JRT' })
+  })
+
+  it('prefers BLOBB_STORE_ID when both names are present', async () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    process.env.BLOB_STORE_ID = 'store_mF86AesQYNga'
+    put.mockResolvedValue({ url: 'https://blob.example/posts/x.jpg' })
+
+    await storeImage(JPEG)
+    expect(put.mock.calls[0][2]).toMatchObject({ storeId: 'store_vL0SkP1e6JRT' })
+  })
+
   it('uploads when only BLOB_STORE_ID is set', async () => {
     process.env.BLOB_STORE_ID = 'store_mF86AesQYNga'
     put.mockResolvedValue({ url: 'https://blob.example/posts/x.jpg' })
