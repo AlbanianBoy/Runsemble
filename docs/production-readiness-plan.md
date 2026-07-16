@@ -72,42 +72,78 @@ the bottom so nobody re-fixes them.
   typechecks. Group messages are now `ChatMessage` rows with `groupId` set, so the DM/group
   split was restored exactly. The same stale reference also broke the (dev-only) seed route;
   fixed too.
-- **`typescript: { ignoreBuildErrors: true }` in `next.config.ts` is how that shipped.**
-  `npm run build` passing proves nothing about types. Run `npx tsc --noEmit` separately.
-  Currently 10 errors remain (was 13): 9 in the dead root seeders below, 1 cosmetic in
-  `run-tracker.tsx:372` (`p.acc` is `number|null|undefined` vs a `number|null` param —
-  harmless, because `ingestPosition` guards with `accuracy != null`, and loose `!= null`
-  catches `undefined` too). **Once the seeders are gone, add `tsc --noEmit` to CI and
-  consider removing `ignoreBuildErrors`.**
-- **`seed.ts` and `seed-db.ts` at the repo root are dead code.** Referenced nowhere (not in
-  `package.json`, `codemagic.yaml`, or `scripts/`); the live seeder is
-  `src/app/api/seed/route.ts`. They carry 9 of the 10 remaining type errors. Recommend
-  deleting them — deliberately left alone here to keep the Tier 1 commit focused.
+- ~~**`typescript: { ignoreBuildErrors: true }` in `next.config.ts` is how that shipped.**~~
+  **FIXED.** The flag is gone and the tree typechecks clean (0 errors, was 13). `npm run
+  typecheck` exists and CI runs it ahead of the build. **Keep it at zero** — this flag is
+  precisely why a route calling a deleted Prisma model reached production with a green build.
+- ~~**`seed.ts` and `seed-db.ts` at the repo root are dead code.**~~ **DELETED** (754 lines).
+  Referenced nowhere, and both still called `db.groupChatMessage`, so they were broken as well
+  as dead. They held 9 of the 10 remaining type errors.
+- **The leaderboard's non-xp boards were unindexed.** Neither audit spotted it; one asserted
+  the opposite ("rebuilt from a full table scan on every request" — false for `xp`, which was
+  indexed). `User` had *only* `@@index([xp])` while the board sorts by five metrics. Indexes
+  for the other four are in the item 9 migration.
 
-## Tier 2 — Hardening (first weeks after launch)
+## Tier 2 — Hardening
 
-7. **Admin defense-in-depth**: `/admin` page already does a real server-side
-   `getSessionUser()` + `ADMIN_EMAILS` check (this is why the audit's "critical" was
-   overblown). Still worth: validate the session token against the DB in `middleware.ts`
-   instead of checking cookie presence only, so unauthenticated requests never reach the page.
-8. **Rate limiting to a shared store.** `src/lib/rate-limit.ts` is in-memory per serverless
-   instance (self-documented as pilot-grade). Move to Upstash Redis / Vercel KV. Keep the
-   same `rateLimit(key, limit, windowMs)` signature so call sites don't change.
-9. **Drop stale counter columns**: `FeedPost.likes` and `FeedPost.comments` (relational
-   `PostLike`/`PostComment` + `_count` are the source of truth). Also drop
-   `RunGroup.totalKmThisWeek` (legacy, computed from RunSessions now). Prisma migration +
-   remove the seed writes.
-10. **Enum-ify free-string columns**: `paceLevel`, `schedulePreference`, `sportType`,
-    `postType`, `status`, `role` → Prisma `enum`s. One migration; also gives type-safety in TS.
-11. **ChatMessage XOR constraint**: exactly one of `recipientId`/`groupId` must be set.
-    Prisma can't express CHECK constraints natively — add it in a migration's raw SQL:
-    `ALTER TABLE "ChatMessage" ADD CONSTRAINT dm_xor_group CHECK ((("recipientId" IS NULL) <> ("groupId" IS NULL)));`
-12. **Cache read-heavy routes**: `Cache-Control: s-maxage=60, stale-while-revalidate=300` on
-    `/api/leaderboard`; s-maxage=30 on `/api/users`. One line each.
-13. **Root `README.md`**: stack, local setup (bun install → prisma generate → dev), env vars
-    (point at `.env.example`, which EXISTS), how native builds work (Android Studio /
-    Codemagic), deploy model (push-to-main = prod).
-14. **`package.json` name**: `nextjs_tailwind_shadcn_ts` → `runsemble`.
+**Status: 7, 9, 10, 11, 13, 14 DONE (2026-07-16). 12 rejected as unsafe — see below.
+8 is blocked on the founder. Two migrations are written but NOT APPLIED.**
+
+> **→ FOUNDER ACTION: run `prisma migrate deploy` when ready.** Two migrations wait:
+> `20260716120000_drop_stale_counters_add_indexes_xor` and `20260716130000_enum_closed_value_sets`.
+> Nothing auto-applies them (`npm run build` only runs `prisma generate`). **Deploy the code
+> first, then migrate** — Prisma stops selecting the dropped columns, so the app runs fine
+> while they still exist, but the old code breaks the moment they're gone. The enum migration
+> is order-independent.
+
+7. ~~**Admin defense-in-depth.**~~ **DONE, but not as specified.** Investigated and
+   deliberately did *not* DB-validate sessions in `middleware.ts`. Middleware runs on the
+   **edge runtime, which cannot reach Prisma** — validating there means switching the runtime
+   on the critical path of every `/admin` and `/api/seed` request. The gain is zero: the entire
+   admin surface is one read-only server-rendered page which already resolves the session
+   against the DB and checks `ADMIN_EMAILS` *before touching any data*, and there are no
+   `/api/admin/*` routes or server actions. Risk for no benefit. The real hazard was the
+   **comment**, which claimed middleware "enforces session auth" — inviting someone to add an
+   admin API route behind a gate that only checks a cookie *exists* and whose matcher wouldn't
+   even cover it. Comment fixed to state the actual boundary.
+8. **Rate limiting to a shared store. BLOCKED ON FOUNDER — needs an account.**
+   `src/lib/rate-limit.ts` is in-memory per serverless instance (self-documented as
+   pilot-grade). Provision Upstash Redis or Vercel KV (dashboard → Storage), then the swap is
+   mechanical: keep the `rateLimit(key, limit, windowMs)` signature so no call site changes,
+   and make it async. Not urgent at pilot scale — it still blunts a single client hammering
+   login.
+9. ~~**Drop stale counter columns.**~~ **DONE.** Correction to the audit: `FeedPost.likes` was
+   **not** "stale dead weight" — the like route kept it in step *atomically in a transaction*,
+   which is why measured drift was 0. It was redundant, not stale. Dropping it required
+   refactoring the like route (it returned `updatedPost.likes` to the client) to count the
+   `PostLike` rows instead; the comment route already recomputed relationally. `RunGroup.
+   totalKmThisWeek` was genuinely dead. Counts are now derived, so drift is impossible rather
+   than merely avoided.
+10. ~~**Enum-ify free-string columns.**~~ **DONE**, plus the half the audit missed. The audit
+    listed the columns without their models — `role` is on `GroupMember` (not `User`), `status`
+    on `HotspotParticipant` *and* `RunInvite`, `sportType` on `Hotspot` *and* `RunSession`.
+    Also: `sportType` ∈ {running, **trail, walking**}, not just `running`; and the `paceLevel`
+    schema comment listing `any` was wrong — `any` belongs to `paceRange`, a different field.
+    Enums *alone* would have converted "stores garbage" into a **500**, so `src/lib/enums.ts`
+    validates the same sets at the four request-body ingress points and returns 400.
+    `enums.test.ts` asserts the mirror matches Prisma's generated enums so they can't drift.
+    `preferredSport` deliberately left String — no UI selector, unclear value set.
+11. ~~**ChatMessage XOR constraint.**~~ **DONE.** Verified 0 existing rows violate it first.
+    Note in the schema: Prisma can't express CHECK, so **`db push` will not recreate it** —
+    use `migrate deploy`/`migrate dev` or the guarantee is silently lost.
+12. **Cache read-heavy routes — REJECTED, the advice is unsafe here. Do not implement it.**
+    `s-maxage` targets *shared* (CDN) caches, and **both routes are per-viewer**:
+    `/api/leaderboard` always shows you yourself even when `privacyVisible` is false, and
+    `/api/users` filters by *the viewer's* blocks. A CDN would serve one user's personalised
+    response to another — exposing hidden users (the exact guarantee that code protects) and
+    leaking block relationships. `Vary: Cookie` would make it correct and useless (unique
+    session cookie per user → no hits). The audit's premise was also wrong: the leaderboard is
+    **not** "a full table scan on every request" for the default board — `xp` was indexed. It
+    *was* a full scan for the other four metrics, which had no index at all. **Fixed the real
+    cost with indexes** (item 9's migration) instead. If CDN caching is ever wanted, split a
+    genuinely public board (`privacyVisible: true` only) from the viewer's own rank.
+13. ~~**Root `README.md`.**~~ **DONE.**
+14. ~~**`package.json` name.**~~ **DONE** — `runsemble`. Also synced the stale name in `bun.lock`.
 
 ## Tier 3 — Scale & polish (post-launch, prioritize by user feedback)
 
