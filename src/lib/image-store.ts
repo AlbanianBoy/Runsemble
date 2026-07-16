@@ -12,9 +12,21 @@ import { put } from '@vercel/blob'
 // is present. Both forms render from an <img src>, so readers need no change and
 // rows written under the old scheme keep working.
 
-/** True when a Vercel Blob store is wired up (the token is injected by Vercel). */
+/**
+ * True when a Vercel Blob store is reachable.
+ *
+ * Two ways to authenticate, and the modern one has no token at all:
+ *   - OIDC — connecting a store sets BLOB_STORE_ID, and Vercel injects a
+ *     short-lived VERCEL_OIDC_TOKEN at runtime. This is what our project uses.
+ *   - BLOB_READ_WRITE_TOKEN — the older static token, still supported.
+ *
+ * Checking only for the token would mean a correctly connected store never gets
+ * used, and every photo would keep going into Postgres with nothing to show that
+ * anything was wrong. BLOB_STORE_ID isn't set for local dev, so `bun run dev`
+ * still takes the inline path.
+ */
 export function isBlobConfigured(): boolean {
-  return !!process.env.BLOB_READ_WRITE_TOKEN
+  return !!process.env.BLOB_READ_WRITE_TOKEN || !!process.env.BLOB_STORE_ID
 }
 
 const DATA_URL = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i

@@ -8,16 +8,26 @@ const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
 
 afterEach(() => {
   delete process.env.BLOB_READ_WRITE_TOKEN
+  delete process.env.BLOB_STORE_ID
   put.mockReset()
 })
 
 describe('isBlobConfigured', () => {
-  it('is false without a token', () => {
+  it('is false with no credentials at all', () => {
     expect(isBlobConfigured()).toBe(false)
   })
 
-  it('is true once the token is present', () => {
+  it('is true with the static read-write token', () => {
     process.env.BLOB_READ_WRITE_TOKEN = 'tok'
+    expect(isBlobConfigured()).toBe(true)
+  })
+
+  // The regression that matters: connecting a store on Vercel sets BLOB_STORE_ID
+  // and authenticates over OIDC — no BLOB_READ_WRITE_TOKEN is ever created. Gating
+  // on the token alone meant a connected store was never used and every photo
+  // silently kept landing in Postgres.
+  it('is true with BLOB_STORE_ID alone (OIDC auth, no token exists)', () => {
+    process.env.BLOB_STORE_ID = 'store_mF86AesQYNga'
     expect(isBlobConfigured()).toBe(true)
   })
 })
@@ -28,6 +38,16 @@ describe('storeImage without a blob store', () => {
   it('returns the data URL unchanged and never uploads', async () => {
     expect(await storeImage(JPEG)).toBe(JPEG)
     expect(put).not.toHaveBeenCalled()
+  })
+})
+
+describe('storeImage with an OIDC-authenticated store', () => {
+  it('uploads when only BLOB_STORE_ID is set', async () => {
+    process.env.BLOB_STORE_ID = 'store_mF86AesQYNga'
+    put.mockResolvedValue({ url: 'https://blob.example/posts/x.jpg' })
+
+    expect(await storeImage(JPEG)).toBe('https://blob.example/posts/x.jpg')
+    expect(put).toHaveBeenCalledOnce()
   })
 })
 
