@@ -149,6 +149,22 @@ the bottom so nobody re-fixes them.
 
 15. **Cursor pagination** for `/api/feed` (currently newest-100) and `/api/users`
     (currently take-500-with-includes; fine for one city, breaks at multi-city).
+15b. **Private-group photos rely on an unguessable URL, not on authorisation.**
+    Post photos are stored with `access: 'public'` (decided 2026-07-16: ship public now,
+    revisit when private groups get real usage). The URL only reaches viewers who pass
+    `canViewPost`, but a Vercel Blob public URL **never expires** — so a private-group photo
+    URL, once leaked (shared, logged, sitting in browser history), works for anyone forever.
+    This is the same model Instagram/WhatsApp/Discord use, and fine at pilot scale; it is a
+    real gap if private groups become the point of the product.
+    **Fix when needed:** `@vercel/blob` (v2.6.1+) supports `access: 'private'` + `get()`.
+    Store the blob *pathname* rather than the URL, add `GET /api/feed/[id]/image` that checks
+    the session and `canViewPost(post.groupId, userId)` before streaming, and point the feed's
+    `<img src>` at it. **Do not copy Vercel's example header** (`Cache-Control: private,
+    no-cache`) — that re-downloads every photo on every scroll, which is a function
+    invocation and full bandwidth each time, brutal on mobile data. Blob paths are immutable
+    UUIDs, so `private, max-age=86400, immutable` is safe and keeps it to one function hit per
+    image per device. Rows written before the switch (`data:` or a public URL) must keep
+    rendering.
 16. **GPS quality polish** (tracking works; these are refinements):
     - Light smoothing (median-of-3 or simple Kalman on lat/lng) before distance accumulation.
     - Reconsider 3:1 path thinning at save (hurts curve fidelity); thin adaptively by
