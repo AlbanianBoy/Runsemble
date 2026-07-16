@@ -13,6 +13,12 @@ export async function GET(request: NextRequest) {
     const userId = (await getSessionUser())?.id ?? null
     const scope = searchParams.get('scope') ?? 'all' // all | following
 
+    // Keyset pagination. `cursor` is the id of the last post of the previous
+    // page; absent, you get the first one. The default page stays at 100 so a
+    // caller that knows nothing about any of this behaves exactly as before.
+    const cursor = searchParams.get('cursor')
+    const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 100, 1), 100)
+
     // Compose the filter as ANDed clauses (block + visibility + scope).
     const and: import('@prisma/client').Prisma.FeedPostWhereInput[] = []
 
@@ -82,12 +88,21 @@ export async function GET(request: NextRequest) {
         // Only pull the current user's like row so we can flag likedByMe.
         likedBy: userId ? { where: { userId }, select: { id: true } } : false,
       },
-      orderBy: { createdAt: 'desc' },
-      take: 100, // newest 100 — bounds the query as the feed grows
-
+      // id breaks ties on createdAt. Without it, two posts sharing a timestamp
+      // have no defined order, and a page boundary landing between them can
+      // repeat one and drop the other.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      // One more than asked for: if it comes back, there's another page. Cheaper
+      // and more honest than a second count() query, which could disagree with
+      // this one anyway.
+      take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
 
-    const shaped = posts.map((p) => {
+    const hasMore = posts.length > limit
+    const page = hasMore ? posts.slice(0, limit) : posts
+
+    const shaped = page.map((p) => {
       const { _count, likedBy, ...rest } = p
       return {
         ...rest,
@@ -97,7 +112,9 @@ export async function GET(request: NextRequest) {
       }
     })
 
-    return NextResponse.json({ posts: shaped })
+    // null rather than absent, so "no more pages" is stated rather than inferred.
+    const nextCursor = hasMore ? page[page.length - 1].id : null
+    return NextResponse.json({ posts: shaped, nextCursor })
   } catch (error) {
     console.error('Error fetching feed posts:', error)
     return NextResponse.json(

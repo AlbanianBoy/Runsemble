@@ -1,8 +1,8 @@
 'use client'
 
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import dynamic from 'next/dynamic'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2 } from 'lucide-react'
@@ -33,6 +33,10 @@ import { CommentsSheet } from './comments-sheet'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
+// Posts per page. Small enough that opening the feed is one quick request on
+// mobile data, large enough to fill a screen without immediately asking again.
+const FEED_PAGE_SIZE = 20
+
 const fadeUp = {
   initial: { opacity: 0, y: 12 },
   animate: { opacity: 1, y: 0 },
@@ -56,9 +60,22 @@ export function FeedTab() {
 
   const feedKey = ['feed', currentUser?.id, scope] as const
 
-  const { data: feedData, isLoading } = useQuery({
+  // Paged, so opening the feed doesn't download every post ever written. Older
+  // pages load on demand as you reach the bottom.
+  const {
+    data: feedData,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
     queryKey: feedKey,
-    queryFn: () => apiGet<FeedResponse>(`/api/feed?userId=${currentUser?.id ?? ''}&scope=${scope}`),
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiGet<FeedResponse>(
+        `/api/feed?scope=${scope}&limit=${FEED_PAGE_SIZE}${pageParam ? `&cursor=${pageParam}` : ''}`
+      ),
+    getNextPageParam: (last) => last.nextCursor,
   })
   const { data: hotspotsData } = useQuery({
     queryKey: ['hotspots'],
@@ -69,7 +86,25 @@ export function FeedTab() {
     queryFn: () => apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}`),
   })
 
-  const posts: ApiFeedPost[] = feedData?.posts ?? []
+  // Pull the next page in slightly before the sentinel is actually on screen, so
+  // scrolling doesn't stop at a spinner. Falls back to tapping the button if the
+  // browser has no IntersectionObserver.
+  const loadMoreRef = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const el = loadMoreRef.current
+    if (!el || !hasNextPage || typeof IntersectionObserver === 'undefined') return
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0]?.isIntersecting && !isFetchingNextPage) void fetchNextPage()
+      },
+      { rootMargin: '400px' }
+    )
+    io.observe(el)
+    return () => io.disconnect()
+  }, [hasNextPage, isFetchingNextPage, fetchNextPage])
+
+  const posts: ApiFeedPost[] = feedData?.pages.flatMap((p) => p.posts) ?? []
   const hotspots: ApiHotspot[] = hotspotsData?.hotspots ?? []
   const users: ApiUser[] = usersData?.users ?? []
 
@@ -82,14 +117,20 @@ export function FeedTab() {
     mutationFn: (postId: string) =>
       apiSend(`/api/feed/${postId}/like`, 'POST', { userId: currentUser?.id }),
     onMutate: (postId: string) => {
-      queryClient.setQueryData<FeedResponse>(feedKey, (old) =>
+      // The post lives in whichever page happened to contain it, so every page
+      // gets the same map rather than just the first.
+      queryClient.setQueryData<InfiniteData<FeedResponse, string | null>>(feedKey, (old) =>
         old
           ? {
-              posts: old.posts.map((p) =>
-                p.id === postId
-                  ? { ...p, likedByMe: !p.likedByMe, likes: p.likes + (p.likedByMe ? -1 : 1) }
-                  : p
-              ),
+              ...old,
+              pages: old.pages.map((page) => ({
+                ...page,
+                posts: page.posts.map((p) =>
+                  p.id === postId
+                    ? { ...p, likedByMe: !p.likedByMe, likes: p.likes + (p.likedByMe ? -1 : 1) }
+                    : p
+                ),
+              })),
             }
           : old
       )
@@ -405,6 +446,29 @@ export function FeedTab() {
               </motion.div>
             )
           })}
+
+          {/* Older posts load when this scrolls into view; the button is the
+              fallback for anyone whose browser has no IntersectionObserver, and
+              a plain target for taps. */}
+          {hasNextPage && (
+            <div ref={loadMoreRef} className="flex justify-center py-4">
+              <Button
+                variant="ghost"
+                className="rounded-full text-muted-foreground"
+                disabled={isFetchingNextPage}
+                onClick={() => fetchNextPage()}
+              >
+                {isFetchingNextPage ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    Loading older posts
+                  </>
+                ) : (
+                  'Load older posts'
+                )}
+              </Button>
+            </div>
+          )}
         </motion.div>
       )}
 

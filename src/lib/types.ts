@@ -304,6 +304,8 @@ export interface HotspotResponse {
 }
 export interface FeedResponse {
   posts: ApiFeedPost[]
+  /** Pass as `?cursor=` for the next page. null means this was the last one. */
+  nextCursor: string | null
 }
 export interface BadgesResponse {
   badges: ApiBadge[]
