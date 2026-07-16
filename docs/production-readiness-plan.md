@@ -171,8 +171,21 @@ the bottom so nobody re-fixes them.
       heading-change instead.
     - Store per-point `acc` and provider in the saved path for later reprocessing.
     - Per-km split times for backgrounded segments are approximate (recorded at drain time).
-17. **Move XP/badge/streak computation out of the `POST /api/runs` request path** (background
-    job or at least `after()`), so run saves stay fast.
+17. **Move XP/badge/streak out of the `POST /api/runs` request path — REJECTED. Do not do
+    this.** Investigated 2026-07-16; the premise does not survive contact with the code.
+    - **The response carries them.** `run-tracker.tsx` toasts `res.xp.awarded` and
+      `res.badgesEarned` the moment a run saves. Compute those in `after()` and the response
+      cannot contain them: every run reports "+0 XP" and no badge ever announces itself.
+      That feedback *is* the gamification feature.
+    - **The rest races the client.** What's left (self-notification, optional feed post) is a
+      genuine side effect, but on success the client invalidates
+      `['feed','runs','leaderboard','badges','users','buddies','challenges','notifications']`
+      immediately. Deferring the feed post means the refetch can beat it — you share a run and
+      your own post isn't there.
+    - **There is no pile-up to remove.** The badge grants look like 6 sequential awaits but
+      each is conditional; typically 0–1 fire per run.
+    If run saves ever do measure slow, the honest fix is fewer round trips (the handler makes
+    ~8–12 sequential Neon queries), not moving work the response depends on.
 18. **Real-time layer**: chat/lobby currently poll. At 10x users move to SSE or a hosted
     websocket (the `examples/websocket/` server is a prototype, not deployed).
 19. ~~**API integration tests.**~~ **STARTED (2026-07-16)** — `src/app/api/__tests__/`, 22 tests
@@ -185,8 +198,15 @@ the bottom so nobody re-fixes them.
     real request. Both guarantees are mutation-tested (remove the `/api/users` guard → the
     suite fails; restore the deleted-model call → it reproduces the exact production
     TypeError). No database needed, so CI runs it without secrets.
-    **Still uncovered:** login/signup, the XP + badge award loop, the messages conversation
-    list (raw SQL, so a mock proves little — wants a real test DB), and the like-toggle race.
+    **Extended 2026-07-16 to 36 tests** across auth guards, the GDPR export, input validation,
+    the like toggle (like/unlike, the P2002 create race, a real DB error still surfacing as
+    500, private-group access) and the run save (pace bounds both sides, `clientRunId`
+    idempotency, and that the response still carries the XP/badges run-tracker toasts).
+    Each guarantee is mutation-tested, not assumed — drop the `/api/users` guard, the P2002
+    catch, the pace bound, or restore the deleted-model call, and the matching test fails.
+    **Still uncovered:** login/signup and password reset (security-critical, worth doing next),
+    the messages conversation list (raw SQL — a mock proves little, wants a real test DB), and
+    XP/rank-up maths at the API level (`src/lib/__tests__/xp.test.ts` covers the pure part).
 20. **GpsPoint table or PostGIS** if geospatial features ("runs near me") get prioritized.
 
 ## Traps — things that look wrong and are not
