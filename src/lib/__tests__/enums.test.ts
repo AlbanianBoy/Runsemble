@@ -16,10 +16,14 @@ import {
 // Prisma client. That only holds up if it matches the schema — these assertions
 // are what make "add a value to the enum" fail loudly instead of quietly
 // rejecting valid input at the API edge.
+//
+// NOTE: SchedulePreference is intentionally absent here. It was dropped as a
+// Prisma enum — the column is now a plain String (comma-separated values).
+// $Enums.SchedulePreference no longer exists in the generated client.
+// SCHEDULE_PREFERENCES still lives in enums.ts for request-time validation.
 describe('enums match prisma/schema.prisma', () => {
   const cases: [string, readonly string[], Record<string, string>][] = [
     ['PaceLevel', PACE_LEVELS, $Enums.PaceLevel],
-    ['SchedulePreference', SCHEDULE_PREFERENCES, $Enums.SchedulePreference],
     ['SportType', SPORT_TYPES, $Enums.SportType],
     ['PostType', POST_TYPES, $Enums.PostType],
     ['GroupRole', GROUP_ROLES, $Enums.GroupRole],
