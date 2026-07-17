@@ -1,8 +1,9 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isBlobConfigured, storeImage } from '@/lib/image-store'
+import { isBlobConfigured, storeImage, deleteStoredImages } from '@/lib/image-store'
 
 const put = vi.hoisted(() => vi.fn())
-vi.mock('@vercel/blob', () => ({ put }))
+const del = vi.hoisted(() => vi.fn())
+vi.mock('@vercel/blob', () => ({ put, del }))
 
 const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRg=='
 
@@ -11,6 +12,7 @@ afterEach(() => {
   delete process.env.BLOB_STORE_ID
   delete process.env.BLOBB_STORE_ID
   put.mockReset()
+  del.mockReset()
 })
 
 describe('isBlobConfigured', () => {
@@ -115,5 +117,42 @@ describe('storeImage with a blob store', () => {
 
     expect(await storeImage(url)).toBe(url)
     expect(put).not.toHaveBeenCalled()
+  })
+})
+
+describe('deleteStoredImages — erasure has to reach object storage', () => {
+  // The DB cascade wipes every row on account deletion, but a cascade cannot
+  // reach Blob: without an explicit del(), a deleted user's photos stayed
+  // publicly addressable forever for anyone who kept the URL.
+  const BLOB_URL = 'https://vl0skp1e6jrt6ckh.public.blob.vercel-storage.com/posts/a.jpg'
+
+  it('deletes blob URLs and skips inline data: rows, which die with the cascade', async () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    del.mockResolvedValue(undefined)
+
+    await deleteStoredImages([BLOB_URL, JPEG, null, undefined])
+
+    expect(del).toHaveBeenCalledOnce()
+    expect(del.mock.calls[0][0]).toEqual([BLOB_URL])
+    expect(del.mock.calls[0][1]).toMatchObject({ storeId: 'store_vL0SkP1e6JRT' })
+  })
+
+  it('does nothing when no store is configured — nothing was ever uploaded', async () => {
+    await deleteStoredImages([BLOB_URL])
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('does not call del for an all-inline list', async () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    await deleteStoredImages([JPEG, null])
+    expect(del).not.toHaveBeenCalled()
+  })
+
+  it('never throws — account erasure must not fail because storage hiccuped', async () => {
+    process.env.BLOBB_STORE_ID = 'store_vL0SkP1e6JRT'
+    del.mockRejectedValue(new Error('blob down'))
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+
+    await expect(deleteStoredImages([BLOB_URL])).resolves.toBeUndefined()
   })
 })

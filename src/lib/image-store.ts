@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { put } from '@vercel/blob'
+import { put, del } from '@vercel/blob'
 
 // ─── Post image storage ───────────────────────────────────────────────────────
 // Photos reach the API as client-compressed JPEG data URLs. They used to be
@@ -33,6 +33,33 @@ function getBlobStoreId(): string | undefined {
 }
 
 const DATA_URL = /^data:(image\/[a-z0-9.+-]+);base64,(.+)$/i
+
+/**
+ * Delete stored blob images, given whatever the imageUrl column holds.
+ *
+ * Account deletion cascades every DB row, but a cascade cannot reach object
+ * storage — without this, a deleted user's photos stayed in Blob forever,
+ * publicly addressable by anyone who kept the URL. That's incomplete GDPR
+ * erasure, and the kind that never surfaces: nothing errors, the objects just
+ * quietly outlive the person.
+ *
+ * Inline `data:` rows (pre-Blob posts) live in the DB and die with the cascade,
+ * so only real URLs are sent to del(). Best-effort by design — erasure of the
+ * account must not fail because storage hiccuped — but failures are logged so
+ * an orphan is at least visible somewhere.
+ */
+export async function deleteStoredImages(urls: Array<string | null | undefined>): Promise<void> {
+  if (!isBlobConfigured()) return
+  const blobUrls = urls.filter((u): u is string => !!u && /^https?:\/\//i.test(u))
+  if (blobUrls.length === 0) return
+
+  const storeId = getBlobStoreId()
+  try {
+    await del(blobUrls, storeId ? { storeId } : undefined)
+  } catch (error) {
+    console.error(`Blob cleanup failed — ${blobUrls.length} image(s) may be orphaned:`, error)
+  }
+}
 
 /**
  * Persist a `data:image/...;base64,...` URL and return what should be stored on
