@@ -59,3 +59,70 @@ export function computeElapsedSec(base: number, runningSinceMs: number | null, n
 export function crossedKm(prevKm: number, nextKm: number): boolean {
   return Math.floor(nextKm) > Math.floor(prevKm)
 }
+
+// ─── Server-side run verification ─────────────────────────────────────────────
+// The pace/total bounds on POST /api/runs check that a claim is internally
+// consistent, but they trust the claimed distance itself — so a request with no
+// GPS at all can bank a full run's XP just by choosing a believable pace.
+//
+// The tempting fix — recompute distance from the submitted path and compare — DOES
+// NOT WORK with this data model, and it's worth writing down why so nobody tries
+// it again. The stored path is a decorative route sketch: the client thins it 3:1
+// AND rounds to 5 decimals, while the distance is accumulated live from the full
+// fix stream. Measured against real recorded runs, the path sums to 2–30% of the
+// true distance — a 2.43 km run stored a path summing to 0.04 km. There is no
+// ceiling that accepts that real run while still rejecting an inflated one; the
+// path simply isn't a distance record. A stricter check would reject real runs,
+// which is far worse than letting an inflated one through at this scale.
+//
+// So this checks only the one thing the data can support unambiguously: a
+// substantial distance claimed with NO route at all. A real tracked run always
+// carries at least one point once any distance accumulates (distance comes from
+// fixes, fixes become points), so distance-with-zero-points is a claim with zero
+// evidence — the bare `{distanceKm: 15}` request. It does not stop a forger who
+// also fabricates a path; making it do so needs the client to store verifiable
+// distance, which is a separate change with its own accuracy cost.
+
+/** Straight-line length (km) of a submitted path. Exposed for diagnostics/tests. */
+export function pathDistanceKm(path: Array<LatLng>): number {
+  let km = 0
+  for (let i = 1; i < path.length; i++) km += haversineKm(path[i - 1], path[i])
+  return km
+}
+
+/**
+ * A distance claim above this, carried with no GPS points at all, is treated as
+ * unsupported. Below it, allow anything: timing-only mode (GPS denied) reports
+ * ~0 distance with no path, and a sub-2km glitch isn't worth risking a real run
+ * over.
+ */
+export const RUN_UNVERIFIABLE_MAX_KM = 2.0
+
+export type RunVerdict = { ok: true } | { ok: false; reason: string }
+
+/**
+ * Reject a substantial distance claimed with no route behind it at all.
+ *
+ * Intentionally narrow: it fires only on zero usable points, because the path
+ * cannot corroborate distance (see the note above) and a stricter rule rejects
+ * real runs. Any run that actually recorded GPS passes.
+ */
+export function verifyRunDistance(claimedKm: number, path: Array<LatLng> | null | undefined): RunVerdict {
+  const claim = Number(claimedKm) || 0
+  if (claim <= RUN_UNVERIFIABLE_MAX_KM) return { ok: true }
+
+  const points = Array.isArray(path) ? path.filter(isLatLng) : []
+  if (points.length === 0) {
+    return { ok: false, reason: 'Run has no GPS data to support the distance claimed' }
+  }
+  return { ok: true }
+}
+
+function isLatLng(p: unknown): p is LatLng {
+  return (
+    typeof p === 'object' &&
+    p !== null &&
+    Number.isFinite((p as LatLng).lat) &&
+    Number.isFinite((p as LatLng).lng)
+  )
+}

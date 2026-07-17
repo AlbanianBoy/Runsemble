@@ -37,6 +37,11 @@ const ME = {
   lastActiveDate: null, xp: 0,
 }
 
+// A minimal real route. The route rejects a substantial distance claimed with no
+// GPS points at all (the pure-cURL fabrication), so a fixture meant to be a valid
+// run carries a couple of points, as any tracked run does.
+const RUN_PATH = [{ lat: 51.2, lng: 4.4 }, { lat: 51.21, lng: 4.41 }]
+
 const post = (body: unknown) =>
   new NextRequest('http://localhost/api/runs', {
     method: 'POST',
@@ -75,13 +80,13 @@ describe('plausibility bounds', () => {
   it('accepts an ordinary run', async () => {
     const { POST } = await import('@/app/api/runs/route')
     // 5 km in 30 min — 360 s/km.
-    expect((await POST(post({ distanceKm: 5, durationSec: 1800 }))).status).toBe(201)
+    expect((await POST(post({ distanceKm: 5, durationSec: 1800, path: RUN_PATH }))).status).toBe(201)
   })
 
   it('accepts an elite pace at the boundary rather than punishing being fast', async () => {
     const { POST } = await import('@/app/api/runs/route')
     // 10 km in 20 min — 120 s/km, exactly the limit.
-    expect((await POST(post({ distanceKm: 10, durationSec: 1200 }))).status).toBe(201)
+    expect((await POST(post({ distanceKm: 10, durationSec: 1200, path: RUN_PATH }))).status).toBe(201)
   })
 
   it('allows a run with no distance yet — the bounds only apply once both are set', async () => {
@@ -118,7 +123,7 @@ describe('the run response', () => {
   // save rather than being computed after it.
   it('carries the XP and badges the client toasts', async () => {
     const { POST } = await import('@/app/api/runs/route')
-    const body = await (await POST(post({ distanceKm: 5, durationSec: 1800 }))).json()
+    const body = await (await POST(post({ distanceKm: 5, durationSec: 1800, path: RUN_PATH }))).json()
 
     expect(body).toHaveProperty('session')
     expect(body).toHaveProperty('xp')

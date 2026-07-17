@@ -1,5 +1,16 @@
 import { describe, it, expect } from 'vitest'
-import { moveDistanceKm, computeElapsedSec, crossedKm, MIN_JUMP_CAP_KM } from '@/lib/run-math'
+import {
+  moveDistanceKm,
+  computeElapsedSec,
+  crossedKm,
+  MIN_JUMP_CAP_KM,
+  pathDistanceKm,
+  verifyRunDistance,
+} from '@/lib/run-math'
+
+// A straight ~1 km run: 0.009° of latitude is ~1 km. Ten evenly spaced points,
+// which is roughly what survives 3:1 thinning of a short real run.
+const KM_PATH = Array.from({ length: 10 }, (_, i) => ({ lat: 51.2 + i * 0.001, lng: 4.4 }))
 
 // At ~51.2°N, 0.0001° of latitude ≈ 11.1 m — a convenient way to build moves of
 // a known size for the distance filter.
@@ -77,5 +88,60 @@ describe('crossedKm', () => {
   it('does not fire within the same km', () => {
     expect(crossedKm(1.1, 1.2)).toBe(false)
     expect(crossedKm(0.5, 0.9)).toBe(false)
+  })
+})
+
+describe('pathDistanceKm', () => {
+  it('sums the legs of a path', () => {
+    // ~1 km of latitude across the ten points.
+    expect(pathDistanceKm(KM_PATH)).toBeCloseTo(1.0, 1)
+  })
+
+  it('is 0 for fewer than two points', () => {
+    expect(pathDistanceKm([])).toBe(0)
+    expect(pathDistanceKm([{ lat: 51.2, lng: 4.4 }])).toBe(0)
+  })
+})
+
+describe('verifyRunDistance', () => {
+  // The check is narrow ON PURPOSE. The stored path is a thinned, rounded route
+  // sketch that sums to a fraction of the true distance — measured against real
+  // runs, a 2.43 km run stored a path summing to 0.04 km. So distance cannot be
+  // recomputed from it, and the only safe signal is "substantial claim, zero
+  // GPS points". These are the two cases that matter:
+
+  it('rejects a substantial claim with no GPS at all — the pure-cURL attack', () => {
+    // {distanceKm: 15} with no path banks a full run's XP at a chosen pace.
+    expect(verifyRunDistance(15, null).ok).toBe(false)
+    expect(verifyRunDistance(15, []).ok).toBe(false)
+  })
+
+  // The disaster this replaced: an earlier version compared the claim to the path
+  // distance and rejected BOTH real production runs. Any run that recorded even
+  // one point must pass, however sparse — that is the whole correctness bar.
+  it('accepts a real run whose sparse path under-counts badly', () => {
+    // Mirrors real prod data: 2.43 km claimed, a 2-point path summing to ~0.04 km.
+    const sparse = [{ lat: 51.2, lng: 4.4 }, { lat: 51.2003, lng: 4.4001 }]
+    expect(verifyRunDistance(2.43, sparse).ok).toBe(true)
+    // And the other real one: 1.2 km over a 12-point, 0.37 km path.
+    expect(verifyRunDistance(1.2, KM_PATH).ok).toBe(true)
+  })
+
+  it('lets a claim up to the threshold through without a path', () => {
+    // Timing-only mode (GPS denied) reports ~0 distance and no path; a small
+    // glitch is not worth risking a real run over.
+    expect(verifyRunDistance(2.0, null).ok).toBe(true)
+    expect(verifyRunDistance(0, null).ok).toBe(true)
+  })
+
+  it('accepts a big claim as long as it recorded any real point', () => {
+    // The path cannot corroborate distance, so a single valid point is enough to
+    // treat the run as tracked rather than fabricated.
+    expect(verifyRunDistance(20, [{ lat: 51.2, lng: 4.4 }]).ok).toBe(true)
+  })
+
+  it('treats a path of junk points as no path', () => {
+    const junk = [{ lat: 'x', lng: 'y' }, { foo: 1 }] as unknown as { lat: number; lng: number }[]
+    expect(verifyRunDistance(15, junk).ok).toBe(false)
   })
 })

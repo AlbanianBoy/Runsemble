@@ -36,8 +36,16 @@ const ME = {
   lastActiveDate: null, xp: 0,
 }
 
-// A valid 5 km / 30 min run (360 s/km — well inside bounds).
-const GOOD_RUN = { distanceKm: 5, durationSec: 1800 }
+// A valid 5 km / 30 min run (360 s/km — well inside pace bounds). Includes a
+// couple of GPS points, because a tracked run
+// always records some. Distance verification rejects a substantial claim carried
+// with no route at all (the pure-cURL fabrication), so a fixture that means to be
+// a valid run has to look like one.
+const GOOD_RUN = {
+  distanceKm: 5,
+  durationSec: 1800,
+  path: [{ lat: 51.2, lng: 4.4 }, { lat: 51.21, lng: 4.41 }],
+}
 
 const post = (body: unknown) =>
   new NextRequest('http://localhost/api/runs', {
@@ -98,6 +106,26 @@ describe('sportType enum validation', () => {
   })
 })
 
+// ─── Distance verification ──────────────────────────────────────────────────
+// The pace/total bounds trust the claimed distance; this is the wiring that
+// makes the route reject a substantial distance with no GPS behind it at all.
+// The threshold logic lives in run-math (verifyRunDistance) and is unit-tested
+// there against real recorded runs; here we only prove the route enforces it.
+describe('distance must have a route behind it', () => {
+  it('rejects a big distance claimed with no GPS path — the pure-cURL attack', async () => {
+    const { POST } = await import('@/app/api/runs/route')
+    const res = await POST(post({ distanceKm: 15, durationSec: 5400 })) // 6:00/km, no path
+    expect(res.status).toBe(422)
+    expect((await res.json()).error).toMatch(/no GPS/i)
+  })
+
+  it('accepts the same distance once a real route is attached', async () => {
+    const { POST } = await import('@/app/api/runs/route')
+    const res = await POST(post({ ...GOOD_RUN, distanceKm: 15, durationSec: 5400 }))
+    expect(res.status).toBe(201)
+  })
+})
+
 // ─── Path / splits byte-cap ───────────────────────────────────────────────────
 
 describe('path and splits size capping', () => {
@@ -144,7 +172,7 @@ describe('XP arithmetic', () => {
   //   xpEarned = 20 (base) + round(dist * 10) + newBuddyCount * 30 + untaggedCompanions * 15
   it('computes the correct XP for a solo 5 km run', async () => {
     const { POST } = await import('@/app/api/runs/route')
-    const body = await (await POST(post({ distanceKm: 5, durationSec: 1800 }))).json()
+    const body = await (await POST(post({ ...GOOD_RUN }))).json()
     // 20 + 50 + 0 + 0 = 70
     expect(body.session.xpEarned).toBe(70)
   })
@@ -152,7 +180,7 @@ describe('XP arithmetic', () => {
   it('adds 15 XP per untagged companion', async () => {
     const { POST } = await import('@/app/api/runs/route')
     const body = await (
-      await POST(post({ distanceKm: 5, durationSec: 1800, companions: 2 }))
+      await POST(post({ ...GOOD_RUN, companions: 2 }))
     ).json()
     // 20 + 50 + 0 + 30 = 100
     expect(body.session.xpEarned).toBe(100)
@@ -169,7 +197,7 @@ describe('XP arithmetic', () => {
 
     const { POST } = await import('@/app/api/runs/route')
     const body = await (
-      await POST(post({ distanceKm: 5, durationSec: 1800, buddyIds: ['u2'] }))
+      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
     ).json()
     // 20 + 50 + 30 = 100
     expect(body.session.xpEarned).toBe(100)

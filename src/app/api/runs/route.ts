@@ -4,6 +4,7 @@ import { awardXpAmount, grantBadge, computeStreak, BADGES, type BadgeSpec } from
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
+import { verifyRunDistance } from '@/lib/run-math'
 
 // List YOUR tracked runs (newest first). GPS traces are private — session only.
 export async function GET() {
@@ -91,6 +92,16 @@ export async function POST(request: NextRequest) {
       if (paceSecPerKm < 120 || paceSecPerKm > 1800) {
         return NextResponse.json({ error: 'Invalid run data: pace out of realistic range' }, { status: 422 })
       }
+    }
+
+    // The pace/total checks only prove a claim is internally consistent — they
+    // still trust the distance itself, so a request with no GPS can bank a full
+    // run's XP at a believable pace. This checks the claim against its evidence:
+    // the submitted route must be able to support the distance. Generous by
+    // design (the client thins the path 3:1, so it under-counts) — see run-math.
+    const verdict = verifyRunDistance(dist, path)
+    if (!verdict.ok) {
+      return NextResponse.json({ error: verdict.reason }, { status: 422 })
     }
 
     const avgPaceSecPerKm = dist > 0 ? Math.round(dur / dist) : 0
