@@ -24,7 +24,8 @@ vi.mock('@/lib/auth', async (orig) => ({
   getSessionUser,
 }))
 
-const notify = vi.hoisted(() => vi.fn<[{ userId: string; type: string }, ...unknown[]], Promise<void>>(async () => {}))
+type NotifyArg = { userId: string; type: string }
+const notify = vi.hoisted(() => vi.fn(async (_arg: NotifyArg) => {}))
 vi.mock('@/lib/notify', () => ({ notify }))
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -178,11 +179,11 @@ describe('XP arithmetic', () => {
 
 // ─── Feed post creation ───────────────────────────────────────────────────────
 
+type FeedPostCreateArg = { data: { postType: string; authorId: string } }
+
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    const feedPostCreate = vi.fn<[{ data: { postType: string; authorId: string } }, ...unknown[]], Promise<{ id: string }>>(
-      async () => ({ id: 'fp1' })
-    )
+    const feedPostCreate = vi.fn(async (_arg: FeedPostCreateArg) => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -196,9 +197,7 @@ describe('shareToFeed', () => {
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate = vi.fn<[{ data: { postType: string; authorId: string } }, ...unknown[]], Promise<{ id: string }>>(
-      async () => ({ id: 'fp1' })
-    )
+    const feedPostCreate = vi.fn(async (_arg: FeedPostCreateArg) => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
