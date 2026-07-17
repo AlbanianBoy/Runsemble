@@ -180,35 +180,33 @@ describe('XP arithmetic', () => {
 
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    // Typed with a rest parameter so TS infers mock.calls as (...args: unknown[]) => Result,
-    // which makes mock.calls[0][0] valid (no TS2493 empty-tuple error).
-    const feedPostCreate: (...args: unknown[]) => Promise<{ id: string }> = vi.fn(
-      async () => ({ id: 'fp1' })
-    )
+    // Use a plain captured-args pattern instead of vi.mocked() to avoid TS
+    // inferring an empty-tuple call signature from the mock initialiser.
+    let capturedCallArg: unknown = undefined
+    const feedPostCreate = vi.fn(async (...args: unknown[]) => {
+      capturedCallArg = args[0]
+      return { id: 'fp1' }
+    })
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
     const res = await POST(post({ ...GOOD_RUN, shareToFeed: true }))
 
     expect(res.status).toBe(201)
-    expect(vi.mocked(feedPostCreate)).toHaveBeenCalledOnce()
-    const callArg = vi.mocked(feedPostCreate).mock.calls[0][0] as unknown as {
-      data: { postType: string; authorId: string }
-    }
+    expect(feedPostCreate).toHaveBeenCalledOnce()
+    const callArg = capturedCallArg as { data: { postType: string; authorId: string } }
     expect(callArg.data.postType).toBe('milestone')
     expect(callArg.data.authorId).toBe(ME.id)
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate: (...args: unknown[]) => Promise<{ id: string }> = vi.fn(
-      async () => ({ id: 'fp1' })
-    )
+    const feedPostCreate = vi.fn(async (..._args: unknown[]) => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
     await POST(post(GOOD_RUN))
 
-    expect(vi.mocked(feedPostCreate)).not.toHaveBeenCalled()
+    expect(feedPostCreate).not.toHaveBeenCalled()
   })
 })
 
