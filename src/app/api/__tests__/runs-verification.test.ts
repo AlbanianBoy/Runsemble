@@ -24,8 +24,7 @@ vi.mock('@/lib/auth', async (orig) => ({
   getSessionUser,
 }))
 
-type NotifyArg = { userId: string; type: string }
-const notify = vi.hoisted(() => vi.fn(async (_arg: NotifyArg) => {}))
+const notify = vi.hoisted(() => vi.fn(async () => {}))
 vi.mock('@/lib/notify', () => ({ notify }))
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -179,11 +178,9 @@ describe('XP arithmetic', () => {
 
 // ─── Feed post creation ───────────────────────────────────────────────────────
 
-type FeedPostCreateArg = { data: { postType: string; authorId: string } }
-
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    const feedPostCreate = vi.fn(async (_arg: FeedPostCreateArg) => ({ id: 'fp1' }))
+    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -191,13 +188,15 @@ describe('shareToFeed', () => {
 
     expect(res.status).toBe(201)
     expect(feedPostCreate).toHaveBeenCalledOnce()
-    const callArg = feedPostCreate.mock.calls[0][0]
+    const callArg = feedPostCreate.mock.calls[0][0] as unknown as {
+      data: { postType: string; authorId: string }
+    }
     expect(callArg.data.postType).toBe('milestone')
     expect(callArg.data.authorId).toBe(ME.id)
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate = vi.fn(async (_arg: FeedPostCreateArg) => ({ id: 'fp1' }))
+    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -267,8 +266,10 @@ describe('buddy tagging', () => {
     const { POST } = await import('@/app/api/runs/route')
     await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
 
-    const buddyNotify = notify.mock.calls.find((c) => c[0].userId === 'u2')
+    const buddyNotify = notify.mock.calls.find(
+      (c) => (c[0] as unknown as { userId: string }).userId === 'u2'
+    )
     expect(buddyNotify).toBeDefined()
-    expect(buddyNotify![0].type).toBe('run_invite')
+    expect((buddyNotify![0] as unknown as { type: string }).type).toBe('run_invite')
   })
 })
