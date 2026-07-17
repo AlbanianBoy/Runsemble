@@ -180,9 +180,11 @@ describe('XP arithmetic', () => {
 
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    // Typed with no input param to satisfy DbOverrides' (...args: unknown[]) => Result.
-    // vi.mocked() is used to access .mock.calls so TS sees args as unknown[] (not empty tuple).
-    const feedPostCreate: () => Promise<{ id: string }> = vi.fn(async () => ({ id: 'fp1' }))
+    // Typed with a rest parameter so TS infers mock.calls as (...args: unknown[]) => Result,
+    // which makes mock.calls[0][0] valid (no TS2493 empty-tuple error).
+    const feedPostCreate: (...args: unknown[]) => Promise<{ id: string }> = vi.fn(
+      async () => ({ id: 'fp1' })
+    )
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -198,7 +200,9 @@ describe('shareToFeed', () => {
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate: () => Promise<{ id: string }> = vi.fn(async () => ({ id: 'fp1' }))
+    const feedPostCreate: (...args: unknown[]) => Promise<{ id: string }> = vi.fn(
+      async () => ({ id: 'fp1' })
+    )
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
