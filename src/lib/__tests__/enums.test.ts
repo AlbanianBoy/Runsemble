@@ -8,6 +8,9 @@ import {
   GROUP_ROLES,
   PARTICIPANT_STATUSES,
   INVITE_STATUSES,
+  REPORT_SUBJECT_TYPES,
+  REPORT_REASONS,
+  REPORT_STATUSES,
   isOneOf,
   validateEnumFields,
 } from '@/lib/enums'
@@ -29,6 +32,9 @@ describe('enums match prisma/schema.prisma', () => {
     ['GroupRole', GROUP_ROLES, $Enums.GroupRole],
     ['ParticipantStatus', PARTICIPANT_STATUSES, $Enums.ParticipantStatus],
     ['InviteStatus', INVITE_STATUSES, $Enums.InviteStatus],
+    ['ReportSubjectType', REPORT_SUBJECT_TYPES, $Enums.ReportSubjectType],
+    ['ReportReason', REPORT_REASONS, $Enums.ReportReason],
+    ['ReportStatus', REPORT_STATUSES, $Enums.ReportStatus],
   ]
 
   it.each(cases)('%s', (_name, ours, generated) => {

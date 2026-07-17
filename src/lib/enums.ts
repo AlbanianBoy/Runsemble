@@ -18,6 +18,9 @@ export const POST_TYPES = ['moment', 'milestone', 'question', 'challenge'] as co
 export const GROUP_ROLES = ['member', 'admin', 'owner'] as const
 export const PARTICIPANT_STATUSES = ['joined', 'here', 'completed', 'cancelled'] as const
 export const INVITE_STATUSES = ['pending', 'accepted', 'declined'] as const
+export const REPORT_SUBJECT_TYPES = ['user', 'post', 'message'] as const
+export const REPORT_REASONS = ['harassment', 'spam', 'inappropriate', 'unsafe', 'impersonation', 'other'] as const
+export const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const
 
 export type PaceLevel = (typeof PACE_LEVELS)[number]
 export type SchedulePreference = (typeof SCHEDULE_PREFERENCES)[number]
@@ -26,6 +29,9 @@ export type PostType = (typeof POST_TYPES)[number]
 export type GroupRole = (typeof GROUP_ROLES)[number]
 export type ParticipantStatus = (typeof PARTICIPANT_STATUSES)[number]
 export type InviteStatus = (typeof INVITE_STATUSES)[number]
+export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number]
+export type ReportReason = (typeof REPORT_REASONS)[number]
+export type ReportStatus = (typeof REPORT_STATUSES)[number]
 
 /** True when `value` is one of `allowed`. Narrows the type on the way through. */
 export function isOneOf<const T extends readonly string[]>(

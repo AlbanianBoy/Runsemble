@@ -4,8 +4,9 @@
 // session accounts listed in ADMIN_EMAILS (comma-separated, in .env).
 // Deliberately utilitarian — this is a founder tool, not product UI.
 
-import { getSessionUser } from '@/lib/auth'
+import { getAdminUser } from '@/lib/admin'
 import { db } from '@/lib/db'
+import { ReportQueue, type AdminReport } from '@/components/admin/report-queue'
 
 export const metadata = {
   title: 'Runsemble — Ops',
@@ -24,14 +25,9 @@ function fmt(d: Date): string {
 }
 
 export default async function AdminPage() {
-  const user = await getSessionUser()
-  const admins = (process.env.ADMIN_EMAILS ?? '')
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter(Boolean)
-  const isAdmin = !!user && admins.includes(user.email.toLowerCase())
+  const user = await getAdminUser()
 
-  if (!isAdmin) {
+  if (!user) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-background text-foreground p-6">
         <div className="text-center max-w-sm">
@@ -46,16 +42,16 @@ export default async function AdminPage() {
   }
 
   const since = weekStart()
-  const [blocks, totalUsers, signupsWeek, runsWeek, checkinsWeek, postsWeek, recentUsers] =
+  const [openReports, blockCount, totalUsers, signupsWeek, runsWeek, checkinsWeek, postsWeek, recentUsers] =
     await Promise.all([
-      db.block.findMany({
-        include: {
-          blocker: { select: { name: true, email: true } },
-          blocked: { select: { name: true, email: true } },
-        },
+      // The queue: everything not yet closed, newest first.
+      db.report.findMany({
+        where: { status: { in: ['open', 'reviewing'] } },
+        include: { reporter: { select: { name: true, email: true } } },
         orderBy: { createdAt: 'desc' },
         take: 100,
       }),
+      db.block.count(),
       db.user.count(),
       db.user.count({ where: { createdAt: { gte: since } } }),
       db.runSession.count({ where: { endedAt: { gte: since } } }),
@@ -68,7 +64,32 @@ export default async function AdminPage() {
       }),
     ])
 
-  const reports = blocks.filter((b) => b.reason)
+  // How many distinct reports each subject has — many reporters on one subject is
+  // the signal worth surfacing. Counted across ALL statuses, not just open ones.
+  const subjectCounts = await db.report.groupBy({
+    by: ['subjectType', 'subjectId'],
+    _count: { _all: true },
+    where: { subjectId: { in: openReports.map((r) => r.subjectId) } },
+  })
+  const countKey = (t: string, id: string) => `${t}:${id}`
+  const countBySubject = new Map(
+    subjectCounts.map((c) => [countKey(c.subjectType, c.subjectId), c._count._all])
+  )
+
+  const reports: AdminReport[] = openReports.map((r) => ({
+    id: r.id,
+    subjectType: r.subjectType,
+    subjectId: r.subjectId,
+    reason: r.reason,
+    details: r.details,
+    evidence: r.evidence,
+    status: r.status,
+    createdAt: r.createdAt.toISOString(),
+    reporterName: r.reporter.name,
+    reporterEmail: r.reporter.email,
+    subjectReportCount: countBySubject.get(countKey(r.subjectType, r.subjectId)) ?? 1,
+  }))
+
   const stats = [
     { label: 'Total users', value: totalUsers },
     { label: 'Signups this week', value: signupsWeek },
@@ -96,34 +117,15 @@ export default async function AdminPage() {
         ))}
       </section>
 
-      {/* Reports — blocks that came with a reason */}
+      {/* Moderation queue — open reports an operator needs to action */}
       <section>
         <h2 className="font-semibold mb-2">
-          Reports <span className="text-muted-foreground font-normal">({reports.length})</span>
+          Moderation queue <span className="text-muted-foreground font-normal">({reports.length})</span>
         </h2>
-        {reports.length === 0 ? (
-          <p className="text-sm text-muted-foreground rounded-xl border border-dashed p-4">
-            No reports. Quiet is good.
-          </p>
-        ) : (
-          <div className="rounded-xl border divide-y">
-            {reports.map((b) => (
-              <div key={b.id} className="p-3 text-sm">
-                <p>
-                  <span className="font-medium">{b.blocker.name}</span>
-                  <span className="text-muted-foreground"> ({b.blocker.email}) reported </span>
-                  <span className="font-medium">{b.blocked.name}</span>
-                  <span className="text-muted-foreground"> ({b.blocked.email})</span>
-                </p>
-                <p className="text-muted-foreground mt-1">“{b.reason}”</p>
-                <p className="text-[11px] text-muted-foreground/70 mt-1">{fmt(b.createdAt)}</p>
-              </div>
-            ))}
-          </div>
-        )}
+        <ReportQueue reports={reports} />
         <p className="text-xs text-muted-foreground mt-2">
-          Plus {blocks.length - reports.length} block{blocks.length - reports.length === 1 ? '' : 's'} without a
-          reason. Blocked pairs can’t see or message each other.
+          {blockCount} block{blockCount === 1 ? '' : 's'} in total. Blocking hides a pair from
+          each other; a report is what reaches this queue.
         </p>
       </section>
 

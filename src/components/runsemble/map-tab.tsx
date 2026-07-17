@@ -540,10 +540,19 @@ export function MapTab() {
                 onClick={() => {
                   const r = selectedRunner
                   if (!currentUser?.id) return
-                  if (!confirm(`Report & block ${r.name}? You won't see each other or be able to message.`)) return
+                  if (!confirm(`Report & block ${r.name}? You won't see each other or be able to message, and an operator will review the report.`)) return
+                  // Block hides them from you; the report is what an operator
+                  // actually sees. Fire both — the report failing must not stop
+                  // the block, which is the part that protects the user now.
+                  apiSend(`/api/reports`, 'POST', {
+                    subjectType: 'user',
+                    subjectId: r.id,
+                    reason: 'other',
+                    details: 'Reported & blocked from map profile',
+                  }).catch(() => {})
                   apiSend(`/api/users/${r.id}/block`, 'POST', { blockerId: currentUser.id, reason: 'reported from profile' })
                     .then(() => {
-                      toast.success(`${r.name} blocked`)
+                      toast.success(`${r.name} reported & blocked`)
                       queryClient.invalidateQueries({ queryKey: ['users'] })
                       setSelectedRunner(null)
                     })

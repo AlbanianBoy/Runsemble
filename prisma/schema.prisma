@@ -68,6 +68,31 @@ enum InviteStatus {
   declined
 }
 
+// What a report is about. Kept polymorphic (a plain subjectId, no FK) so one
+// table covers people, posts and messages, and so a report survives the subject
+// being deleted — the evidence snapshot is the record.
+enum ReportSubjectType {
+  user
+  post
+  message
+}
+
+enum ReportReason {
+  harassment
+  spam
+  inappropriate
+  unsafe // threats or unsafe behaviour at a meetup — the safety-critical one
+  impersonation
+  other
+}
+
+enum ReportStatus {
+  open
+  reviewing
+  resolved
+  dismissed
+}
+
 model User {
   id                String    @id @default(cuid())
   name              String
@@ -123,6 +148,7 @@ model User {
   buddyOf           Buddy[] @relation("BuddyTarget")
   blocksMade        Block[] @relation("Blocker")
   blockedBy         Block[] @relation("Blocked")
+  reportsMade       Report[] @relation("Reporter")
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
   devices           UserDevice[]
@@ -439,6 +465,40 @@ model Block {
   blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
+}
+
+// A report an operator needs to see and act on. This app arranges for strangers
+// to meet in person, so a way to flag someone — and a queue behind it — is a
+// duty-of-care requirement, not a feature. Block only hides someone from the
+// reporter; it tells nobody.
+//
+// subjectId is a plain string, not a foreign key: the subject may be a user, a
+// post, or a message, and the report must outlive the subject being deleted so
+// the evidence survives. `evidence` is a JSON snapshot of the reported content at
+// report time, captured server-side, so a deleted post can still be reviewed.
+model Report {
+  id           String            @id @default(cuid())
+  reporterId   String
+  subjectType  ReportSubjectType
+  subjectId    String
+  reason       ReportReason
+  details      String? // free text from the reporter
+  evidence     String? // JSON snapshot of the reported content when filed
+  status       ReportStatus      @default(open)
+  resolvedById String? // admin who actioned it (plain id, no FK)
+  resolvedAt   DateTime?
+  createdAt    DateTime          @default(now())
+
+  reporter     User              @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+
+  // One report per person per subject: re-filing updates rather than piling up,
+  // so one reporter can't flood the queue. Many DIFFERENT reporters on the same
+  // subject is the signal that matters, and that still accumulates.
+  @@unique([reporterId, subjectType, subjectId])
+  // The queue: open reports, newest first.
+  @@index([status, createdAt])
+  // All reports about one subject — how many people flagged this person.
+  @@index([subjectType, subjectId])
 }
 
 model Challenge {
