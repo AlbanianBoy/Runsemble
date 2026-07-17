@@ -10,5 +10,10 @@ export default defineConfig({
   test: {
     include: ['src/**/*.test.ts'],
     environment: 'node',
+    // Use the test-specific tsconfig so vitest's own type-checking picks up
+    // vitest/globals types. This is what prevents TS2493 on mock.calls access.
+    typecheck: {
+      tsconfig: './tsconfig.test.json',
+    },
   },
 })

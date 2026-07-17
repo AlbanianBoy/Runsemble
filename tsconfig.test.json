@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // vitest globals (vi, describe, it, expect, beforeEach, …) are imported
+    // explicitly in every test file, so we don't need globals: true in vitest
+    // config. But we do need vitest's type definitions so that MockInstance<T>
+    // resolves mock.calls / mock.results properly, eliminating TS2493.
+    "types": ["vitest/globals"],
+    // Test files are CommonJS-free; bundler resolution handles everything.
+    "moduleResolution": "bundler"
+  },
+  "include": [
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/**/*.spec.ts",
+    "src/**/*.spec.tsx"
+  ],
+  "exclude": [
+    "node_modules"
+  ]
+}
