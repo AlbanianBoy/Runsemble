@@ -26,6 +26,15 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      # Generate the Prisma client BEFORE lint/typecheck/test so that
+      # @prisma/client imports (e.g. $Enums in enums.test.ts) resolve
+      # correctly. Without this step, vitest fails at module resolution
+      # because `npm run build` (which calls prisma generate) hasn't run yet.
+      - name: Generate Prisma client
+        run: npx prisma generate
+        env:
+          DATABASE_URL: postgresql://ci:ci@localhost:5432/ci
+
       - name: Lint
         run: npm run lint
 
@@ -37,9 +46,10 @@ jobs:
       - name: Test
         run: npm run test
 
-      # `prisma generate` + `next build`. Nothing connects to a database at build
-      # time — the URL only needs to be syntactically valid for Prisma to load the
-      # schema, so no secret is required and this workflow runs on forks too.
+      # `prisma generate` already ran above, so this is just `next build`.
+      # Nothing connects to a database at build time — the URL only needs to
+      # be syntactically valid for Prisma to load the schema, so no secret is
+      # required and this workflow runs on forks too.
       - name: Build
         run: npm run build
         env:
