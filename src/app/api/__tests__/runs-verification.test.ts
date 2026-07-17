@@ -180,7 +180,8 @@ describe('XP arithmetic', () => {
 
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
+    // Typed as () => Promise<...> (no input param) so it satisfies DbOverrides' (...args: unknown[]) => Result
+    const feedPostCreate: () => Promise<{ id: string }> = vi.fn(async () => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -188,7 +189,7 @@ describe('shareToFeed', () => {
 
     expect(res.status).toBe(201)
     expect(feedPostCreate).toHaveBeenCalledOnce()
-    const callArg = feedPostCreate.mock.calls[0][0] as unknown as {
+    const callArg = (feedPostCreate as ReturnType<typeof vi.fn>).mock.calls[0][0] as unknown as {
       data: { postType: string; authorId: string }
     }
     expect(callArg.data.postType).toBe('milestone')
@@ -196,7 +197,7 @@ describe('shareToFeed', () => {
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
+    const feedPostCreate: () => Promise<{ id: string }> = vi.fn(async () => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -250,8 +251,8 @@ describe('buddy tagging', () => {
 
     const { POST } = await import('@/app/api/runs/route')
     const body = await (
-      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
-    ).json()
+      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] })
+    )).json()
 
     expect(buddyCreateMany).not.toHaveBeenCalled()
     expect(body.newBuddyCount).toBe(0)
