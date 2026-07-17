@@ -89,7 +89,6 @@ async function reverseGeocode(lat: number, lng: number): Promise<string> {
       { headers: { 'Accept-Language': 'en' } }
     )
     const json = await res.json()
-    // Prefer a short neighbourhood/suburb+city form
     const a = json?.address ?? {}
     const parts = [
       a.amenity ?? a.leisure ?? a.road ?? a.neighbourhood ?? a.suburb,
@@ -115,6 +114,9 @@ function LocationPickerMap({
   const mapRef = useRef<any>(null)
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const markerRef = useRef<any>(null)
+  // Always call the latest onPick — avoids stale closure inside map.on('click')
+  const onPickRef = useRef(onPick)
+  useEffect(() => { onPickRef.current = onPick }, [onPick])
 
   // Mount once
   useEffect(() => {
@@ -130,9 +132,9 @@ function LocationPickerMap({
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
       L.control.zoom({ position: 'bottomright' }).addTo(map)
 
-      // Drop a pin wherever the user clicks
+      // Always delegates to the ref so we never call a stale callback
       map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
-        onPick({ lat: e.latlng.lat, lng: e.latlng.lng })
+        onPickRef.current({ lat: e.latlng.lat, lng: e.latlng.lng })
       })
 
       mapRef.current = map
@@ -166,7 +168,7 @@ function LocationPickerMap({
   return (
     <div
       ref={containerRef}
-      className="h-44 w-full rounded-xl overflow-hidden border border-border/60"
+      className="h-52 min-h-[180px] w-full rounded-xl overflow-hidden border border-border/60"
       style={{ zIndex: 0 }}
     />
   )
@@ -189,6 +191,10 @@ export function HotspotsTab() {
     setDialogOpen(true)
   }, [])
 
+  function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
+    setForm((prev) => ({ ...prev, [key]: value }))
+  }
+
   // When the location text changes, debounce-geocode it
   const handleLocationChange = (value: string) => {
     updateField('location', value)
@@ -202,15 +208,14 @@ export function HotspotsTab() {
     }, 800)
   }
 
-  // When the user clicks the map, reverse-geocode and fill the location field
+  // When the user taps the map, reverse-geocode and fill the location field
   const handleMapPick = useCallback(async (latlng: LatLng) => {
     setPin(latlng)
     setGeocoding(true)
     const label = await reverseGeocode(latlng.lat, latlng.lng)
     setGeocoding(false)
     updateField('location', label)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, []) // updateField is stable (defined in component body, no deps)
 
   const { data: hotspotsData, isLoading } = useQuery({
     queryKey: ['hotspots'],
@@ -245,7 +250,7 @@ export function HotspotsTab() {
     mutationFn: async (data: FormData) => {
       // Resolve coordinates: prefer the picked pin, then geocode fresh, then
       // fall back to the creator's position, then Antwerp centre.
-      let coords: LatLng = pin ??
+      const coords: LatLng = pin ??
         (await geocode(data.location)) ??
         (currentUser?.lat != null && currentUser?.lng != null
           ? { lat: currentUser.lat, lng: currentUser.lng }
@@ -272,10 +277,6 @@ export function HotspotsTab() {
     () => form.name.trim() !== '' && form.location.trim() !== '' && form.startTime !== '',
     [form.name, form.location, form.startTime]
   )
-
-  function updateField<K extends keyof FormData>(key: K, value: FormData[K]) {
-    setForm((prev) => ({ ...prev, [key]: value }))
-  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
