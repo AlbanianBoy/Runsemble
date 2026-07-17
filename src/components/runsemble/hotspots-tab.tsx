@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useMemo, useCallback } from 'react'
+import { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Clock, MapPin, Users, ChevronDown, ChevronUp, Flame, Plus, Loader2, Play, BadgeCheck } from 'lucide-react'
+import { Clock, MapPin, Users, ChevronDown, ChevronUp, Flame, Plus, Loader2, Play, BadgeCheck, LocateFixed } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
@@ -33,6 +33,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
+import { ANTWERP_CENTER } from '@/lib/geo'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
@@ -41,6 +42,8 @@ function getDefaultStartTime(): string {
   d.setMinutes(d.getMinutes() - d.getTimezoneOffset())
   return d.toISOString().slice(0, 16)
 }
+
+interface LatLng { lat: number; lng: number }
 
 interface FormData {
   name: string
@@ -64,16 +67,149 @@ const INITIAL_FORM: FormData = {
   startTime: '',
 }
 
+// ── Nominatim helpers ──────────────────────────────────────────────────────
+async function geocode(query: string): Promise<LatLng | null> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(query)}`,
+      { headers: { 'Accept-Language': 'en' } }
+    )
+    const json = await res.json()
+    if (!Array.isArray(json) || json.length === 0) return null
+    return { lat: parseFloat(json[0].lat), lng: parseFloat(json[0].lon) }
+  } catch {
+    return null
+  }
+}
+
+async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  try {
+    const res = await fetch(
+      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
+      { headers: { 'Accept-Language': 'en' } }
+    )
+    const json = await res.json()
+    // Prefer a short neighbourhood/suburb+city form
+    const a = json?.address ?? {}
+    const parts = [
+      a.amenity ?? a.leisure ?? a.road ?? a.neighbourhood ?? a.suburb,
+      a.city ?? a.town ?? a.village,
+    ].filter(Boolean)
+    return parts.length ? parts.join(', ') : (json.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`)
+  } catch {
+    return `${lat.toFixed(5)}, ${lng.toFixed(5)}`
+  }
+}
+
+// ── Mini location picker map ───────────────────────────────────────────────
+// Rendered only inside the dialog so it never blocks the main map.
+function LocationPickerMap({
+  pin,
+  onPick,
+}: {
+  pin: LatLng | null
+  onPick: (latlng: LatLng) => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const mapRef = useRef<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const markerRef = useRef<any>(null)
+
+  // Mount once
+  useEffect(() => {
+    if (typeof window === 'undefined' || !containerRef.current || mapRef.current) return
+
+    import('leaflet').then((L) => {
+      const center = pin ?? ANTWERP_CENTER
+      const map = L.map(containerRef.current!, {
+        zoomControl: false,
+        attributionControl: false,
+      }).setView([center.lat, center.lng], 13)
+
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
+      L.control.zoom({ position: 'bottomright' }).addTo(map)
+
+      // Drop a pin wherever the user clicks
+      map.on('click', (e: { latlng: { lat: number; lng: number } }) => {
+        onPick({ lat: e.latlng.lat, lng: e.latlng.lng })
+      })
+
+      mapRef.current = map
+
+      if (pin) {
+        markerRef.current = L.marker([pin.lat, pin.lng]).addTo(map)
+      }
+    })
+
+    return () => {
+      mapRef.current?.remove()
+      mapRef.current = null
+      markerRef.current = null
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Sync pin changes (from text geocoding or map clicks)
+  useEffect(() => {
+    if (!mapRef.current || !pin) return
+    import('leaflet').then((L) => {
+      if (markerRef.current) {
+        markerRef.current.setLatLng([pin.lat, pin.lng])
+      } else {
+        markerRef.current = L.marker([pin.lat, pin.lng]).addTo(mapRef.current)
+      }
+      mapRef.current.setView([pin.lat, pin.lng], Math.max(mapRef.current.getZoom(), 14))
+    })
+  }, [pin])
+
+  return (
+    <div
+      ref={containerRef}
+      className="h-44 w-full rounded-xl overflow-hidden border border-border/60"
+      style={{ zIndex: 0 }}
+    />
+  )
+}
+
 export function HotspotsTab() {
   const { currentUser, updateProfile, openRunTracker } = useRunsembleStore()
   const [expanded, setExpanded] = useState<string | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [form, setForm] = useState<FormData>(() => ({ ...INITIAL_FORM, startTime: getDefaultStartTime() }))
+  // Resolved coordinates for the pin (separate from user position)
+  const [pin, setPin] = useState<LatLng | null>(null)
+  const [geocoding, setGeocoding] = useState(false)
+  const geocodeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const queryClient = useQueryClient()
 
   const openCreateDialog = useCallback(() => {
     setForm({ ...INITIAL_FORM, startTime: getDefaultStartTime() })
+    setPin(null)
     setDialogOpen(true)
+  }, [])
+
+  // When the location text changes, debounce-geocode it
+  const handleLocationChange = (value: string) => {
+    updateField('location', value)
+    if (geocodeTimer.current) clearTimeout(geocodeTimer.current)
+    if (value.trim().length < 3) return
+    geocodeTimer.current = setTimeout(async () => {
+      setGeocoding(true)
+      const coords = await geocode(value)
+      setGeocoding(false)
+      if (coords) setPin(coords)
+    }, 800)
+  }
+
+  // When the user clicks the map, reverse-geocode and fill the location field
+  const handleMapPick = useCallback(async (latlng: LatLng) => {
+    setPin(latlng)
+    setGeocoding(true)
+    const label = await reverseGeocode(latlng.lat, latlng.lng)
+    setGeocoding(false)
+    updateField('location', label)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const { data: hotspotsData, isLoading } = useQuery({
@@ -106,18 +242,29 @@ export function HotspotsTab() {
   })
 
   const createMutation = useMutation({
-    mutationFn: (data: FormData) =>
-      apiSend<HotspotResponse>('/api/hotspots', 'POST', {
+    mutationFn: async (data: FormData) => {
+      // Resolve coordinates: prefer the picked pin, then geocode fresh, then
+      // fall back to the creator's position, then Antwerp centre.
+      let coords: LatLng = pin ??
+        (await geocode(data.location)) ??
+        (currentUser?.lat != null && currentUser?.lng != null
+          ? { lat: currentUser.lat, lng: currentUser.lng }
+          : ANTWERP_CENTER)
+
+      return apiSend<HotspotResponse>('/api/hotspots', 'POST', {
         ...data,
-        lat: currentUser?.lat ?? 51.2194, // creator's position, else Antwerp centre
-        lng: currentUser?.lng ?? 4.4025,
+        lat: coords.lat,
+        lng: coords.lng,
         recurringIntervalMin: 30,
         createdBy: currentUser?.id,
-      }),
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['hotspots'] })
       setDialogOpen(false)
+      setPin(null)
     },
+    onError: (e: Error) => toast.error(e.message),
   })
 
   const isSubmitting = createMutation.isPending
@@ -135,6 +282,9 @@ export function HotspotsTab() {
     if (!formValid || isSubmitting) return
     createMutation.mutate(form)
   }
+
+  // Clean up debounce timer on unmount
+  useEffect(() => () => { if (geocodeTimer.current) clearTimeout(geocodeTimer.current) }, [])
 
   if (isLoading) return (
     <div className="space-y-3">{[1,2,3].map(i => (<Card key={i}><CardContent className="p-4"><div className="space-y-3"><Skeleton className="h-5 w-2/3" /><Skeleton className="h-4 w-full" /><Skeleton className="h-10 w-full rounded-lg" /></div></CardContent></Card>))}</div>
@@ -287,16 +437,33 @@ export function HotspotsTab() {
               />
             </div>
 
-            {/* Location */}
+            {/* Location — text + map picker */}
             <div className="space-y-1.5">
               <Label htmlFor="hs-loc">Location *</Label>
-              <Input
-                id="hs-loc"
-                placeholder="Stadspark, Antwerp"
-                value={form.location}
-                onChange={(e) => updateField('location', e.target.value)}
-                required
-              />
+              <div className="relative">
+                <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="hs-loc"
+                  placeholder="Stadspark, Antwerp — or tap the map"
+                  value={form.location}
+                  onChange={(e) => handleLocationChange(e.target.value)}
+                  className="pl-9 pr-9"
+                  required
+                />
+                {geocoding && (
+                  <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                )}
+                {!geocoding && pin && (
+                  <LocateFixed className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
+                )}
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Type an address <span className="text-muted-foreground/60">or</span> tap anywhere on the map below to pin the exact start point.
+              </p>
+              {/* Mini map — only render when dialog is open to avoid a stale Leaflet instance */}
+              {dialogOpen && (
+                <LocationPickerMap pin={pin} onPick={handleMapPick} />
+              )}
             </div>
 
             {/* Sport type */}
