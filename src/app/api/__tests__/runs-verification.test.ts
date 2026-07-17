@@ -24,7 +24,7 @@ vi.mock('@/lib/auth', async (orig) => ({
   getSessionUser,
 }))
 
-const notify = vi.hoisted(() => vi.fn(async () => {}))
+const notify = vi.hoisted(() => vi.fn<[{ userId: string; type: string }, ...unknown[]], Promise<void>>(async () => {}))
 vi.mock('@/lib/notify', () => ({ notify }))
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -180,7 +180,9 @@ describe('XP arithmetic', () => {
 
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
+    const feedPostCreate = vi.fn<[{ data: { postType: string; authorId: string } }, ...unknown[]], Promise<{ id: string }>>(
+      async () => ({ id: 'fp1' })
+    )
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -188,13 +190,15 @@ describe('shareToFeed', () => {
 
     expect(res.status).toBe(201)
     expect(feedPostCreate).toHaveBeenCalledOnce()
-    const callArg = feedPostCreate.mock.calls[0][0] as { data: { postType: string; authorId: string } }
+    const callArg = feedPostCreate.mock.calls[0][0]
     expect(callArg.data.postType).toBe('milestone')
     expect(callArg.data.authorId).toBe(ME.id)
   })
 
   it('does NOT create a feedPost when shareToFeed is false or omitted', async () => {
-    const feedPostCreate = vi.fn(async () => ({ id: 'fp1' }))
+    const feedPostCreate = vi.fn<[{ data: { postType: string; authorId: string } }, ...unknown[]], Promise<{ id: string }>>(
+      async () => ({ id: 'fp1' })
+    )
     overrides['feedPost.create'] = feedPostCreate
 
     const { POST } = await import('@/app/api/runs/route')
@@ -264,10 +268,8 @@ describe('buddy tagging', () => {
     const { POST } = await import('@/app/api/runs/route')
     await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
 
-    const buddyNotify = notify.mock.calls.find(
-      (c) => (c[0] as { userId: string }).userId === 'u2'
-    )
+    const buddyNotify = notify.mock.calls.find((c) => c[0].userId === 'u2')
     expect(buddyNotify).toBeDefined()
-    expect((buddyNotify![0] as { type: string }).type).toBe('run_invite')
+    expect(buddyNotify![0].type).toBe('run_invite')
   })
 })
