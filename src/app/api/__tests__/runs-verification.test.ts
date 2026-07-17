@@ -180,7 +180,8 @@ describe('XP arithmetic', () => {
 
 describe('shareToFeed', () => {
   it('creates a feedPost when shareToFeed is true', async () => {
-    // Typed as () => Promise<...> (no input param) so it satisfies DbOverrides' (...args: unknown[]) => Result
+    // Typed with no input param to satisfy DbOverrides' (...args: unknown[]) => Result.
+    // vi.mocked() is used to access .mock.calls so TS sees args as unknown[] (not empty tuple).
     const feedPostCreate: () => Promise<{ id: string }> = vi.fn(async () => ({ id: 'fp1' }))
     overrides['feedPost.create'] = feedPostCreate
 
@@ -188,8 +189,8 @@ describe('shareToFeed', () => {
     const res = await POST(post({ ...GOOD_RUN, shareToFeed: true }))
 
     expect(res.status).toBe(201)
-    expect(feedPostCreate).toHaveBeenCalledOnce()
-    const callArg = (feedPostCreate as ReturnType<typeof vi.fn>).mock.calls[0][0] as unknown as {
+    expect(vi.mocked(feedPostCreate)).toHaveBeenCalledOnce()
+    const callArg = vi.mocked(feedPostCreate).mock.calls[0][0] as unknown as {
       data: { postType: string; authorId: string }
     }
     expect(callArg.data.postType).toBe('milestone')
@@ -203,7 +204,7 @@ describe('shareToFeed', () => {
     const { POST } = await import('@/app/api/runs/route')
     await POST(post(GOOD_RUN))
 
-    expect(feedPostCreate).not.toHaveBeenCalled()
+    expect(vi.mocked(feedPostCreate)).not.toHaveBeenCalled()
   })
 })
 
@@ -251,8 +252,8 @@ describe('buddy tagging', () => {
 
     const { POST } = await import('@/app/api/runs/route')
     const body = await (
-      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] })
-    )).json()
+      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
+    ).json()
 
     expect(buddyCreateMany).not.toHaveBeenCalled()
     expect(body.newBuddyCount).toBe(0)
