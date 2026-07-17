@@ -99,7 +99,9 @@ model User {
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
   onboardingComplete Boolean  @default(false)
-  fcmToken          String?   // FCM device token for push notifications
+  // NOTE: fcmToken (a single column) was removed — see UserDevice. One column
+  // meant a second device overwrote the first, which then silently received
+  // nothing forever.
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -123,6 +125,7 @@ model User {
   blockedBy         Block[] @relation("Blocked")
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
+  devices           UserDevice[]
   verificationTokens VerificationToken[]
 
   // The leaderboard sorts by any of these; each needs its own index or the board
@@ -132,6 +135,31 @@ model User {
   @@index([totalRuns])
   @@index([totalDistanceKm])
   @@index([totalPeopleRunWith])
+}
+
+// One row per device a user gets push on.
+//
+// This replaces a single fcmToken column on User. FCM issues a token per app
+// install, so with one column a second device's registration overwrote the
+// first — and the first then received nothing, forever, with no error anywhere.
+// A phone plus a tablet, or a reinstall, was enough.
+//
+// The token is the identity: FCM can hand the same device a new one at any time
+// (reinstall, restore, refresh), so it's the unique key and the row is upserted
+// on it rather than on any device id we invent.
+model UserDevice {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique // FCM registration token
+  platform   String   @default("unknown") // android | ios | web
+  enabled    Boolean  @default(true) // false once FCM says the token is dead
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Fan-out reads every enabled device for one user, on every notification.
+  @@index([userId, enabled])
 }
 
 // Login sessions — token lives in an httpOnly cookie.

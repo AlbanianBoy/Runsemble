@@ -49,9 +49,15 @@ export function usePushRegistration(userId: string | null | undefined) {
       const handler = await PushNotifications.addListener('registration', async (token) => {
         if (cancelled || !userId) return
         try {
-          await apiSend(`/api/users/${userId}`, 'PATCH', { fcmToken: token.value })
+          // /api/push-token upserts a UserDevice row. This used to PATCH an
+          // fcmToken column on the user, which meant a second device overwrote
+          // the first and the first silently stopped receiving anything.
+          await apiSend('/api/push-token', 'POST', {
+            token: token.value,
+            platform: Capacitor.getPlatform(),
+          })
         } catch {
-          // Best-effort — a PATCH failure must never surface to the user.
+          // Best-effort — a registration failure must never surface to the user.
         }
       })
 

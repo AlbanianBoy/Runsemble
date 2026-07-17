@@ -37,8 +37,8 @@ export async function notify(spec: NotifySpec): Promise<void> {
     // Don't notify yourself about your own actions.
     if (spec.actorId && spec.actorId === spec.userId) return
 
-    // Write to DB and look up fcmToken in one query.
-    const [, user] = await Promise.all([
+    // Write the notification and collect the user's devices in one round trip.
+    const [, devices] = await Promise.all([
       db.notification.create({
         data: {
           userId: spec.userId,
@@ -50,15 +50,18 @@ export async function notify(spec: NotifySpec): Promise<void> {
           icon: spec.icon ?? null,
         },
       }),
-      db.user.findUnique({ where: { id: spec.userId }, select: { fcmToken: true } }),
+      db.userDevice.findMany({
+        where: { userId: spec.userId, enabled: true },
+        select: { token: true },
+      }),
     ])
 
-    // Fire push if the user has a registered device token. The type and entity
-    // travel with it: the client routes a tap on them, and a push that doesn't
-    // say what it is lands the user on whatever screen is hardcoded.
-    if (user?.fcmToken) {
-      await sendPush({
-        token: user.fcmToken,
+    // Push to every device this person uses, not just the last one to register.
+    // The type and entity travel with it: the client routes a tap on them, and a
+    // push that doesn't say what it is lands the user on whatever screen is
+    // hardcoded.
+    if (devices.length > 0) {
+      const payload = {
         title: spec.title,
         body: spec.body,
         type: spec.type,
@@ -67,7 +70,22 @@ export async function notify(spec: NotifySpec): Promise<void> {
         ...(spec.type === 'group_message' && spec.actorId
           ? { senderId: spec.actorId, senderName: spec.actorName ?? 'Someone' }
           : {}),
-      })
+      }
+
+      // In parallel: one slow or dead device shouldn't delay the others.
+      const results = await Promise.all(
+        devices.map(async (d) => ({ token: d.token, ...(await sendPush({ ...payload, token: d.token })) }))
+      )
+
+      // Retire tokens FCM says are gone for good (uninstalled, rotated). Without
+      // this they accumulate and every future notification pays to retry them.
+      const dead = results.filter((r) => r.tokenDead).map((r) => r.token)
+      if (dead.length > 0) {
+        await db.userDevice.updateMany({
+          where: { token: { in: dead } },
+          data: { enabled: false },
+        })
+      }
     }
   } catch (e) {
     console.error('notify failed (non-fatal):', e)

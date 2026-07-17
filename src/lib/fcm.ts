@@ -94,8 +94,19 @@ export interface PushPayload {
   senderName?: string
 }
 
-export async function sendPush(payload: PushPayload): Promise<void> {
-  if (!getPrivateKey()) return
+/**
+ * What happened to one send.
+ *
+ * `tokenDead` is the interesting one: FCM answers 404 UNREGISTERED (app
+ * uninstalled, token rotated) or 400 INVALID_ARGUMENT (malformed) for a token
+ * that will never work again. Callers use it to stop trying — otherwise the
+ * device table fills with tokens from uninstalled apps and every notification
+ * pays to retry them for ever.
+ */
+export type PushResult = { ok: boolean; tokenDead: boolean }
+
+export async function sendPush(payload: PushPayload): Promise<PushResult> {
+  if (!getPrivateKey()) return { ok: false, tokenDead: false }
   try {
     const accessToken = await getAccessToken()
 
@@ -130,10 +141,19 @@ export async function sendPush(payload: PushPayload): Promise<void> {
     if (!res.ok) {
       const err = await res.text()
       console.error('FCM send failed:', res.status, err)
-    } else {
-      console.log('FCM push sent successfully')
+      // 404 UNREGISTERED = uninstalled or rotated. 400 INVALID_ARGUMENT with
+      // this error code = malformed. Both are permanent for this token; every
+      // other failure (401, 429, 5xx) is worth retrying later, so the token
+      // stays enabled.
+      const permanent =
+        res.status === 404 ||
+        (res.status === 400 && /UNREGISTERED|INVALID_ARGUMENT/i.test(err))
+      return { ok: false, tokenDead: permanent }
     }
+    return { ok: true, tokenDead: false }
   } catch (e) {
+    // Network or auth trouble — not the token's fault, so leave it enabled.
     console.error('FCM send error (non-fatal):', e)
+    return { ok: false, tokenDead: false }
   }
 }
