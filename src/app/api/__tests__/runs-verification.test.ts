@@ -24,7 +24,7 @@ vi.mock('@/lib/auth', async (orig) => ({
   getSessionUser,
 }))
 
-const notify = vi.hoisted(() => vi.fn(async () => {}))
+const notify = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => {}))
 vi.mock('@/lib/notify', () => ({ notify }))
 
 // ─── Fixtures ─────────────────────────────────────────────────────────────────
@@ -270,10 +270,11 @@ describe('buddy tagging', () => {
     const { POST } = await import('@/app/api/runs/route')
     await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
 
-    const buddyNotify = notify.mock.calls.find(
-      (c) => (c[0] as unknown as { userId: string }).userId === 'u2'
+    const calls = notify.mock.calls as unknown[][]
+    const buddyNotify = calls.find(
+      (c) => (c[0] as { userId: string }).userId === 'u2'
     )
     expect(buddyNotify).toBeDefined()
-    expect((buddyNotify![0] as unknown as { type: string }).type).toBe('run_invite')
+    expect((buddyNotify![0] as { type: string }).type).toBe('run_invite')
   })
 })
