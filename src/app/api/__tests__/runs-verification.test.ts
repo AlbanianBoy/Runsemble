@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { makeDb, type DbOverrides } from './helpers/mock-db'
+import { SPORT_TYPES } from '@/lib/enums'
 
 // ─── Server-side run verification ─────────────────────────────────────────────
 // runs.test.ts owns pace-bounds and clientRunId idempotency.
@@ -83,9 +84,9 @@ describe('sportType enum validation', () => {
 
   it('accepts every allowed sport value', async () => {
     const { POST } = await import('@/app/api/runs/route')
-    // These are the SPORT_TYPES the enum module defines.
-    const validSports = ['running', 'cycling', 'walking', 'hiking', 'swimming']
-    for (const sportType of validSports) {
+    // Pull directly from the enum module so this test never drifts from the
+    // real allowed set again — if SPORT_TYPES changes, the test auto-updates.
+    for (const sportType of SPORT_TYPES) {
       const res = await POST(post({ ...GOOD_RUN, sportType }))
       expect(res.status).toBe(201)
     }
