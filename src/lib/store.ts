@@ -112,7 +112,9 @@ export const useRunsembleStore = create<RunsembleState>()(
       onboardingAnswer: null,
       setOnboardingAnswer: (answer) => set({ onboardingAnswer: answer }),
 
-      activeTab: 'feed',
+      // The map is home — the app opens on the core loop (who's free to run near
+      // me, and a one-tap way to say I am), not on the feed.
+      activeTab: 'map',
       setActiveTab: (tab) => set({ activeTab: tab }),
 
       currentUser: null,

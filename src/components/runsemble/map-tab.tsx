@@ -384,16 +384,9 @@ export function MapTab() {
         />
       </div>
 
-      {/* Nearby count chip */}
-      <div className="absolute top-3 left-3 z-[500] glass rounded-full px-3 py-1.5 text-xs font-medium shadow-sm border border-border/50">
-        {availableRunners.length > 0
-          ? `${availableRunners.length} runner${availableRunners.length === 1 ? '' : 's'} nearby`
-          : 'No runners nearby yet'}
-      </div>
-
       {/* Coming up — who's free later today */}
       {comingUp.length > 0 && (
-        <div className="absolute top-12 left-3 right-3 z-[500]">
+        <div className="absolute top-3 left-3 right-3 z-[500]">
           <div className="glass rounded-full px-3 py-1.5 text-[11px] font-medium shadow-sm border border-border/50 inline-flex items-center gap-1.5 max-w-full">
             <Clock className="h-3 w-3 text-primary shrink-0" />
             <span className="truncate">
@@ -406,22 +399,57 @@ export function MapTab() {
         </div>
       )}
 
-      {/* Availability control */}
-      <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[500]">
-        <Button
-          size="lg"
-          className={`rounded-full shadow-xl font-semibold px-6 ${
-            isAvailable ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-primary hover:bg-primary/90'
-          }`}
-          onClick={() => (isAvailable ? stopAvailability() : setAvailSheetOpen(true))}
-        >
-          <Navigation className={`h-4 w-4 mr-2 ${isAvailable ? 'animate-pulse' : ''}`} />
-          {isAvailable
-            ? 'Available · tap to stop'
-            : myScheduled
-            ? `Free at ${availableFromLabel(myScheduled.toISOString())} · change`
-            : "I'm free to run"}
-        </Button>
+      {/* The core loop, always in reach: who's free to run right now, and a
+          one-tap switch to say you are too. Sits over the bottom of the map like
+          a transit or ride-hail app rather than a single floating button. */}
+      <div className="absolute inset-x-2 bottom-3 z-[500]">
+        <div className="glass rounded-2xl border border-border/50 shadow-lg p-3">
+          <div className="flex items-center justify-between gap-3 mb-2.5">
+            <p className="text-sm font-bold">
+              {availableRunners.length > 0
+                ? `${availableRunners.length} free to run now`
+                : 'No one free right now'}
+            </p>
+            <Button
+              size="sm"
+              className={`rounded-full font-semibold shrink-0 ${
+                isAvailable ? 'bg-emerald-500 hover:bg-emerald-600' : 'bg-primary hover:bg-primary/90'
+              }`}
+              onClick={() => (isAvailable ? stopAvailability() : setAvailSheetOpen(true))}
+            >
+              <Navigation className={`h-4 w-4 mr-1.5 ${isAvailable ? 'animate-pulse' : ''}`} />
+              {isAvailable ? 'Available' : myScheduled ? 'Free later' : "I'm free"}
+            </Button>
+          </div>
+
+          {availableRunners.length > 0 ? (
+            <div className="flex gap-2 overflow-x-auto -mx-1 px-1 pb-0.5">
+              {availableRunners.map((r) => (
+                <button
+                  key={r.id}
+                  onClick={() => setSelectedRunner(r)}
+                  className="shrink-0 w-[128px] rounded-xl border border-border/60 bg-card/80 p-2.5 text-left hover:bg-card active:scale-[0.98] transition-all"
+                >
+                  <Avatar className="h-9 w-9 mb-1.5">
+                    <AvatarFallback className={`text-xs text-white ${getAvatarColor(r.name)}`}>
+                      {getInitials(r.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <p className="text-sm font-semibold truncate">{r.name.split(' ')[0]}</p>
+                  <p className="text-[11px] text-muted-foreground capitalize">{r.paceLevel}</p>
+                  <p className="text-[11px] text-primary font-medium mt-0.5 tabular-nums">
+                    {distanceLabel(haversineKm(me, { lat: r.lat!, lng: r.lng! }))}
+                  </p>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Tap <span className="font-medium text-foreground">I&rsquo;m free</span> and anyone nearby
+              who&rsquo;s also up for a run will see you here.
+            </p>
+          )}
+        </div>
       </div>
 
       {/* Hotspot detail sheet */}
