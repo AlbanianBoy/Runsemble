@@ -248,28 +248,36 @@ const PACE_META: Record<PaceLevel, { label: string }> = {
 const PACE_OPTIONS = PACE_LEVELS.map((id) => ({ id, ...PACE_META[id] }))
 
 export function OnboardingProfile() {
-  const { setCurrentUser, setOnboardingStep } = useRunsembleStore()
+  const { setCurrentUser, updateProfile, setOnboardingStep } = useRunsembleStore()
+
+  // Two steps, not one long wall. Step 1 is the minimum to have an account —
+  // once it succeeds the account is banked, so step 2 (the "about you" details)
+  // is genuinely optional and can be skipped. Everyone you'll ever sign up passes
+  // through this screen, so the shorter the first ask, the more of them finish.
+  const [step, setStep] = useState<'account' | 'about'>('account')
+
+  // Step 1 — account essentials
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [consent, setConsent] = useState(false)
-  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  // Step 2 — profile (all optional, defaults on the server)
+  const [userId, setUserId] = useState<string | null>(null)
   const [city, setCity] = useState('Antwerp')
   const [paceLevel, setPaceLevel] = useState('beginner')
-  // No preset — user must make an explicit choice. Multiple slots allowed.
-  const [schedule, setSchedule] = useState<ScheduleSlot[]>([])
+  const [schedule, setSchedule] = useState<ScheduleSlot[]>([]) // multi-select, no preset
   const [bio, setBio] = useState('')
-  const [loading, setLoading] = useState(false)
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null)
   const [geoStatus, setGeoStatus] = useState<'idle' | 'locating' | 'ok' | 'denied'>('idle')
 
-  // Schedule is a preference, not a requirement — don't block submission.
-  const canSubmit = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
+  const [loading, setLoading] = useState(false)
+  const [errorMsg, setErrorMsg] = useState<string | null>(null)
+
+  const canCreate = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
 
   const toggleSchedule = (slot: ScheduleSlot) => {
-    setSchedule((prev) =>
-      prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]
-    )
+    setSchedule((prev) => (prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]))
   }
 
   const requestLocation = () => {
@@ -288,27 +296,17 @@ export function OnboardingProfile() {
     )
   }
 
-  const handleSubmit = async () => {
-    if (!canSubmit) return
+  // Step 1: create the account, then move on. The session is set on success, so
+  // the step-2 profile save is authenticated.
+  const handleCreateAccount = async () => {
+    if (!canCreate) return
     setLoading(true)
     setErrorMsg(null)
     try {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name,
-          email,
-          password,
-          consent,
-          city,
-          paceLevel,
-          // Send as comma-separated string; the DB column is now plain String.
-          schedulePreference: schedule.join(','),
-          bio,
-          lat: coords?.lat,
-          lng: coords?.lng,
-        }),
+        body: JSON.stringify({ name, email, password, consent }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -317,197 +315,200 @@ export function OnboardingProfile() {
         return
       }
       setCurrentUser(toUserProfile(data.user))
-      setOnboardingStep('verify')
+      setUserId(data.user.id)
+      setStep('about')
     } catch {
       setErrorMsg('Network error — please try again')
     }
     setLoading(false)
   }
 
+  // Step 2: save the optional profile, then verify email. Skipping does the same
+  // minus the save — the account already exists either way.
+  const handleSaveProfile = async () => {
+    if (!userId) return setOnboardingStep('verify')
+    setLoading(true)
+    try {
+      const patched = await fetch(`/api/users/${userId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          city,
+          paceLevel,
+          schedulePreference: schedule.join(','), // CSV string; DB column is String
+          bio,
+          ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+        }),
+      })
+      if (patched.ok) {
+        // Keep the local store in step so the map centres and the profile reads right.
+        updateProfile({
+          city,
+          paceLevel: paceLevel as PaceLevel,
+          schedulePreference: schedule,
+          bio,
+          ...(coords ? { lat: coords.lat, lng: coords.lng } : {}),
+        })
+      }
+    } catch {
+      // A failed save must not trap the user — the account exists; they can edit later.
+    }
+    setLoading(false)
+    setOnboardingStep('verify')
+  }
+
   return (
     <div className="min-h-screen flex flex-col p-6 bg-background">
-      <motion.div {...fadeUp} className="flex-1 max-w-md mx-auto w-full">
+      <div className="flex-1 max-w-md mx-auto w-full">
         <div className="mb-6">
           <StepDots current={1} />
         </div>
 
-        <h2 className="text-2xl font-bold mb-1">Set up your profile</h2>
-        <p className="text-muted-foreground mb-6">This takes 30 seconds. We promise.</p>
+        {/* No AnimatePresence: mode="wait" could leave the exiting panel mid-exit
+            and never mount the next one, freezing the screen. The entering panel
+            plays its own fadeUp on mount, which is all the motion this needs. */}
+        <div>
+          {step === 'account' ? (
+            <motion.div key="account" {...fadeUp}>
+              <h2 className="text-2xl font-bold mb-1">Create your account</h2>
+              <p className="text-muted-foreground mb-6">Two quick steps and you&rsquo;re in.</p>
 
-        <div className="space-y-5">
-          <div>
-            <Label htmlFor="name">Name</Label>
-            <Input
-              id="name"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="Your name"
-              className="mt-1.5"
-            />
-          </div>
-          <div>
-            <Label htmlFor="email">Email</Label>
-            <Input
-              id="email"
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
-              placeholder="you@email.com"
-              className="mt-1.5"
-            />
-          </div>
-          <div>
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              placeholder="At least 8 characters"
-              className="mt-1.5"
-            />
-          </div>
-          <div>
-            <Label htmlFor="city">City</Label>
-            <Input
-              id="city"
-              value={city}
-              onChange={e => setCity(e.target.value)}
-              className="mt-1.5"
-            />
-          </div>
+              <div className="space-y-5">
+                <div>
+                  <Label htmlFor="name">Name</Label>
+                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="mt-1.5" />
+                </div>
+                <div>
+                  <Label htmlFor="password">Password</Label>
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" className="mt-1.5" />
+                </div>
+              </div>
 
-          {/* Location capture */}
-          <button
-            type="button"
-            onClick={requestLocation}
-            disabled={geoStatus === 'locating'}
-            className={`w-full flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
-              geoStatus === 'ok' ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border hover:border-primary/30 hover:bg-muted/50'
-            }`}
-          >
-            <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${geoStatus === 'ok' ? 'bg-emerald-500 text-white' : 'bg-primary/10 text-primary'}`}>
-              {geoStatus === 'locating' ? <Loader2 className="h-4 w-4 animate-spin" /> : geoStatus === 'ok' ? <Check className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-medium">
-                {geoStatus === 'ok' ? 'Location shared' : geoStatus === 'denied' ? 'Location unavailable' : 'Find runners near me'}
-              </p>
-              <p className="text-xs text-muted-foreground">
-                {geoStatus === 'ok'
-                  ? 'The map will centre on you'
-                  : geoStatus === 'denied'
-                  ? "No worries — we'll use your city"
-                  : 'Optional · share your location'}
-              </p>
-            </div>
-          </button>
+              <label className="mt-6 flex items-start gap-3 cursor-pointer">
+                <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  I agree that Runsemble processes my profile and (approximate) location to show me nearby runs and
+                  runners. I can export or delete my data at any time from my profile.
+                </span>
+              </label>
 
-          {/* Pace — single-select radio tiles (unchanged) */}
-          <div>
-            <Label>Your pace</Label>
-            <RadioGroup
-              value={paceLevel}
-              onValueChange={setPaceLevel}
-              className="mt-2 grid grid-cols-2 gap-2"
-            >
-              {PACE_OPTIONS.map(({ id, label }) => (
-                <Label
-                  key={id}
-                  className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
-                    paceLevel === id
-                      ? 'border-primary bg-primary/5 shadow-sm'
-                      : 'border-border hover:border-primary/30 hover:bg-muted/50'
+              {errorMsg && <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>}
+
+              <motion.div whileTap={{ scale: 0.98 }} className="mt-6">
+                <Button size="lg" className="w-full rounded-full font-semibold" onClick={handleCreateAccount} disabled={!canCreate}>
+                  {loading ? 'Creating account…' : 'Continue'}
+                  {!loading && <ArrowRight className="h-4 w-4" />}
+                </Button>
+              </motion.div>
+
+              <button
+                onClick={() => setOnboardingStep('login')}
+                className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+              >
+                Already have an account? Log in
+              </button>
+            </motion.div>
+          ) : (
+            <motion.div key="about" {...fadeUp}>
+              <h2 className="text-2xl font-bold mb-1">A little about your running</h2>
+              <p className="text-muted-foreground mb-6">Helps us match you with the right runs. You can skip this.</p>
+
+              <div className="space-y-5">
+                <div>
+                  <Label htmlFor="city">City</Label>
+                  <Input id="city" value={city} onChange={(e) => setCity(e.target.value)} className="mt-1.5" />
+                </div>
+
+                {/* Location capture */}
+                <button
+                  type="button"
+                  onClick={requestLocation}
+                  disabled={geoStatus === 'locating'}
+                  className={`w-full flex items-center gap-3 rounded-xl border-2 p-3 text-left transition-colors ${
+                    geoStatus === 'ok' ? 'border-emerald-500/40 bg-emerald-50 dark:bg-emerald-950/20' : 'border-border hover:border-primary/30 hover:bg-muted/50'
                   }`}
                 >
-                  <RadioGroupItem value={id} />
-                  <span className="text-sm font-medium">{label}</span>
-                </Label>
-              ))}
-            </RadioGroup>
-          </div>
+                  <div className={`h-9 w-9 rounded-full flex items-center justify-center shrink-0 ${geoStatus === 'ok' ? 'bg-emerald-500 text-white' : 'bg-primary/10 text-primary'}`}>
+                    {geoStatus === 'locating' ? <Loader2 className="h-4 w-4 animate-spin" /> : geoStatus === 'ok' ? <Check className="h-4 w-4" /> : <MapPin className="h-4 w-4" />}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">
+                      {geoStatus === 'ok' ? 'Location shared' : geoStatus === 'denied' ? 'Location unavailable' : 'Find runners near me'}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      {geoStatus === 'ok' ? 'The map will centre on you' : geoStatus === 'denied' ? "No worries — we'll use your city" : 'Optional · share your location'}
+                    </p>
+                  </div>
+                </button>
 
-          {/* Schedule — multi-select checkbox tiles, no preset */}
-          <div>
-            <Label>When do you like to move? <span className="text-muted-foreground font-normal">(optional)</span></Label>
-            <div className="mt-2 grid grid-cols-3 gap-2">
-              {SCHEDULE_OPTIONS.map(({ id, label, emoji }) => {
-                const checked = schedule.includes(id)
-                return (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => toggleSchedule(id)}
-                    className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
-                      checked
-                        ? 'border-primary bg-primary/5 shadow-sm'
-                        : 'border-border hover:border-primary/30 hover:bg-muted/50'
-                    }`}
-                  >
-                    <span className="text-xl">{emoji}</span>
-                    <span className="text-sm font-medium">{label}</span>
-                    <Checkbox
-                      checked={checked}
-                      tabIndex={-1}
-                      className="pointer-events-none"
-                      aria-hidden
-                    />
-                  </button>
-                )
-              })}
-            </div>
-          </div>
+                {/* Pace — single-select */}
+                <div>
+                  <Label>Your pace</Label>
+                  <RadioGroup value={paceLevel} onValueChange={setPaceLevel} className="mt-2 grid grid-cols-2 gap-2">
+                    {PACE_OPTIONS.map(({ id, label }) => (
+                      <Label
+                        key={id}
+                        className={`flex items-center gap-2 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
+                          paceLevel === id ? 'border-primary bg-primary/5 shadow-sm' : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                        }`}
+                      >
+                        <RadioGroupItem value={id} />
+                        <span className="text-sm font-medium">{label}</span>
+                      </Label>
+                    ))}
+                  </RadioGroup>
+                </div>
 
-          <div>
-            <Label htmlFor="bio">
-              Bio <span className="text-muted-foreground">(optional)</span>
-            </Label>
-            <Textarea
-              id="bio"
-              value={bio}
-              onChange={e => setBio(e.target.value)}
-              placeholder="Tell others about yourself..."
-              className="mt-1.5"
-              rows={2}
-            />
-          </div>
+                {/* Schedule — multi-select, no preset */}
+                <div>
+                  <Label>When do you like to move? <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <div className="mt-2 grid grid-cols-3 gap-2">
+                    {SCHEDULE_OPTIONS.map(({ id, label, emoji }) => {
+                      const checked = schedule.includes(id)
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => toggleSchedule(id)}
+                          className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
+                            checked ? 'border-primary bg-primary/5 shadow-sm' : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                          }`}
+                        >
+                          <span className="text-xl">{emoji}</span>
+                          <span className="text-sm font-medium">{label}</span>
+                          <Checkbox checked={checked} tabIndex={-1} className="pointer-events-none" aria-hidden />
+                        </button>
+                      )
+                    })}
+                  </div>
+                </div>
+
+                <div>
+                  <Label htmlFor="bio">Bio <span className="text-muted-foreground">(optional)</span></Label>
+                  <Textarea id="bio" value={bio} onChange={(e) => setBio(e.target.value)} placeholder="Tell others about yourself..." className="mt-1.5" rows={2} />
+                </div>
+              </div>
+
+              <motion.div whileTap={{ scale: 0.98 }} className="mt-6">
+                <Button size="lg" className="w-full rounded-full font-semibold" onClick={handleSaveProfile} disabled={loading}>
+                  {loading ? 'Saving…' : 'Save & continue'}
+                </Button>
+              </motion.div>
+
+              <button
+                onClick={() => setOnboardingStep('verify')}
+                className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
+              >
+                Skip for now
+              </button>
+            </motion.div>
+          )}
         </div>
-
-        <label className="mt-6 flex items-start gap-3 cursor-pointer">
-          <Checkbox
-            checked={consent}
-            onCheckedChange={(v) => setConsent(v === true)}
-            className="mt-0.5"
-          />
-          <span className="text-xs text-muted-foreground leading-relaxed">
-            I agree that Runsemble processes my profile and (approximate) location
-            to show me nearby runs and runners. I can export or delete my data at
-            any time from my profile.
-          </span>
-        </label>
-
-        {errorMsg && (
-          <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>
-        )}
-
-        <motion.div whileTap={{ scale: 0.98 }} className="mt-6">
-          <Button
-            size="lg"
-            className="w-full rounded-full font-semibold hover:shadow-lg hover:shadow-primary/20 transition-all duration-300"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-          >
-            {loading ? 'Setting up...' : 'Create account & start running'}
-          </Button>
-        </motion.div>
-
-        <button
-          onClick={() => setOnboardingStep('login')}
-          className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
-        >
-          Already have an account? Log in
-        </button>
-      </motion.div>
+      </div>
     </div>
   )
 }

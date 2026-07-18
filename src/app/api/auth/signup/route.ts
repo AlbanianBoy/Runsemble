@@ -56,7 +56,10 @@ export async function POST(request: NextRequest) {
         bio: bio ?? null,
         city: city ?? 'Antwerp',
         paceLevel: paceLevel ?? 'beginner',
-        schedulePreference: schedulePreference ?? 'evening',
+        // Empty = no preference (the multi-select default), not the old single
+        // 'evening'. A user who skips the profile step shouldn't be pre-set to a
+        // slot they never chose.
+        schedulePreference: typeof schedulePreference === 'string' ? schedulePreference : '',
         lat: typeof lat === 'number' ? lat : null,
         lng: typeof lng === 'number' ? lng : null,
         onboardingComplete: true,
