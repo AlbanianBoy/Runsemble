@@ -29,6 +29,9 @@ export async function GET() {
             group: true,
           },
         },
+        // For safe-zone suppression in toPublicUser. The projection deletes this
+        // key from the payload — zone centres are home addresses and never ship.
+        safeZones: { select: { lat: true, lng: true, radiusM: true } },
       },
     })
 

@@ -5,6 +5,7 @@
 // server-side, so exact home locations aren't visible in the network tab.
 
 import { fuzzCoord } from './geo'
+import { isInsideSafeZone, type SafeZoneLike } from './safe-zones'
 
 interface UserRow {
   id: string
@@ -45,9 +46,22 @@ export function toPublicUser<T extends UserRow>({
     ...rest
   } = user as UserRow & Record<string, unknown>
 
+  // Safe zones: inside one, this user shares no location at all. Checked on the
+  // EXACT stored coordinates, before fuzzing — the fuzz is a display courtesy,
+  // the zone is a promise. Callers attach `safeZones` by including the relation;
+  // a caller that doesn't simply gets no suppression (and no zones exist unless
+  // the user made some).
+  const zones = Array.isArray((user as Record<string, unknown>).safeZones)
+    ? ((user as Record<string, unknown>).safeZones as SafeZoneLike[])
+    : []
+  const inSafeZone =
+    typeof lat === 'number' && typeof lng === 'number' && zones.length > 0
+      ? isInsideSafeZone({ lat, lng }, zones)
+      : false
+
   // Hidden profiles share no location at all; visible ones share a ~200m cell.
   const fuzzed =
-    privacyVisible && typeof lat === 'number' && typeof lng === 'number'
+    !inSafeZone && privacyVisible && typeof lat === 'number' && typeof lng === 'number'
       ? fuzzCoord({ lat, lng }, 200)
       : null
 
@@ -59,6 +73,8 @@ export function toPublicUser<T extends UserRow>({
   delete (rest as Record<string, unknown>).consentAt
   delete (rest as Record<string, unknown>).emailVerifiedAt
   delete (rest as Record<string, unknown>).lastActiveDate
+  // Zone centres are home addresses — strictly owner-only, never in a public payload.
+  delete (rest as Record<string, unknown>).safeZones
 
   return {
     ...rest,

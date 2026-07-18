@@ -149,6 +149,7 @@ model User {
   blocksMade        Block[] @relation("Blocker")
   blockedBy         Block[] @relation("Blocked")
   reportsMade       Report[] @relation("Reporter")
+  safeZones         SafeZone[]
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
   devices           UserDevice[]
@@ -451,6 +452,28 @@ model Buddy {
   buddy     User     @relation("BuddyTarget", fields: [buddyId], references: [id], onDelete: Cascade)
 
   @@unique([userId, buddyId])
+  @@index([userId])
+}
+
+// An area where this user's location is never shared — home, work, the gym.
+// The 200m display fuzz makes a pin approximate, but an approximate pin at the
+// same spot every evening still says where someone sleeps. Inside a zone the
+// map shows nothing at all (Strava shipped the same idea after real harm).
+//
+// The zone centre IS the sensitive place, so zones are visible only to their
+// owner: they must never pass through toPublicUser, and the projection deletes
+// the key as defense in depth.
+model SafeZone {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String   @default("Home")
+  lat       Float
+  lng       Float
+  radiusM   Int      @default(500)
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
   @@index([userId])
 }
 

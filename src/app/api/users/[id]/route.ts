@@ -48,6 +48,10 @@ export async function GET(
           orderBy: { joinedAt: 'desc' },
           take: 10,
         },
+        // Safe-zone suppression. toPublicUser deletes the key for foreign
+        // viewers; the owner's own view (toSafeUser) keeps it — you may see
+        // your own zones.
+        safeZones: { select: { id: true, name: true, lat: true, lng: true, radiusM: true } },
       },
     })
 
