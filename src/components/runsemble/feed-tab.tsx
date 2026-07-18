@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2 } from 'lucide-react'
+import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
@@ -30,6 +30,7 @@ import { parsePath, formatClock, formatPaceLabel } from '@/lib/run'
 import { fileToCompressedDataUrl } from '@/lib/image'
 import { isAvailableNow } from '@/lib/availability'
 import { CommentsSheet } from './comments-sheet'
+import { ReportSheet } from './report-sheet'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
@@ -56,6 +57,7 @@ export function FeedTab() {
   const [imageBusy, setImageBusy] = useState(false)
   const fileInputRef = useRef<HTMLInputElement | null>(null)
   const [commentsPostId, setCommentsPostId] = useState<string | null>(null)
+  const [reportPost, setReportPost] = useState<{ id: string; author: string } | null>(null)
   const [scope, setScope] = useState<'following' | 'all'>('all')
 
   const feedKey = ['feed', currentUser?.id, scope] as const
@@ -344,29 +346,36 @@ export function FeedTab() {
                         </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-semibold text-sm">{post.author?.name}</span>
-                          {post.group?.name && (
-                            <Badge
-                              variant="secondary"
-                              className="text-xs px-1.5 py-0"
+                        <div className="flex items-start gap-2">
+                          <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
+                            <span className="font-semibold text-sm">{post.author?.name}</span>
+                            {post.group?.name && (
+                              <Badge variant="secondary" className="text-xs px-1.5 py-0">
+                                {post.group.name}
+                              </Badge>
+                            )}
+                            {post.postType === 'milestone' && (
+                              <Badge className="text-xs px-1.5 py-0 bg-amber-500 text-white border-0">
+                                milestone
+                              </Badge>
+                            )}
+                            {post.postType === 'question' && (
+                              <Badge className="text-xs px-1.5 py-0 bg-emerald-500 text-white border-0">
+                                question
+                              </Badge>
+                            )}
+                            <span className="text-xs text-muted-foreground">{timeAgo(post.createdAt)}</span>
+                          </div>
+                          {/* Report — only on other people's posts. You don't report yourself. */}
+                          {post.authorId !== currentUser?.id && (
+                            <button
+                              onClick={() => setReportPost({ id: post.id, author: post.author?.name ?? 'this post' })}
+                              aria-label="Report post"
+                              className="shrink-0 -mr-1 -mt-0.5 p-1 rounded-full text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted transition-colors"
                             >
-                              {post.group.name}
-                            </Badge>
+                              <MoreHorizontal className="h-4 w-4" />
+                            </button>
                           )}
-                          {post.postType === 'milestone' && (
-                            <Badge className="text-xs px-1.5 py-0 bg-amber-500 text-white border-0">
-                              milestone
-                            </Badge>
-                          )}
-                          {post.postType === 'question' && (
-                            <Badge className="text-xs px-1.5 py-0 bg-emerald-500 text-white border-0">
-                              question
-                            </Badge>
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {timeAgo(post.createdAt)}
-                          </span>
                         </div>
                         <p className="text-sm mt-1.5 leading-relaxed whitespace-pre-wrap">
                           {post.content}
@@ -380,22 +389,34 @@ export function FeedTab() {
                             className="mt-2.5 w-full max-h-80 object-cover rounded-xl border"
                           />
                         )}
-                        {/* Route card for shared runs — the map IS the story */}
+                        {/* Route card for shared runs — the map IS the story, so it
+                            leads: a tall map with the stats sat on top of it. */}
                         {post.runSession && (() => {
-                          const pts = parsePath(post.runSession.path)
+                          const rs = post.runSession
+                          const pts = parsePath(rs.path)
                           return (
-                            <div className="mt-2.5">
-                              {pts.length >= 2 && (
-                                <div className="h-32 rounded-xl overflow-hidden border mb-2">
+                            <div className="mt-2.5 rounded-2xl overflow-hidden border bg-muted/30">
+                              {pts.length >= 2 ? (
+                                <div className="relative h-52">
                                   <RouteMap points={pts} />
+                                  {/* Distance overlaid, bottom-left, over a soft scrim so it reads on any map tile. */}
+                                  <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/55 to-transparent pointer-events-none">
+                                    <p className="text-2xl font-extrabold tabular-nums text-white leading-none drop-shadow-sm">
+                                      {rs.distanceKm.toFixed(2)}
+                                      <span className="text-sm font-semibold ml-1">km</span>
+                                    </p>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 px-3.5 pt-3 text-sm font-bold text-foreground">
+                                  <Route className="h-4 w-4 text-primary" />
+                                  <span className="tabular-nums">{rs.distanceKm.toFixed(2)} km</span>
                                 </div>
                               )}
-                              <div className="flex items-center gap-4 text-xs text-muted-foreground tabular">
-                                <span className="font-semibold text-foreground">
-                                  {post.runSession.distanceKm.toFixed(2)} km
-                                </span>
-                                <span>{formatClock(post.runSession.durationSec)}</span>
-                                <span>{formatPaceLabel(post.runSession.avgPaceSecPerKm)}</span>
+                              <div className="flex items-center divide-x divide-border/70 px-1 py-2 text-center">
+                                <Stat label="Time" value={formatClock(rs.durationSec)} />
+                                <Stat label="Pace" value={formatPaceLabel(rs.avgPaceSecPerKm)} />
+                                {pts.length < 2 && <Stat label="Distance" value={`${rs.distanceKm.toFixed(2)} km`} />}
                               </div>
                             </div>
                           )
@@ -540,6 +561,25 @@ export function FeedTab() {
         open={!!commentsPostId}
         onOpenChange={(open) => { if (!open) setCommentsPostId(null) }}
       />
+
+      {/* Report a post */}
+      <ReportSheet
+        open={!!reportPost}
+        onOpenChange={(open) => { if (!open) setReportPost(null) }}
+        subjectType="post"
+        subjectId={reportPost?.id ?? null}
+        subjectLabel={reportPost ? `${reportPost.author}'s post` : undefined}
+      />
+    </div>
+  )
+}
+
+/** One labelled stat in a route card's footer. Tabular so columns line up. */
+function Stat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex-1 px-2">
+      <p className="text-sm font-bold tabular-nums leading-tight">{value}</p>
+      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</p>
     </div>
   )
 }
