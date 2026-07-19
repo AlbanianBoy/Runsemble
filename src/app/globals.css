@@ -180,18 +180,31 @@
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
   }
-  /* Soft ambient app background — subtle warm glow behind everything. */
+  /* Solid warm paper — no ambient gradient glow. Two soft radial washes used to
+     sit behind everything; they read as generic "AI app" haze, and flat paper is
+     calmer and more premium. */
   .rs-app-bg {
-    background:
-      radial-gradient(120% 80% at 100% 0%, oklch(0.7 0.12 186 / 8%), transparent 60%),
-      radial-gradient(100% 70% at 0% 100%, oklch(0.72 0.1 200 / 6%), transparent 55%),
-      var(--background);
+    background: var(--background);
   }
-  /* Number-heavy stat readouts use tabular figures so they don't jitter. */
+  /* Stat readouts get tabular figures AND the mono face — a running app's numbers
+     are its instrument panel, so pace, distance and time should look measured, not
+     like body copy. Applied via this one class, so every readout already using it
+     gets the treatment. */
   .tabular {
     font-variant-numeric: tabular-nums;
     font-feature-settings: "tnum";
+    letter-spacing: -0.01em;
   }
+}
+
+/* Mono numerals for every stat readout — a running app's numbers are its
+   instrument panel. Declared UNLAYERED (not inside @layer utilities) on purpose:
+   Tailwind v4's compiler strips a `font-family` declaration from a custom utility
+   class, but leaves a plain rule alone, and unlayered CSS outranks layered so it
+   still wins. Uses the next/font variable directly (`--font-mono` from @theme
+   inline isn't emitted as a real custom property), with a monospace fallback. */
+.tabular {
+  font-family: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 
 /* Pulse animation for hotspot pins */
@@ -241,6 +254,12 @@ html, body {
 .rs-map-wrap .leaflet-container {
   height: 100%;
   width: 100%;
+}
+/* Mute the map tiles so the teal route lines and green presence dots — which are
+   SVG overlays, not tiles — become the loudest thing on screen. The Strava trick,
+   and the biggest single map-quality lever now that the map is the home screen. */
+.leaflet-tile {
+  filter: saturate(0.6) contrast(1.03);
 }
 .leaflet-container {
   font-family: inherit;

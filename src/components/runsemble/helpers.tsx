@@ -14,17 +14,19 @@ export function AudienceBadge({ audience }: { audience?: string }) {
 
 // ─── Avatar helpers ────────────────────────────────────────────────────────────
 
+// A grounded, cohesive set — teal (the brand), warm earth tones, and one deep
+// red. Deliberately no violet/pink/candy-yellow: a random rainbow of avatar
+// colours is the tell of a generic AI-built app, and purple in particular reads
+// wrong for a running product. Eight is enough to tell people apart.
 const AVATAR_COLORS = [
-  'bg-orange-500',
-  'bg-amber-600',
+  'bg-teal-600',
+  'bg-orange-600',
   'bg-emerald-600',
-  'bg-rose-500',
-  'bg-violet-500',
-  'bg-teal-500',
-  'bg-pink-500',
-  'bg-yellow-600',
-  'bg-red-500',
-  'bg-cyan-600',
+  'bg-amber-600',
+  'bg-slate-600',
+  'bg-stone-500',
+  'bg-cyan-700',
+  'bg-red-600',
 ]
 
 export function getAvatarColor(name: string) {
@@ -119,14 +121,14 @@ export function capitalize(str: string): string {
 
 /** Generate a deterministic color from a string (for tags, categories, etc.) */
 const TAG_PALETTE = [
+  'bg-teal-100 text-teal-800',
   'bg-orange-100 text-orange-800',
   'bg-emerald-100 text-emerald-800',
   'bg-amber-100 text-amber-800',
-  'bg-rose-100 text-rose-800',
-  'bg-teal-100 text-teal-800',
-  'bg-violet-100 text-violet-800',
-  'bg-pink-100 text-pink-800',
   'bg-cyan-100 text-cyan-800',
+  'bg-slate-100 text-slate-800',
+  'bg-stone-100 text-stone-800',
+  'bg-red-100 text-red-800',
 ]
 
 export function getTagColor(str: string): string {

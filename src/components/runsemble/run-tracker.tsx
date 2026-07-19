@@ -698,7 +698,7 @@ export function RunTracker() {
                   onPointerLeave={cancelFlightPress}
                   onPointerCancel={cancelFlightPress}
                 >
-                  <span className={`h-2 w-2 rounded-full ${weakGps ? 'bg-amber-500' : gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-violet-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
+                  <span className={`h-2 w-2 rounded-full ${weakGps ? 'bg-amber-500' : gps === 'ok' ? 'bg-emerald-500' : gps === 'demo' ? 'bg-sky-500' : gps === 'acquiring' ? 'bg-amber-500 animate-pulse' : 'bg-muted-foreground/50'}`} />
                   {gpsNote}
                 </span>
                 {phase !== 'ready' && (

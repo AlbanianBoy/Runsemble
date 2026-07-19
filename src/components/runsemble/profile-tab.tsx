@@ -372,7 +372,7 @@ export function ProfileTab() {
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
         <button onClick={() => setProfileView('challenges')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-violet-500/15 text-violet-600 flex items-center justify-center"><Target className="h-5 w-5" /></div>
+          <div className="h-9 w-9 rounded-full bg-teal-500/15 text-teal-600 flex items-center justify-center"><Target className="h-5 w-5" /></div>
           <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Challenges</p><p className="text-[11px] text-muted-foreground">Join & compete</p></div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
