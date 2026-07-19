@@ -10,16 +10,7 @@ import {
   validateCsvEnumFields,
 } from '@/lib/enums'
 
-// The allowlist further down governs which *fields* a client may set, not which
-// values — so without these checks a bad value reaches Prisma and surfaces as a
-// 500 instead of a 400.
-//
-// paceLevel is a single enum value.
 const ENUM_FIELDS = { paceLevel: PACE_LEVELS }
-// schedulePreference is NOT one value. Onboarding is multi-select — you might run
-// mornings and evenings — so it's a comma-separated set in a plain String column
-// ("morning,evening"), and "" means no preference. Validating it as a single enum
-// rejected every multi-select answer, which was the whole point of the feature.
 const CSV_ENUM_FIELDS = { schedulePreference: SCHEDULE_PREFERENCES }
 
 export async function GET(
@@ -27,6 +18,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // SECURITY: Require authentication before revealing any user data.
+    // Unauthenticated callers (scrapers, stalkers) learn nothing.
+    const me = await getSessionUser()
+    if (!me) {
+      return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    }
+
     const { id } = await params
 
     const user = await db.user.findUnique({
@@ -35,23 +33,35 @@ export async function GET(
         earnedBadges: {
           orderBy: { earnedAt: 'desc' },
         },
-        groupMemberships: {
-          include: {
-            group: true,
-          },
-          orderBy: { joinedAt: 'desc' },
-        },
-        joinedHotspots: {
-          include: {
-            hotspot: true,
-          },
-          orderBy: { joinedAt: 'desc' },
-          take: 10,
-        },
-        // Safe-zone suppression. toPublicUser deletes the key for foreign
-        // viewers; the owner's own view (toSafeUser) keeps it — you may see
-        // your own zones.
-        safeZones: { select: { id: true, name: true, lat: true, lng: true, radiusM: true } },
+        // SECURITY: groupMemberships and joinedHotspots are intentionally only
+        // fetched for the owner's own view. They are stripped from toPublicUser
+        // but we avoid fetching them at all for foreign viewers — defence in depth
+        // and a meaningful DB query cost saving at scale.
+        ...(me.id === id
+          ? {
+              groupMemberships: {
+                include: { group: true },
+                orderBy: { joinedAt: 'desc' },
+              },
+              joinedHotspots: {
+                include: { hotspot: true },
+                orderBy: { joinedAt: 'desc' },
+                take: 10,
+              },
+              // Safe-zone suppression. toPublicUser deletes the key for foreign
+              // viewers; the owner's own view (toSafeUser) keeps it.
+              safeZones: {
+                select: { id: true, name: true, lat: true, lng: true, radiusM: true },
+              },
+            }
+          : {
+              // For foreign viewers: only badges + safe zones for suppression.
+              // Groups and hotspots are NOT queried — they reveal private
+              // membership and location timetables.
+              safeZones: {
+                select: { id: true, name: true, lat: true, lng: true, radiusM: true },
+              },
+            }),
       },
     })
 
@@ -59,10 +69,10 @@ export async function GET(
       return NextResponse.json({ error: 'User not found' }, { status: 404 })
     }
 
-    // Own profile: everything except the hash. Anyone else: public fields only,
-    // with coordinates snapped to the privacy grid.
-    const me = await getSessionUser()
-    const payload = me?.id === user.id ? toSafeUser(user) : toPublicUser(user)
+    // Own profile: everything except the hash.
+    // Anyone else: public fields only, with coordinates on the privacy grid,
+    // and groups/hotspots stripped.
+    const payload = me.id === user.id ? toSafeUser(user) : toPublicUser(user)
     return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)
@@ -96,7 +106,6 @@ export async function PATCH(
       validateEnumFields(body, ENUM_FIELDS) ?? validateCsvEnumFields(body, CSV_ENUM_FIELDS)
     if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
 
-    // Build update data from provided fields
     const updateData: Record<string, unknown> = {}
     const allowedFields = [
       'name',
@@ -114,13 +123,6 @@ export async function PATCH(
       'lastActiveDate',
       'lat',
       'lng',
-      // NOTE: push tokens are NOT here. They live in UserDevice (one row per
-      // device) and are registered via /api/push-token — a user has several at
-      // once, so a single field on the user could only ever hold the last one.
-      // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
-      // deliberately NOT here. They are moved only by the server (in /api/runs);
-      // letting a client PATCH them would let anyone set xp: 999999 and top the
-      // leaderboard.
     ]
 
     for (const field of allowedFields) {
@@ -129,7 +131,6 @@ export async function PATCH(
       }
     }
 
-    // Handle availability timestamps as Dates (null clears them)
     if (body.availableUntil !== undefined) {
       updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
     }
@@ -198,13 +199,6 @@ export async function PUT(
       'lastActiveDate',
       'lat',
       'lng',
-      // NOTE: push tokens are NOT here. They live in UserDevice (one row per
-      // device) and are registered via /api/push-token — a user has several at
-      // once, so a single field on the user could only ever hold the last one.
-      // NOTE: xp / streak / longestStreak / totalRuns / totalPeopleRunWith are
-      // deliberately NOT here. They are moved only by the server (in /api/runs);
-      // letting a client PATCH them would let anyone set xp: 999999 and top the
-      // leaderboard.
     ]
 
     for (const field of allowedFields) {
@@ -213,8 +207,6 @@ export async function PUT(
       }
     }
 
-    // Availability timestamps as Dates (null clears them). Turning availability
-    // off clears everything — unless the request is *setting* a future slot.
     if (body.availableUntil !== undefined) {
       updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
     }

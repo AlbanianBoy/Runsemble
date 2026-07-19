@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/password'
+import { hashPassword, validatePasswordStrength } from '@/lib/password'
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
 import { rateLimit, clientIp } from '@/lib/rate-limit'
 
-// Create an account with a real password and start a session.
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`signup:${clientIp(request)}`, 5, 60_000)) {
+    if (!await rateLimit(`signup:${clientIp(request)}`, 5, 60_000)) {
       return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
     }
     const body = await request.json()
@@ -29,9 +28,13 @@ export async function POST(request: NextRequest) {
     if (!name?.trim() || !email?.trim()) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
     }
-    if (typeof password !== 'string' || password.length < 8) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+
+    // Password strength: length + common-pattern rejection.
+    const passwordError = validatePasswordStrength(password ?? '')
+    if (passwordError) {
+      return NextResponse.json({ error: passwordError }, { status: 400 })
     }
+
     if (!consent) {
       return NextResponse.json(
         { error: 'You need to accept the data processing terms to use Runsemble' },
@@ -56,9 +59,6 @@ export async function POST(request: NextRequest) {
         bio: bio ?? null,
         city: city ?? 'Antwerp',
         paceLevel: paceLevel ?? 'beginner',
-        // Empty = no preference (the multi-select default), not the old single
-        // 'evening'. A user who skips the profile step shouldn't be pre-set to a
-        // slot they never chose.
         schedulePreference: typeof schedulePreference === 'string' ? schedulePreference : '',
         lat: typeof lat === 'number' ? lat : null,
         lng: typeof lng === 'number' ? lng : null,
@@ -70,7 +70,6 @@ export async function POST(request: NextRequest) {
 
     await createSession(user.id)
 
-    // Fire off an email-verification code — best-effort, never block signup.
     try {
       const code = await createVerificationCode(user.id, 'email_verify')
       await sendVerificationEmail(user.email, code)

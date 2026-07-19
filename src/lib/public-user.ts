@@ -1,8 +1,16 @@
 // ─── Public user projection (server-only) ────────────────────────────────────
-// What one user is allowed to see about another. Anything not listed here
-// (email, passwordHash, consent timestamps, ...) never leaves the server, and
-// coordinates are snapped to the same ~200m privacy grid the map promises —
-// server-side, so exact home locations aren't visible in the network tab.
+// What one authenticated user is allowed to see about another.
+//
+// SECURITY RULES:
+// 1. This function is only called for authenticated viewers. Routes must check
+//    auth before calling toPublicUser — unauthenticated requests should 401
+//    before reaching here.
+// 2. groupMemberships and joinedHotspots are STRIPPED from the public view.
+//    They reveal private group membership and recurring location patterns
+//    ("attends Riverside Run every Tuesday at 7am = lives nearby").
+// 3. Coordinates are snapped to the ~200m privacy grid — server-side, so exact
+//    home locations aren't visible in the network tab.
+// 4. safeZone centres are strictly owner-only (they ARE the sensitive location).
 
 import { fuzzCoord } from './geo'
 import { isInsideSafeZone, type SafeZoneLike } from './safe-zones'
@@ -34,11 +42,8 @@ interface UserRow {
   createdAt: Date
 }
 
-/** Extra relations some endpoints attach (badges, groups, ...) pass through. */
-export function toPublicUser<T extends UserRow>({
-  // Split off everything sensitive; `rest` carries relations through untouched.
-  ...user
-}: T) {
+/** Extra relations some endpoints attach (badges, ...) pass through. */
+export function toPublicUser<T extends UserRow>({ ...user }: T) {
   const {
     lat,
     lng,
@@ -46,11 +51,7 @@ export function toPublicUser<T extends UserRow>({
     ...rest
   } = user as UserRow & Record<string, unknown>
 
-  // Safe zones: inside one, this user shares no location at all. Checked on the
-  // EXACT stored coordinates, before fuzzing — the fuzz is a display courtesy,
-  // the zone is a promise. Callers attach `safeZones` by including the relation;
-  // a caller that doesn't simply gets no suppression (and no zones exist unless
-  // the user made some).
+  // Safe zones: inside one, this user shares no location at all.
   const zones = Array.isArray((user as Record<string, unknown>).safeZones)
     ? ((user as Record<string, unknown>).safeZones as SafeZoneLike[])
     : []
@@ -59,22 +60,30 @@ export function toPublicUser<T extends UserRow>({
       ? isInsideSafeZone({ lat, lng }, zones)
       : false
 
-  // Hidden profiles share no location at all; visible ones share a ~200m cell.
   const fuzzed =
     !inSafeZone && privacyVisible && typeof lat === 'number' && typeof lng === 'number'
       ? fuzzCoord({ lat, lng }, 200)
       : null
 
-  // Re-assert the public scalar whitelist by deleting known-sensitive keys that
-  // arrive when callers query full rows (defense in depth against future
-  // schema additions leaking by default).
+  // Sensitive scalar fields — strip these regardless of how the caller
+  // constructed the query (defense in depth against future schema leaks).
   delete (rest as Record<string, unknown>).email
   delete (rest as Record<string, unknown>).passwordHash
   delete (rest as Record<string, unknown>).consentAt
   delete (rest as Record<string, unknown>).emailVerifiedAt
   delete (rest as Record<string, unknown>).lastActiveDate
-  // Zone centres are home addresses — strictly owner-only, never in a public payload.
+
+  // Zone centres are home addresses — strictly owner-only.
   delete (rest as Record<string, unknown>).safeZones
+
+  // Group memberships reveal which (possibly private) groups someone is in.
+  // A viewer should discover shared groups through their own membership list,
+  // not by inspecting another user's profile.
+  delete (rest as Record<string, unknown>).groupMemberships
+
+  // Hotspot participation reveals recurring location patterns — effectively a
+  // timetable of where this person is and when. Strip from public view.
+  delete (rest as Record<string, unknown>).joinedHotspots
 
   return {
     ...rest,

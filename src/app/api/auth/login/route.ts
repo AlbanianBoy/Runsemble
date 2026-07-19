@@ -6,7 +6,7 @@ import { rateLimit, clientIp } from '@/lib/rate-limit'
 
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`login:${clientIp(request)}`, 10, 60_000)) {
+    if (!await rateLimit(`login:${clientIp(request)}`, 10, 60_000)) {
       return NextResponse.json({ error: 'Too many attempts — wait a minute and try again' }, { status: 429 })
     }
     const { email, password } = await request.json()
