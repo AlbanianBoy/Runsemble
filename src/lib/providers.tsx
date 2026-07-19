@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
 import { Toaster as SonnerToaster } from '@/components/ui/sonner'
@@ -8,12 +8,22 @@ import { useCallback } from 'react'
 import { useRunsembleStore } from '@/lib/store'
 import { usePushRegistration } from '@/lib/push-register'
 import { useLocationRefresh } from '@/lib/use-location-refresh'
+import { initAnalytics, identifyUser } from '@/lib/analytics'
 
 // Inner component so hooks can read from the store (which is inside the tree).
 function AppBootstrap() {
   const userId = useRunsembleStore((s) => s.currentUser?.id)
   const hasCoords = useRunsembleStore((s) => s.currentUser?.lat != null && s.currentUser?.lng != null)
   const updateProfile = useRunsembleStore((s) => s.updateProfile)
+
+  // Product analytics — a no-op until NEXT_PUBLIC_POSTHOG_KEY is set, so this is
+  // inert without an account. Init once, then tie events to whoever's signed in.
+  useEffect(() => {
+    initAnalytics()
+  }, [])
+  useEffect(() => {
+    if (userId) identifyUser(userId)
+  }, [userId])
 
   // Register / refresh the FCM token whenever the signed-in user changes.
   // Silent no-op on web and on native builds without push-notifications.

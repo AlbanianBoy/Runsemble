@@ -33,9 +33,12 @@ const csp = [
   // and data: for posts written before Blob existed — those rows still render.
   "img-src 'self' data: blob: https://*.basemaps.cartocdn.com https://*.tile.openstreetmap.org https://*.public.blob.vercel-storage.com",
   "font-src 'self' data:",
-  // Same-origin API + Nominatim for geocoding a run's location. Nothing else.
-  // ws: is the dev HMR socket; it is not present in production.
-  `connect-src 'self' https://nominatim.openstreetmap.org${
+  // Same-origin API + Nominatim for geocoding a run's location, plus the two
+  // analytics/error hosts. PostHog (*.posthog.com) and Sentry (*.ingest.sentry.io,
+  // *.sentry.io) stay in the allowlist whether or not they're keyed — an unused
+  // entry costs nothing, and forgetting to add it when the key lands would be a
+  // silent CSP block with no error. ws: is the dev HMR socket, prod-only omitted.
+  `connect-src 'self' https://nominatim.openstreetmap.org https://*.posthog.com https://*.ingest.sentry.io https://*.sentry.io${
     process.env.NODE_ENV === 'production' ? '' : ' ws: http://localhost:*'
   }`,
   "worker-src 'self'",

@@ -8,6 +8,7 @@ import { Clock, MapPin, Users, Navigation, Loader2, Map as MapIcon, Flame, Play,
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
+import { track } from '@/lib/analytics'
 import { ANTWERP_CENTER, haversineKm, distanceLabel, type LatLng } from '@/lib/geo'
 import { isAvailableNow, isComingUp, availableFromLabel, AVAILABLE_NOW_MINUTES } from '@/lib/availability'
 import { readPosition } from '@/lib/use-location-refresh'
@@ -194,6 +195,7 @@ export function MapTab() {
       : null
 
   const goAvailableNow = () => {
+    track('went_available')
     setAvailability(true, AVAILABLE_NOW_MINUTES)
     updateProfile({ isAvailable: true, availableFrom: null })
     if (currentUser?.id) {

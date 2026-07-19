@@ -28,6 +28,7 @@ import { isRunRecorderSupported, startRecording, stopRecording, clearRecording, 
 import { Capacitor } from '@capacitor/core'
 import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from '@/lib/run-persist'
 import { queuePendingRun } from '@/lib/run-sync'
+import { track } from '@/lib/analytics'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
 import { moveDistanceKm, computeElapsedSec, crossedKm, ACCURACY_GATE_M } from '@/lib/run-math'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
@@ -573,6 +574,9 @@ export function RunTracker() {
     }
     try {
       const res = await apiSend<RunSaveResponse>('/api/runs', 'POST', { userId: currentUser.id, ...payload })
+
+      // The headline question analytics exists to answer: does anyone finish a run?
+      track('run_saved', { distanceKm, durationSec: elapsedSec, shared: shareToFeed, withOthers: peopleAdded })
 
       updateProfile({
         xp: res.xp?.newXp ?? currentUser.xp,

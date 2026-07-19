@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { toast } from 'sonner'
 import { apiSend } from '@/lib/api'
+import { track } from '@/lib/analytics'
 import { REPORT_REASONS, type ReportReason, type ReportSubjectType } from '@/lib/enums'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Textarea } from '@/components/ui/textarea'
@@ -53,6 +54,7 @@ export function ReportSheet({
     setSubmitting(true)
     try {
       await apiSend('/api/reports', 'POST', { subjectType, subjectId, reason, details: details.trim() || undefined })
+      track('report_filed', { subjectType, reason })
       toast.success('Report sent — an operator will take a look')
       onReported?.()
       onOpenChange(false)

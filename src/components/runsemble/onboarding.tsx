@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot } from '@/lib/store'
 import { PACE_LEVELS, SCHEDULE_PREFERENCES } from '@/lib/enums'
 import { apiGet, apiSend } from '@/lib/api'
+import { track } from '@/lib/analytics'
 import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -316,6 +317,7 @@ export function OnboardingProfile() {
       }
       setCurrentUser(toUserProfile(data.user))
       setUserId(data.user.id)
+      track('account_created')
       setStep('about')
     } catch {
       setErrorMsg('Network error — please try again')
@@ -353,6 +355,7 @@ export function OnboardingProfile() {
     } catch {
       // A failed save must not trap the user — the account exists; they can edit later.
     }
+    track('onboarding_profile_saved')
     setLoading(false)
     setOnboardingStep('verify')
   }
@@ -500,7 +503,7 @@ export function OnboardingProfile() {
               </motion.div>
 
               <button
-                onClick={() => setOnboardingStep('verify')}
+                onClick={() => { track('onboarding_skipped'); setOnboardingStep('verify') }}
                 className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
               >
                 Skip for now
