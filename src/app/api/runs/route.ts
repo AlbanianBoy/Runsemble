@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { awardXpAmount, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
+import { describeXpAward, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
@@ -119,35 +119,22 @@ export async function POST(request: NextRequest) {
       ? [...new Set(buddyIds.filter((b: unknown) => typeof b === 'string' && b !== userId))] as string[]
       : []
 
-    let newBuddyCount = 0
-    const newBuddyNames: string[] = []
+    // Work out who is new, without writing anything yet. The buddy rows are
+    // created inside the transaction below alongside the run, and the "you ran
+    // together" notifications are sent only once that has actually committed —
+    // telling someone they have a new run buddy and then rolling the run back
+    // would be a message about an event that never happened.
+    const newBuddies: { id: string; name: string }[] = []
     for (const otherId of taggedIds) {
       const other = await db.user.findUnique({ where: { id: otherId }, select: { id: true, name: true } })
       if (!other) continue
       const existing = await db.buddy.findUnique({
         where: { userId_buddyId: { userId, buddyId: otherId } },
       })
-      if (!existing) {
-        // Directional rows so both people see each other as buddies.
-        await db.buddy.createMany({
-          data: [
-            { userId, buddyId: otherId },
-            { userId: otherId, buddyId: userId },
-          ],
-        })
-        newBuddyCount++
-        newBuddyNames.push(other.name)
-        await notify({
-          userId: otherId,
-          actorId: userId,
-          type: 'run_invite',
-          title: `${user.name} ran with you 🏃`,
-          body: "You're now run buddies. Book your next run together!",
-          entityId: userId,
-          icon: '🤝',
-        })
-      }
+      if (!existing) newBuddies.push(other)
     }
+    const newBuddyCount = newBuddies.length
+    const newBuddyNames = newBuddies.map((b) => b.name)
 
     const companionCount = untaggedCompanions + taggedIds.length
 
@@ -159,26 +146,67 @@ export async function POST(request: NextRequest) {
     // ── Streak ──
     const streakRes = computeStreak(user.lastActiveDate, user.streak, user.longestStreak)
 
+    const newTotalDistance = user.totalDistanceKm + dist
+
+    // ── The part that must be all-or-nothing ──
+    // A run and the totals it moves are one fact about the user. Written
+    // separately, a failure between them leaves the account permanently wrong:
+    // a run in the history worth no XP, or XP for a run that isn't there, and
+    // nothing later recomputes either. Everything below this block is a
+    // decoration that can be retried or lost without corrupting the record.
     let session
     try {
-      session = await db.runSession.create({
-        data: {
-          userId,
-          clientRunId: cid,
-          hotspotId,
-          groupId,
-          sportType,
-          distanceKm: dist,
-          durationSec: dur,
-          avgPaceSecPerKm,
-          calories,
-          companions: companionCount,
-          path: path ? JSON.stringify(path).slice(0, 100_000) : null,
-          splits: Array.isArray(splits) && splits.length ? JSON.stringify(splits).slice(0, 10_000) : null,
-          note,
-          xpEarned,
-          endedAt: new Date(),
-        },
+      session = await db.$transaction(async (tx) => {
+        // Directional rows so both people see each other as buddies.
+        // skipDuplicates covers the gap between the read above and this write.
+        if (newBuddies.length > 0) {
+          await tx.buddy.createMany({
+            data: newBuddies.flatMap((b) => [
+              { userId, buddyId: b.id },
+              { userId: b.id, buddyId: userId },
+            ]),
+            skipDuplicates: true,
+          })
+        }
+
+        const created = await tx.runSession.create({
+          data: {
+            userId,
+            clientRunId: cid,
+            hotspotId,
+            groupId,
+            sportType,
+            distanceKm: dist,
+            durationSec: dur,
+            avgPaceSecPerKm,
+            calories,
+            companions: companionCount,
+            path: path ? JSON.stringify(path).slice(0, 100_000) : null,
+            splits: Array.isArray(splits) && splits.length ? JSON.stringify(splits).slice(0, 10_000) : null,
+            note,
+            xpEarned,
+            endedAt: new Date(),
+          },
+        })
+
+        await tx.user.update({
+          where: { id: userId },
+          data: {
+            totalRuns: { increment: 1 },
+            totalDistanceKm: newTotalDistance,
+            totalDurationSec: { increment: dur },
+            totalPeopleRunWith: { increment: newBuddyCount + untaggedCompanions },
+            streak: streakRes.streak,
+            longestStreak: streakRes.longestStreak,
+            lastActiveDate: streakRes.lastActiveDate,
+            // Folded in here rather than a separate awardXpAmount call: it keeps
+            // the XP inside this transaction, and an atomic increment can't lose
+            // an award to a run finishing at the same instant.
+            xp: { increment: xpEarned },
+          },
+        })
+
+        return created
       })
     } catch (e) {
       // A concurrent duplicate (two reconnect retries racing) trips the
@@ -193,20 +221,22 @@ export async function POST(request: NextRequest) {
       throw e
     }
 
-    const newTotalDistance = user.totalDistanceKm + dist
+    // ── Everything from here on is best-effort ──
+    // The run is safely recorded. These steps can each fail without making the
+    // account wrong, so none of them is allowed to fail the request.
 
-    await db.user.update({
-      where: { id: userId },
-      data: {
-        totalRuns: { increment: 1 },
-        totalDistanceKm: newTotalDistance,
-        totalDurationSec: { increment: dur },
-        totalPeopleRunWith: { increment: newBuddyCount + untaggedCompanions },
-        streak: streakRes.streak,
-        longestStreak: streakRes.longestStreak,
-        lastActiveDate: streakRes.lastActiveDate,
-      },
-    })
+    // Now that the run has committed, tell the people tagged in it.
+    for (const b of newBuddies) {
+      await notify({
+        userId: b.id,
+        actorId: userId,
+        type: 'run_invite',
+        title: `${user.name} ran with you 🏃`,
+        body: "You're now run buddies. Book your next run together!",
+        entityId: userId,
+        icon: '🤝',
+      })
+    }
 
     // Close the loop on the hotspot: this participant actually ran.
     if (hotspotId) {
@@ -222,8 +252,9 @@ export async function POST(request: NextRequest) {
       }).catch(() => {}) // best-effort; upsert-style via @@unique constraint
     }
 
-    // XP is awarded on top of the base user.update so rank-up detection is clean.
-    const xp = await awardXpAmount(userId, xpEarned, 'streakDay')
+    // The XP itself already moved inside the transaction; this just describes
+    // the award (and any rank-up) for the client to celebrate.
+    const xp = describeXpAward(user.xp, xpEarned, 'streakDay')
 
     // ── Badges ──
     const badgesEarned: BadgeSpec[] = []

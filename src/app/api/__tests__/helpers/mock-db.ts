@@ -34,7 +34,14 @@ export function makeDb(overrides: DbOverrides = {}) {
       // Transaction/raw helpers hang off the client itself, not a model.
       if (modelProp === '$transaction') {
         return vi.fn(async (arg: unknown) =>
-          typeof arg === 'function' ? (arg as (c: unknown) => unknown)(client) : arg
+          typeof arg === 'function'
+            ? (arg as (c: unknown) => unknown)(client)
+            // The array form resolves every operation and hands back their
+            // results. Returning the array of pending promises unchanged would
+            // let `const [, session] = await db.$transaction([...])` bind a
+            // Promise, and a test asserting on session.id would read undefined
+            // while production read the row.
+            : Promise.all(arg as unknown[])
         )
       }
       if (modelProp === '$queryRaw' || modelProp === '$queryRawUnsafe') {

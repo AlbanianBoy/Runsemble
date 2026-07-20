@@ -62,6 +62,32 @@ export async function awardXpAmount(
   }
 }
 
+/**
+ * Describe an XP award that a *different* query is applying.
+ *
+ * Saving a run already updates several columns on the user in one UPDATE, so it
+ * folds `xp: { increment }` into that same statement instead of calling
+ * awardXpAmount. Two benefits: the XP moves inside the run's transaction rather
+ * than after it, and an atomic increment replaces the read-modify-write above —
+ * which silently loses one award when two runs land at the same moment.
+ *
+ * This computes the rank-up story from values the caller already holds, so no
+ * extra read is needed to report it.
+ */
+export function describeXpAward(xpBefore: number, amount: number, reason: XpReason): XpResult {
+  const before = getRankFromXP(xpBefore)
+  const newXp = xpBefore + amount
+  const after = getRankFromXP(newXp)
+  return {
+    awarded: amount,
+    reason,
+    newXp,
+    rankBefore: before.tier,
+    rankAfter: after.tier,
+    rankedUp: after.tier !== before.tier,
+  }
+}
+
 export interface BadgeSpec {
   badgeType: string
   title: string

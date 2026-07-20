@@ -146,3 +146,26 @@ describe('the run response', () => {
     expect(Array.isArray(body.badgesEarned)).toBe(true)
   })
 })
+
+describe('the run and the stats it moves are written together', () => {
+  // The run row and the totals it changes are one fact about the user. Written
+  // as separate statements, a failure between them leaves the account wrong
+  // forever — a run worth no XP, or XP for a run that isn't there — and nothing
+  // recomputes either afterwards.
+  it('folds XP into the same user update as the rest of the stats', async () => {
+    let seenData: Record<string, unknown> | null = null
+    overrides['user.update'] = (...args: unknown[]) => {
+      seenData = (args[0] as { data?: Record<string, unknown> })?.data ?? null
+      return {}
+    }
+
+    const { POST } = await import('@/app/api/runs/route')
+    await POST(post({ distanceKm: 5, durationSec: 1800, path: RUN_PATH }))
+
+    // 20 for showing up + 10/km. An increment rather than a computed total, so
+    // two runs finishing at the same moment can't clobber each other's award.
+    expect(seenData!.xp).toEqual({ increment: 70 })
+    expect(seenData!.totalRuns).toEqual({ increment: 1 })
+    expect(seenData!.totalDurationSec).toEqual({ increment: 1800 })
+  })
+})
