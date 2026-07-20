@@ -1,5 +1,6 @@
 // ─── usePushNotifications ───────────────────────────────────────────────────────
-// Registers the device for FCM and uploads the token. No-op on web.
+// Registers the device for FCM and uploads the token. Returns early on web —
+// the plugin only exists on native, and touching it in a browser throws.
 //
 // Also the app's real-time layer, which it already had and wasn't using. A push
 // reaches the device in about a second; nothing listened for one arriving while
@@ -14,9 +15,14 @@
 // when something happened.
 
 import { useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
 import { useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
 import { tabForPush, isDmPush, queryKeysForPush, type PushTab } from '@/lib/push-routing'
+
+function isNative(): boolean {
+  try { return Capacitor.isNativePlatform() } catch { return false }
+}
 
 export function usePushNotifications() {
   const { openDm, setActiveTab } = useRunsembleStore()
@@ -42,6 +48,14 @@ async function registerPush({
   setActiveTab: (tab: PushTab) => void
   invalidate: (type: string | undefined) => void
 }) {
+  // The platform check IS the web guard, not the import. On web the dynamic
+  // import below succeeds — the package is bundled — and then every addListener
+  // call touches a plugin with no web implementation and rejects. Because those
+  // calls aren't awaited, the rejections escape as unhandled promise rejections
+  // (Sentry caught exactly this on the first production load: "'PushNotifications'
+  // plugin is not implemented on web"). A plain browser has nothing to register.
+  if (!isNative()) return
+
   try {
     const { PushNotifications } = await import('@capacitor/push-notifications')
 
