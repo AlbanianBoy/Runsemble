@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/password'
+import { hashPassword, validatePassword } from '@/lib/password'
 import { consumeVerificationCode } from '@/lib/verification'
 import { rateLimit, clientIp } from '@/lib/rate-limit'
 
@@ -17,11 +17,9 @@ export async function POST(request: NextRequest) {
     if (!email?.trim() || !code?.trim()) {
       return NextResponse.json({ error: 'Email and code are required' }, { status: 400 })
     }
-    if (typeof password !== 'string' || password.length < 8) {
-      return NextResponse.json(
-        { error: 'Password must be at least 8 characters' },
-        { status: 400 }
-      )
+    const passwordProblem = validatePassword(password, email)
+    if (passwordProblem) {
+      return NextResponse.json({ error: passwordProblem }, { status: 400 })
     }
 
     const user = await db.user.findUnique({

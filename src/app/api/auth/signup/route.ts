@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { hashPassword } from '@/lib/password'
+import { hashPassword, validatePassword } from '@/lib/password'
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
@@ -29,8 +29,9 @@ export async function POST(request: NextRequest) {
     if (!name?.trim() || !email?.trim()) {
       return NextResponse.json({ error: 'Name and email are required' }, { status: 400 })
     }
-    if (typeof password !== 'string' || password.length < 8) {
-      return NextResponse.json({ error: 'Password must be at least 8 characters' }, { status: 400 })
+    const passwordProblem = validatePassword(password, email)
+    if (passwordProblem) {
+      return NextResponse.json({ error: passwordProblem }, { status: 400 })
     }
     if (!consent) {
       return NextResponse.json(
