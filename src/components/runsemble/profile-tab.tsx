@@ -11,6 +11,7 @@ import type { BadgesResponse } from '@/lib/types'
 import { Leaderboard } from './leaderboard'
 import { RunHistory } from './run-history'
 import { ThemeToggle } from './theme-toggle'
+import { SafeZonesCard } from './safe-zones-card'
 import { ChallengesView } from './challenges-view'
 import { BuddiesView } from './buddies-view'
 import { Card, CardContent } from '@/components/ui/card'
@@ -465,6 +466,11 @@ export function ProfileTab() {
             <ThemeToggle />
           </CardContent>
         </Card>
+      </motion.div>
+
+      {/* Safe zones (privacy) */}
+      <motion.div {...fadeUp}>
+        <SafeZonesCard />
       </motion.div>
 
       {/* Account & data (GDPR) */}
