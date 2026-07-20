@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/password'
+import { CURRENT_POLICY_VERSION } from '@/lib/consent'
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
@@ -54,6 +55,8 @@ export async function POST(request: NextRequest) {
         email: email.trim().toLowerCase(),
         passwordHash: hashPassword(password),
         consentAt: new Date(),
+        // Record WHICH policy they accepted, not just when — see lib/consent.
+        consentVersion: CURRENT_POLICY_VERSION,
         bio: bio ?? null,
         city: city ?? 'Antwerp',
         paceLevel: paceLevel ?? 'beginner',

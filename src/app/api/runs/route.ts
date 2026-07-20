@@ -66,11 +66,14 @@ export async function POST(request: NextRequest) {
     // this a reconnect could award XP twice and post duplicate runs to the feed.
     const cid = typeof clientRunId === 'string' && clientRunId.length > 0 ? clientRunId : null
     if (cid) {
-      const existing = await db.runSession.findUnique({ where: { clientRunId: cid } })
+      // Scoped to this user: the id is generated on the device, so it is only
+      // meaningful within one account. It used to be a global unique, which
+      // meant another user's colliding id would surface here and get rejected
+      // as "belongs to another account" — their run, refused, for no reason.
+      const existing = await db.runSession.findUnique({
+        where: { userId_clientRunId: { userId, clientRunId: cid } },
+      })
       if (existing) {
-        if (existing.userId !== userId) {
-          return NextResponse.json({ error: 'Run belongs to another account' }, { status: 409 })
-        }
         return NextResponse.json({ session: existing, duplicate: true }, { status: 200 })
       }
     }
@@ -182,7 +185,9 @@ export async function POST(request: NextRequest) {
       // clientRunId unique constraint. Treat it as the idempotent case: return
       // the row the winning request created rather than erroring.
       if (cid && e && typeof e === 'object' && (e as { code?: string }).code === 'P2002') {
-        const existing = await db.runSession.findUnique({ where: { clientRunId: cid } })
+        const existing = await db.runSession.findUnique({
+          where: { userId_clientRunId: { userId, clientRunId: cid } },
+        })
         if (existing) return NextResponse.json({ session: existing, duplicate: true }, { status: 200 })
       }
       throw e

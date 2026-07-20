@@ -110,11 +110,25 @@ describe('clientRunId idempotency', () => {
     expect(body.session).toEqual(existing)
   })
 
-  it("refuses to hand back another account's run for the same id", async () => {
-    overrides['runSession.findUnique'] = () => ({ id: 's1', userId: 'someone-else' })
+  // clientRunId is generated on the device, so it only means anything inside one
+  // account. It used to be globally unique, which turned a coincidental collision
+  // between two users into a refused run for the second one. The lookup is now
+  // keyed on (userId, clientRunId), so another account's identical id is simply
+  // invisible here and the run saves normally.
+  it('scopes the idempotency lookup to the current user', async () => {
+    let seenWhere: unknown = null
+    overrides['runSession.findUnique'] = (...args: unknown[]) => {
+      seenWhere = (args[0] as { where?: unknown })?.where
+      return null // no run of *mine* carries that id
+    }
 
     const { POST } = await import('@/app/api/runs/route')
-    expect((await POST(post({ clientRunId: 'abc', distanceKm: 5, durationSec: 1800 }))).status).toBe(409)
+    const res = await POST(
+      post({ clientRunId: 'abc', distanceKm: 5, durationSec: 1800, path: RUN_PATH })
+    )
+
+    expect(seenWhere).toEqual({ userId_clientRunId: { userId: 'u1', clientRunId: 'abc' } })
+    expect(res.status).toBe(201)
   })
 })
 

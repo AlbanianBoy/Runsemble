@@ -106,6 +106,10 @@ model User {
   verified          Boolean   @default(false)
   passwordHash      String?   // scrypt salt:hash; null for seed/demo profiles
   consentAt         DateTime? // when the user accepted data processing (GDPR)
+  // WHICH policy text they accepted. A timestamp alone can't answer "what did
+  // they agree to?" once the policy changes — null means the account predates
+  // version tracking, which is the honest answer rather than a guessed backfill.
+  consentVersion    String?
   emailVerified     Boolean   @default(false) // confirmed via 6-digit code
   emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
@@ -192,7 +196,10 @@ model UserDevice {
 // Login sessions — token lives in an httpOnly cookie.
 model Session {
   id        String   @id @default(cuid())
-  token     String   @unique
+  // Only ever the SHA-256 of the cookie value. The raw token exists in the
+  // user's cookie and nowhere else, so a leaked database dump is not a set of
+  // working logins.
+  tokenHash String   @unique
   userId    String
   expiresAt DateTime
   createdAt DateTime @default(now())
@@ -357,7 +364,10 @@ model Notification {
 
 model RunSession {
   id            String    @id @default(cuid())
-  clientRunId   String?   @unique // client-generated id; makes offline re-uploads idempotent
+  // Client-generated id; makes offline re-uploads idempotent. Scoped to the
+  // user, not global — two people's devices picking the same id is not a
+  // duplicate run, and globally unique would silently reject the second one.
+  clientRunId   String?
   userId        String
   hotspotId     String?   // set when the run is tied to a hotspot
   groupId       String?   // set when the run is tied to a group
@@ -380,6 +390,7 @@ model RunSession {
   group         RunGroup? @relation(fields: [groupId], references: [id], onDelete: SetNull)
   posts         FeedPost[]
 
+  @@unique([userId, clientRunId])
   @@index([userId])
 }
 

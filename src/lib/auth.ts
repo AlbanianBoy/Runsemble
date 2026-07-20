@@ -3,16 +3,29 @@
 // against the Session table. Deliberately boring — no JWT, easy to revoke.
 
 import { cookies } from 'next/headers'
-import { randomBytes } from 'crypto'
+import { createHash, randomBytes } from 'crypto'
 import { db } from './db'
 
 const COOKIE_NAME = 'rs_session'
 const SESSION_DAYS = 30
 
+/**
+ * What we store instead of the session token itself.
+ *
+ * Plain SHA-256, deliberately — not scrypt like passwords. A slow KDF exists to
+ * make guessing a human-chosen secret expensive, and this secret is 256 bits
+ * from randomBytes. There is no dictionary to work through, so the only thing a
+ * slow hash would buy here is a slow hash on every authenticated request.
+ */
+function hashToken(token: string): string {
+  return createHash('sha256').update(token).digest('hex')
+}
+
 export async function createSession(userId: string): Promise<void> {
   const token = randomBytes(32).toString('hex')
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 86_400_000)
-  await db.session.create({ data: { token, userId, expiresAt } })
+  // The raw token goes to the cookie and is never written down anywhere else.
+  await db.session.create({ data: { tokenHash: hashToken(token), userId, expiresAt } })
   const store = await cookies()
   store.set(COOKIE_NAME, token, {
     httpOnly: true,
@@ -29,7 +42,7 @@ export async function getSessionUser() {
   const token = store.get(COOKIE_NAME)?.value
   if (!token) return null
   const session = await db.session.findUnique({
-    where: { token },
+    where: { tokenHash: hashToken(token) },
     include: { user: true },
   })
   if (!session) return null
@@ -43,7 +56,7 @@ export async function getSessionUser() {
 export async function destroySession(): Promise<void> {
   const store = await cookies()
   const token = store.get(COOKIE_NAME)?.value
-  if (token) await db.session.deleteMany({ where: { token } })
+  if (token) await db.session.deleteMany({ where: { tokenHash: hashToken(token) } })
   // Explicitly expire the cookie with maxAge: 0 so older WebViews (Capacitor
   // Android) honour the deletion rather than relying on store.delete() alone.
   store.set(COOKIE_NAME, '', { maxAge: 0, path: '/' })
