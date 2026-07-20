@@ -33,6 +33,25 @@ export function initAnalytics(): void {
   ready = true
 }
 
+/**
+ * Turn analytics on or off to match the user's consent. Analytics is a separate
+ * purpose from the core service, so it stays off until the user opts in, and it
+ * must stop the moment they withdraw (Art. 7(3)). Called with the stored
+ * preference on load and whenever the user flips the toggle.
+ */
+export function setAnalyticsEnabled(enabled: boolean): void {
+  if (typeof window === 'undefined' || !KEY) return
+  if (enabled) {
+    initAnalytics()
+    if (ready) posthog.opt_in_capturing()
+  } else if (ready) {
+    // Stop sending and forget the current person; nothing further leaves the
+    // device until consent is given again.
+    posthog.opt_out_capturing()
+    posthog.reset()
+  }
+}
+
 /** Tie events to a signed-in user. Safe to call repeatedly. */
 export function identifyUser(id: string): void {
   if (!ready) return

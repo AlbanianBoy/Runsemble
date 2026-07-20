@@ -8,22 +8,24 @@ import { useCallback } from 'react'
 import { useRunsembleStore } from '@/lib/store'
 import { usePushRegistration } from '@/lib/push-register'
 import { useLocationRefresh } from '@/lib/use-location-refresh'
-import { initAnalytics, identifyUser } from '@/lib/analytics'
+import { setAnalyticsEnabled, identifyUser } from '@/lib/analytics'
 
 // Inner component so hooks can read from the store (which is inside the tree).
 function AppBootstrap() {
   const userId = useRunsembleStore((s) => s.currentUser?.id)
+  const analyticsConsent = useRunsembleStore((s) => s.currentUser?.analyticsConsent === true)
   const hasCoords = useRunsembleStore((s) => s.currentUser?.lat != null && s.currentUser?.lng != null)
   const updateProfile = useRunsembleStore((s) => s.updateProfile)
 
-  // Product analytics — a no-op until NEXT_PUBLIC_POSTHOG_KEY is set, so this is
-  // inert without an account. Init once, then tie events to whoever's signed in.
+  // Product analytics — inert without a key, and off unless the user opted in.
+  // Analytics is its own purpose, so it follows consent: turned on when granted,
+  // and stopped immediately if the user withdraws it in settings.
   useEffect(() => {
-    initAnalytics()
-  }, [])
+    setAnalyticsEnabled(analyticsConsent)
+  }, [analyticsConsent])
   useEffect(() => {
-    if (userId) identifyUser(userId)
-  }, [userId])
+    if (userId && analyticsConsent) identifyUser(userId)
+  }, [userId, analyticsConsent])
 
   // Register / refresh the FCM token whenever the signed-in user changes.
   // Silent no-op on web and on native builds without push-notifications.

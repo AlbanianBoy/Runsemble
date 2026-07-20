@@ -110,6 +110,13 @@ model User {
   // they agree to?" once the policy changes — null means the account predates
   // version tracking, which is the honest answer rather than a guessed backfill.
   consentVersion    String?
+  // Self-declared at signup for the age gate. Stored (not just checked-and-
+  // discarded) so the age check is evidenced, and so the threshold can change
+  // without having re-prompted everyone. Null = account predates the gate.
+  birthdate         DateTime?
+  // Analytics is a separate purpose from the core service, so it needs its own
+  // consent (Art. 7). Off by default; PostHog only initialises when this is true.
+  analyticsConsent  Boolean   @default(false)
   emailVerified     Boolean   @default(false) // confirmed via 6-digit code
   emailVerifiedAt   DateTime?
   preferredSport    String    @default("running")
@@ -384,6 +391,11 @@ model RunSession {
   startedAt     DateTime  @default(now())
   endedAt       DateTime  @default(now())
   createdAt     DateTime  @default(now())
+  // When the exact GPS trace was replaced with a blinded, thinned version by the
+  // retention job. Null = still the raw trace (within the 90-day window). The
+  // marker is what lets the daily cron run safely: a row is coarsened once and
+  // then skipped forever, never re-thinned down to nothing.
+  pathCoarsenedAt DateTime?
 
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   hotspot       Hotspot?  @relation(fields: [hotspotId], references: [id], onDelete: SetNull)
@@ -392,6 +404,9 @@ model RunSession {
 
   @@unique([userId, clientRunId])
   @@index([userId])
+  // The retention cron scans for old, not-yet-coarsened runs; this keeps that
+  // from being a full-table scan as the runs pile up.
+  @@index([pathCoarsenedAt, endedAt])
 }
 
 // Unified message model for both DMs (recipientId set) and group chat (groupId set).

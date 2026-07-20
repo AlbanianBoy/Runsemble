@@ -161,15 +161,17 @@ Severity and likelihood are the controller's assessment of impact **on the data 
 | ID | Action | Addresses | Priority | Owner | Status |
 |---|---|---|---|---|---|
 | **A1** | Review & harden offline-safety controls: friction on rapid location refresh by a single viewer, abuse-pattern detection, and clear in-app safety guidance for meeting strangers. | R1 | High | Founder + dev | Open |
-| **A2** | Split consent by purpose (core service vs. location discovery vs. analytics); make each withdrawable in-app; gate PostHog on explicit opt-in. | R5, §4.1 | High | Dev | Open |
-| **A3** | Rewrite `/privacy` as a full Art. 13 notice: every processor in §2.4, transfer safeguards, retention periods, all data-subject rights, and the APD complaint route. | R6 | High | Founder + legal | Open |
-| **A4** | Define & implement a **retention schedule**: cap exact GPS-trace retention (e.g. coarsen or delete after a defined window), auto-expire transient location, and document justifications. | R2, §4.3 | High | Dev | Open |
+| **A2** | Split consent by purpose (core service vs. location discovery vs. analytics); make each withdrawable in-app; gate PostHog on explicit opt-in. | R5, §4.1 | High | Dev | **Built** — analytics is now off by default, opt-in at signup, and a withdrawable toggle in profile settings; PostHog only initialises on consent and stops on withdrawal. (Location discovery is already opt-in per session.) |
+| **A3** | Rewrite `/privacy` as a full Art. 13 notice: every processor in §2.4, transfer safeguards, retention periods, all data-subject rights, and the APD complaint route. | R6 | High | Founder + legal | **Built** — `/privacy` rewritten to list all processors, legal bases, transfers, retention, every right, and the APD complaint route. *Legal review still recommended.* |
+| **A4** | Define & implement a **retention schedule**: cap exact GPS-trace retention (e.g. coarsen or delete after a defined window), auto-expire transient location, and document justifications. | R2, §4.3 | High | Dev | **Built** — a daily Vercel Cron coarsens run traces older than 90 days (endpoints blinded, path thinned), marked so each row is processed once. *Requires `CRON_SECRET` to be set in Vercel.* |
 | **A5** | Document a data-subject-request procedure (identity check, one-month SLA per Art. 12(3)); handle erasure of content in others' conversations and third-party notification (Art. 17(2)). | §4.4 | Medium | Founder | Open |
 | **A6** | (Covered by A1/A4.) | R1 | — | — | — |
-| **A7** | Move rate-limiting to a shared store (per-instance memory currently lets an attacker bypass limits across serverless instances); revisit 2FA. | R3, R4 | Medium | Dev | Open |
-| **A8** | Add an **age gate** at signup and decide the policy for under-agers (Belgium's digital consent age is **13** — verify against current Belgian DPA Act before relying on it); apply enhanced defaults to young users. | R7 | High | Founder + legal | Open |
+| **A7** | Move rate-limiting to a shared store (per-instance memory currently lets an attacker bypass limits across serverless instances); revisit 2FA. | R3, R4 | Medium | Dev | Open — needs an Upstash (or similar) store |
+| **A8** | Add an **age gate** at signup and decide the policy for under-agers (Belgium's digital consent age is **13** — verify against current Belgian DPA Act before relying on it); apply enhanced defaults to young users. | R7 | High | Founder + legal | **Built** — signup now requires a date of birth and blocks under-16 (conservative EEA baseline) both client- and server-side; the age is stored as evidence. *Confirm the threshold with legal.* |
 | **A9** | For each non-EEA processor (FCM; confirm Resend), record the Art. 46 safeguard (SCCs) and a transfer impact assessment. | R8 | Medium | Founder + legal | Open |
 | **A10** | Complete all **[TO COMPLETE]** fields; sign DPAs with every processor; appoint (or formally decide against) a DPO. | §0, §2.4 | High | Founder | Open |
+
+> **Progress note (2026-07-20):** The four buildable action items — A2, A3, A4, A8 — have been implemented in code. This lowers **R5** and **R6** to Low and moves **R7 (minors)** from High to **Medium** (an age gate now exists; the residual concern is that self-declared age is unverifiable, which is the accepted industry norm). The items that remain are the ones that genuinely need you or a lawyer: A1, A5, A7, A9, A10, and legal review of A3/A8.
 
 ---
 

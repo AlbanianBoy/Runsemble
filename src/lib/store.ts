@@ -45,6 +45,7 @@ export interface UserProfile {
   isAvailable: boolean
   availableFrom?: string | null
   privacyVisible: boolean
+  analyticsConsent: boolean
   onboardingComplete: boolean
 }
 

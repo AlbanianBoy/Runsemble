@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/password'
-import { CURRENT_POLICY_VERSION } from '@/lib/consent'
+import { CURRENT_POLICY_VERSION, MIN_AGE, isOldEnough } from '@/lib/consent'
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
@@ -19,6 +19,8 @@ export async function POST(request: NextRequest) {
       email,
       password,
       consent,
+      birthdate,
+      analyticsConsent,
       bio,
       city,
       paceLevel,
@@ -40,6 +42,16 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       )
     }
+    // Age gate. Enforced server-side, not just in the form — a client can send
+    // whatever it likes, so the real check has to live here. Fails closed on a
+    // missing or unparseable date.
+    const dob = typeof birthdate === 'string' && birthdate ? new Date(birthdate) : null
+    if (!isOldEnough(dob)) {
+      return NextResponse.json(
+        { error: `You must be at least ${MIN_AGE} to use Runsemble` },
+        { status: 400 }
+      )
+    }
 
     const existing = await db.user.findUnique({ where: { email: email.trim().toLowerCase() } })
     if (existing) {
@@ -57,6 +69,9 @@ export async function POST(request: NextRequest) {
         consentAt: new Date(),
         // Record WHICH policy they accepted, not just when — see lib/consent.
         consentVersion: CURRENT_POLICY_VERSION,
+        birthdate: dob,
+        // Analytics is its own purpose; only on if the user explicitly opted in.
+        analyticsConsent: analyticsConsent === true,
         bio: bio ?? null,
         city: city ?? 'Antwerp',
         paceLevel: paceLevel ?? 'beginner',

@@ -116,6 +116,7 @@ export async function PATCH(
       'availableFrom',
       'availableUntil',
       'privacyVisible',
+      'analyticsConsent', // withdrawing/granting analytics consent from settings
       'onboardingComplete',
       'lastActiveDate',
       'lat',
@@ -200,6 +201,7 @@ export async function PUT(
       'availableFrom',
       'availableUntil',
       'privacyVisible',
+      'analyticsConsent', // withdrawing/granting analytics consent from settings
       'onboardingComplete',
       'lastActiveDate',
       'lat',

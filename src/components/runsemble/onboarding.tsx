@@ -9,6 +9,7 @@ import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot 
 import { PACE_LEVELS, SCHEDULE_PREFERENCES } from '@/lib/enums'
 import { apiGet, apiSend } from '@/lib/api'
 import { track } from '@/lib/analytics'
+import { MIN_AGE, isOldEnough } from '@/lib/consent'
 import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -28,6 +29,7 @@ interface DbUser {
   totalRuns?: number; totalPeopleRunWith?: number
   totalDistanceKm?: number; totalDurationSec?: number
   isAvailable?: boolean; availableFrom?: string | null; privacyVisible?: boolean
+  analyticsConsent?: boolean
 }
 
 export function toUserProfile(u: DbUser): UserProfile {
@@ -61,6 +63,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     isAvailable: u.isAvailable ?? false,
     availableFrom: u.availableFrom ?? null,
     privacyVisible: u.privacyVisible ?? true,
+    analyticsConsent: u.analyticsConsent ?? false,
     onboardingComplete: true,
   }
 }
@@ -262,6 +265,8 @@ export function OnboardingProfile() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [consent, setConsent] = useState(false)
+  const [birthdate, setBirthdate] = useState('') // YYYY-MM-DD from the date input
+  const [analyticsOptIn, setAnalyticsOptIn] = useState(false)
 
   // Step 2 — profile (all optional, defaults on the server)
   const [userId, setUserId] = useState<string | null>(null)
@@ -275,7 +280,15 @@ export function OnboardingProfile() {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  const canCreate = !!name.trim() && !!email.trim() && password.length >= 8 && consent && !loading
+  // Age gate: the button won't submit under-age, and the server re-checks. The
+  // client check is just so the person isn't sent through a doomed request.
+  const canCreate =
+    !!name.trim() &&
+    !!email.trim() &&
+    password.length >= 8 &&
+    consent &&
+    isOldEnough(birthdate) &&
+    !loading
 
   const toggleSchedule = (slot: ScheduleSlot) => {
     setSchedule((prev) => (prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]))
@@ -307,7 +320,7 @@ export function OnboardingProfile() {
       const res = await fetch('/api/auth/signup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password, consent }),
+        body: JSON.stringify({ name, email, password, consent, birthdate, analyticsConsent: analyticsOptIn }),
       })
       const data = await res.json().catch(() => ({}))
       if (!res.ok) {
@@ -389,13 +402,29 @@ export function OnboardingProfile() {
                   <Label htmlFor="password">Password</Label>
                   <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" className="mt-1.5" />
                 </div>
+                <div>
+                  <Label htmlFor="birthdate">Date of birth</Label>
+                  <Input id="birthdate" type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} className="mt-1.5" />
+                  {birthdate && !isOldEnough(birthdate) && (
+                    <p className="mt-1 text-xs text-destructive">You must be at least {MIN_AGE} to use Runsemble.</p>
+                  )}
+                </div>
               </div>
 
               <label className="mt-6 flex items-start gap-3 cursor-pointer">
                 <Checkbox checked={consent} onCheckedChange={(v) => setConsent(v === true)} className="mt-0.5" />
                 <span className="text-xs text-muted-foreground leading-relaxed">
                   I agree that Runsemble processes my profile and (approximate) location to show me nearby runs and
-                  runners. I can export or delete my data at any time from my profile.
+                  runners, and I confirm I&rsquo;m at least {MIN_AGE}. I can export or delete my data any time from my
+                  profile. See our <a href="/privacy" target="_blank" className="text-primary underline underline-offset-2">privacy policy</a>.
+                </span>
+              </label>
+
+              <label className="mt-3 flex items-start gap-3 cursor-pointer">
+                <Checkbox checked={analyticsOptIn} onCheckedChange={(v) => setAnalyticsOptIn(v === true)} className="mt-0.5" />
+                <span className="text-xs text-muted-foreground leading-relaxed">
+                  Optional: help improve Runsemble with anonymous usage analytics (never your location). You can
+                  turn this off any time in your profile.
                 </span>
               </label>
 

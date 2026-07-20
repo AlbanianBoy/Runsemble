@@ -12,6 +12,7 @@ import { Leaderboard } from './leaderboard'
 import { RunHistory } from './run-history'
 import { ThemeToggle } from './theme-toggle'
 import { SafeZonesCard } from './safe-zones-card'
+import { Switch } from '@/components/ui/switch'
 import { ChallengesView } from './challenges-view'
 import { BuddiesView } from './buddies-view'
 import { Card, CardContent } from '@/components/ui/card'
@@ -464,6 +465,32 @@ export function ProfileTab() {
               <p className="text-xs text-muted-foreground">Switch between light and dark</p>
             </div>
             <ThemeToggle />
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* Analytics consent (privacy) */}
+      <motion.div {...fadeUp}>
+        <Card>
+          <CardContent className="p-4 flex items-center justify-between gap-4">
+            <div>
+              <p className="font-semibold text-sm">Usage analytics</p>
+              <p className="text-xs text-muted-foreground">
+                Anonymous, never your location. Helps us improve Runsemble.
+              </p>
+            </div>
+            <Switch
+              checked={currentUser?.analyticsConsent ?? false}
+              onCheckedChange={(v) => {
+                if (!currentUser) return
+                updateProfile({ analyticsConsent: v })
+                apiSend(`/api/users/${currentUser.id}`, 'PATCH', { analyticsConsent: v }).catch(() => {
+                  // Revert the optimistic flip if the server didn't take it.
+                  updateProfile({ analyticsConsent: !v })
+                  toast.error('Could not update that setting')
+                })
+              }}
+            />
           </CardContent>
         </Card>
       </motion.div>
