@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { storeImage } from '@/lib/image-store'
 import { POST_TYPES, validateEnumFields } from '@/lib/enums'
+import { toPublicPath } from '@/lib/run'
 
 export async function GET(request: NextRequest) {
   try {
@@ -106,6 +107,18 @@ export async function GET(request: NextRequest) {
       const { _count, likedBy, ...rest } = p
       return {
         ...rest,
+        // A shared run's GPS trace starts and ends at the runner's door. Only
+        // the author gets the real thing back; everyone else sees the route
+        // with both ends blinded and the middle thinned.
+        runSession: rest.runSession
+          ? {
+              ...rest.runSession,
+              path:
+                userId && rest.author?.id === userId
+                  ? rest.runSession.path
+                  : toPublicPath(rest.runSession.path),
+            }
+          : rest.runSession,
         likes: _count.likedBy,
         comments: _count.commentThread,
         likedByMe: Array.isArray(likedBy) ? likedBy.length > 0 : false,

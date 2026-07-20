@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest'
-import { formatClock, formatPaceLabel, paceFromRun, parsePath, parseSplits } from '@/lib/run'
+import {
+  formatClock,
+  formatPaceLabel,
+  paceFromRun,
+  parsePath,
+  parseSplits,
+  toPublicPath,
+} from '@/lib/run'
 
 describe('formatClock', () => {
   it('formats minutes and seconds', () => {
@@ -54,5 +61,39 @@ describe('parsePath / parseSplits (defensive parsing)', () => {
   it('parses splits and drops non-numbers', () => {
     expect(parseSplits(JSON.stringify([310, 305, 'x', null]))).toEqual([310, 305])
     expect(parseSplits('garbage')).toEqual([])
+  })
+})
+
+describe('toPublicPath', () => {
+  // A straight 2.2km line north from central Antwerp, ~55m between points.
+  const line = (n: number) =>
+    JSON.stringify(
+      Array.from({ length: n }, (_, i) => ({ lat: 51.2194 + i * 0.0005, lng: 4.4025 }))
+    )
+
+  it('withholds the start and the end of the route', () => {
+    const points = parsePath(toPublicPath(line(40)))
+    expect(points.length).toBeGreaterThan(0)
+    // Nothing survives within 250m of either original endpoint.
+    expect(points[0].lat).toBeGreaterThan(51.2194 + 0.0022)
+    expect(points[points.length - 1].lat).toBeLessThan(51.2194 + 39 * 0.0005 - 0.0022)
+  })
+
+  it('thins a long trace to a drawable number of points', () => {
+    const points = parsePath(toPublicPath(line(4000)))
+    expect(points.length).toBeLessThanOrEqual(60)
+    expect(points.length).toBeGreaterThan(10)
+  })
+
+  it('returns null when the route is too short to blind both ends', () => {
+    // ~220m end to end: every point is inside one blind radius or the other.
+    expect(toPublicPath(line(5))).toBeNull()
+  })
+
+  it('returns null for missing or unusable paths', () => {
+    expect(toPublicPath(null)).toBeNull()
+    expect(toPublicPath('')).toBeNull()
+    expect(toPublicPath('not json')).toBeNull()
+    expect(toPublicPath(JSON.stringify([{ lat: 51.2, lng: 4.4 }]))).toBeNull()
   })
 })

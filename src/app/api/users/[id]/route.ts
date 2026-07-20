@@ -29,29 +29,36 @@ export async function GET(
   try {
     const { id } = await params
 
+    // Profiles are for logged-in runners only. Left open, this endpoint let
+    // anyone walk a list of scraped user ids and collect a stranger's habits.
+    const me = await getSessionUser()
+    if (!me) {
+      return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    }
+    const isSelf = me.id === id
+
     const user = await db.user.findUnique({
       where: { id },
       include: {
         earnedBadges: {
           orderBy: { earnedAt: 'desc' },
         },
-        groupMemberships: {
-          include: {
-            group: true,
-          },
-          orderBy: { joinedAt: 'desc' },
-        },
-        joinedHotspots: {
-          include: {
-            hotspot: true,
-          },
-          orderBy: { joinedAt: 'desc' },
-          take: 10,
-        },
+        // Groups and hotspot history are only ever your own. toPublicUser passes
+        // relations through untouched, so the guard has to be the query: which
+        // groups someone is in and which meetups they attend is a schedule, and
+        // a schedule plus a map is how you wait for a person.
+        groupMemberships: isSelf
+          ? { include: { group: true }, orderBy: { joinedAt: 'desc' as const } }
+          : false,
+        joinedHotspots: isSelf
+          ? { include: { hotspot: true }, orderBy: { joinedAt: 'desc' as const }, take: 10 }
+          : false,
         // Safe-zone suppression. toPublicUser deletes the key for foreign
         // viewers; the owner's own view (toSafeUser) keeps it — you may see
-        // your own zones.
-        safeZones: { select: { id: true, name: true, lat: true, lng: true, radiusM: true } },
+        // your own zones. Still only fetched for the owner.
+        safeZones: isSelf
+          ? { select: { id: true, name: true, lat: true, lng: true, radiusM: true } }
+          : true,
       },
     })
 
@@ -61,8 +68,7 @@ export async function GET(
 
     // Own profile: everything except the hash. Anyone else: public fields only,
     // with coordinates snapped to the privacy grid.
-    const me = await getSessionUser()
-    const payload = me?.id === user.id ? toSafeUser(user) : toPublicUser(user)
+    const payload = isSelf ? toSafeUser(user) : toPublicUser(user)
     return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)
