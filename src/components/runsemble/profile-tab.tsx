@@ -406,7 +406,7 @@ export function ProfileTab() {
       {/* XP Progress */}
       <motion.div {...fadeUp}>
         <Card className="overflow-hidden">
-          <div className="gradient-brand-subtle p-4">
+          <div className="bg-primary/5 p-4">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{rank.icon}</span>
@@ -429,7 +429,7 @@ export function ProfileTab() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-orange-400 to-red-500 flex items-center justify-center text-white text-xl font-bold shrink-0">
+              <div className="w-12 h-12 rounded-full bg-hotspot text-hotspot-foreground flex items-center justify-center text-xl font-bold shrink-0">
                 {currentUser.streak}
               </div>
               <div>
@@ -492,12 +492,13 @@ export function ProfileTab() {
         <Card>
           <CardContent className="p-4 flex items-center justify-between gap-4">
             <div>
-              <p className="font-semibold text-sm">Usage analytics</p>
+              <p id="analytics-label" className="font-semibold text-sm">Usage analytics</p>
               <p className="text-xs text-muted-foreground">
                 Anonymous, never your location. Helps us improve Runsemble.
               </p>
             </div>
             <Switch
+              aria-labelledby="analytics-label"
               checked={currentUser?.analyticsConsent ?? false}
               onCheckedChange={(v) => {
                 if (!currentUser) return

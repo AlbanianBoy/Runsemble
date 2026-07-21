@@ -70,7 +70,7 @@ export function RunHistory() {
       ) : (
         <>
           <Card className="overflow-hidden">
-            <div className="gradient-brand-subtle p-4 flex items-center justify-around text-center">
+            <div className="bg-primary/5 p-4 flex items-center justify-around text-center">
               <div><p className="text-lg font-bold tabular">{runs.length}</p><p className="text-[11px] text-muted-foreground">runs</p></div>
               <div><p className="text-lg font-bold tabular">{totalDist.toFixed(1)}</p><p className="text-[11px] text-muted-foreground">km logged</p></div>
               <div><p className="text-lg font-bold tabular">{Math.round(runs.reduce((s, r) => s + r.durationSec, 0) / 60)}</p><p className="text-[11px] text-muted-foreground">minutes</p></div>

@@ -374,7 +374,10 @@ export function MapTab() {
         ))}
       </div>
 
-      <div className="relative h-[calc(100vh-232px)]">
+      {/* dvh (not vh) so the mobile browser's collapsing toolbar is accounted
+          for, plus the bottom safe-area inset so the availability toggle and
+          nearby cards clear the home indicator / bottom nav on notched phones. */}
+      <div className="relative h-[calc(100dvh-232px-env(safe-area-inset-bottom))]">
       <div className="rs-map-wrap absolute inset-0 overflow-hidden rounded-2xl border border-border/60 shadow-sm">
         {isLoading && <Skeleton className="absolute inset-0 z-[600] h-full w-full rounded-2xl" />}
         <MapCanvas

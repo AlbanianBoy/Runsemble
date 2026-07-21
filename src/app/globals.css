@@ -288,3 +288,22 @@ html, body {
 .rs-pulse {
   animation: rs-pulse 2s ease-in-out infinite;
 }
+
+/* Respect a user's OS "reduce motion" setting: kill looping/animated motion for
+   anyone who has asked for it. Content still renders — only the movement stops.
+   The one exception left running is the live run-recording pulse, which is a
+   status indicator, not decoration. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .rs-pulse,
+  .animate-hotspot-pulse {
+    animation: none !important;
+  }
+}

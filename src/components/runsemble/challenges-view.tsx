@@ -95,7 +95,7 @@ function ChallengeCard({ c, onToggle, pending }: { c: ApiChallenge; onToggle: ()
               <span className="text-muted-foreground">{Math.round(pct)}%</span>
             </div>
             <div className="h-2 rounded-full bg-muted overflow-hidden">
-              <motion.div className="h-full gradient-brand rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} />
+              <motion.div className="h-full bg-primary rounded-full" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.6 }} />
             </div>
             {c.joined && collective && (
               <p className="text-[11px] text-muted-foreground mt-1.5">Your contribution: {Math.round(c.myProgress * 10) / 10} {metricUnit(c.metric)}</p>
