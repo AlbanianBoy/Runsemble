@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { storeImage } from '@/lib/image-store'
+import { storeImage, validateImageDataUrl } from '@/lib/image-store'
 import { POST_TYPES, validateEnumFields } from '@/lib/enums'
 import { toPublicPath } from '@/lib/run'
 
@@ -168,14 +168,18 @@ export async function POST(request: NextRequest) {
       if (!member) return NextResponse.json({ error: 'Join the group to post in it' }, { status: 403 })
     }
 
-    // Photos arrive as client-compressed JPEG data URLs. Cap the size before we
-    // do anything with the bytes.
+    // Photos arrive as client-compressed data URLs. The prefix is a claim, not
+    // evidence — validateImageDataUrl decides the format from the actual bytes,
+    // rejects SVG (a script-carrying document format) and anything that isn't a
+    // real JPEG/PNG/WebP, and caps the DECODED size rather than the base64
+    // string. The client's canvas re-encode is a nicety; this is the control.
     if (imageUrl !== undefined && imageUrl !== null) {
-      if (typeof imageUrl !== 'string' || !imageUrl.startsWith('data:image/')) {
+      if (typeof imageUrl !== 'string') {
         return NextResponse.json({ error: 'Invalid image' }, { status: 400 })
       }
-      if (imageUrl.length > 700_000) {
-        return NextResponse.json({ error: 'Image too large — try a smaller photo' }, { status: 400 })
+      const check = validateImageDataUrl(imageUrl)
+      if (!check.ok) {
+        return NextResponse.json({ error: check.error }, { status: 400 })
       }
     }
 

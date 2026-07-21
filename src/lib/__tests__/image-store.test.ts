@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest'
-import { isBlobConfigured, storeImage, deleteStoredImages } from '@/lib/image-store'
+import { isBlobConfigured, storeImage, deleteStoredImages, validateImageDataUrl } from '@/lib/image-store'
 
 const put = vi.hoisted(() => vi.fn())
 const del = vi.hoisted(() => vi.fn())
@@ -154,5 +154,55 @@ describe('deleteStoredImages — erasure has to reach object storage', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {})
 
     await expect(deleteStoredImages([BLOB_URL])).resolves.toBeUndefined()
+  })
+})
+
+describe('validateImageDataUrl', () => {
+  // The client re-encodes photos in a canvas, which produces a real JPEG and
+  // strips EXIF — but that only protects people using the app normally. Anyone
+  // can POST the API directly, so the format has to be decided by the bytes.
+  const b64 = (bytes: number[]) => Buffer.from(bytes).toString('base64')
+
+  it('accepts a real JPEG, PNG and WebP by their magic bytes', () => {
+    expect(validateImageDataUrl(`data:image/jpeg;base64,${b64([0xff, 0xd8, 0xff, 0xe0])}`)).toMatchObject({
+      ok: true, image: { contentType: 'image/jpeg', ext: 'jpg' },
+    })
+    expect(
+      validateImageDataUrl(`data:image/png;base64,${b64([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])}`)
+    ).toMatchObject({ ok: true, image: { contentType: 'image/png', ext: 'png' } })
+    const webp = [...Buffer.from('RIFF'), 0, 0, 0, 0, ...Buffer.from('WEBP')]
+    expect(validateImageDataUrl(`data:image/webp;base64,${b64(webp)}`)).toMatchObject({
+      ok: true, image: { contentType: 'image/webp', ext: 'webp' },
+    })
+  })
+
+  it('rejects SVG even though it is a legitimate image/* type', () => {
+    // The whole point: SVG is a document format that can carry script.
+    const svg = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>')
+    const res = validateImageDataUrl(`data:image/svg+xml;base64,${svg.toString('base64')}`)
+    expect(res.ok).toBe(false)
+  })
+
+  it("rejects bytes that don't match the declared type", () => {
+    // Declaring image/png over arbitrary content is exactly the bypass the
+    // client-side canvas step cannot prevent.
+    const res = validateImageDataUrl(`data:image/png;base64,${Buffer.from('not an image at all').toString('base64')}`)
+    expect(res.ok).toBe(false)
+  })
+
+  it('derives the stored type from the bytes, not the declared type', () => {
+    // A JPEG mislabelled as PNG is stored as what it actually is.
+    const res = validateImageDataUrl(`data:image/png;base64,${b64([0xff, 0xd8, 0xff, 0xe0])}`)
+    expect(res).toMatchObject({ ok: true, image: { contentType: 'image/jpeg' } })
+  })
+
+  it('caps the DECODED size, not the base64 string', () => {
+    const huge = b64(new Array(700_000).fill(0xff))
+    expect(validateImageDataUrl(`data:image/jpeg;base64,${huge}`)).toMatchObject({ ok: false })
+  })
+
+  it('rejects anything that is not a base64 image data URL', () => {
+    expect(validateImageDataUrl('javascript:alert(1)').ok).toBe(false)
+    expect(validateImageDataUrl('https://example.com/a.png').ok).toBe(false)
   })
 })
