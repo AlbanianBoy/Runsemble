@@ -386,7 +386,11 @@ model Notification {
   user      User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
 
+  // Two reads, two shapes. The unread badge counts on (userId, read); the inbox
+  // lists this user's rows newest-first, which the read-flag index can't order,
+  // so it was fetching the user's whole history and sorting it every open.
   @@index([userId, read])
+  @@index([userId, createdAt])
 }
 
 model RunSession {

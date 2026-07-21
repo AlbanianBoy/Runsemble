@@ -5,21 +5,16 @@
 
 import { db } from './db'
 import { sendPush } from './fcm'
+import type { NotificationType } from './push-routing'
 
-export type NotificationType =
-  | 'hotspot_join'
-  | 'hotspot_reminder'
-  | 'run_invite'
-  | 'group_message'
-  | 'group_chat' // a message in a group's chat
-  | 'group_added' // you were added to a group
-  | 'group_role' // your role in a group changed
-  | 'group_run_started' // a group's "run now" was started
-  | 'badge'
-  | 'rank_up'
-  | 'comment'
-  | 'like'
-  | 'run_complete'
+// The union used to be declared here and mirrored by hand in push-routing.ts,
+// which maps each type to the tab a tap opens and the caches it invalidates.
+// Nothing enforced the mirror, so a type added here and forgotten there routed
+// its taps to the wrong screen and refreshed nothing. It now lives in
+// push-routing.ts — the file with no dependencies, so importing it here doesn't
+// pull the database client anywhere near the browser bundle — and both maps
+// there are keyed on it, which makes a forgotten entry a build error.
+export type { NotificationType }
 
 export interface NotifySpec {
   userId: string

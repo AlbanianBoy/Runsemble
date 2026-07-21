@@ -14,8 +14,35 @@
 
 export type PushTab = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 
-/** Notification types, mirroring NotificationType in notify.ts. */
-const TAB_BY_TYPE: Record<string, PushTab> = {
+/**
+ * Every kind of notification the server can send.
+ *
+ * It lives here, in the file with no dependencies, and notify.ts imports it —
+ * rather than the other way round, which would drag the database client into
+ * the browser bundle. That direction also buys the guarantee below.
+ *
+ * The two maps are keyed on this union rather than on `string`, so adding a
+ * notification type without telling the router where it goes is a build error
+ * instead of a tap that silently lands on the wrong tab. Four types were added
+ * in one week recently; the next person adding one shouldn't have to know these
+ * tables exist.
+ */
+export type NotificationType =
+  | 'hotspot_join'
+  | 'hotspot_reminder'
+  | 'run_invite'
+  | 'group_message'
+  | 'group_chat'
+  | 'group_added'
+  | 'group_role'
+  | 'group_run_started'
+  | 'badge'
+  | 'rank_up'
+  | 'comment'
+  | 'like'
+  | 'run_complete'
+
+const TAB_BY_TYPE: Record<NotificationType, PushTab> = {
   group_message: 'groups', // DMs live under Groups
   group_chat: 'groups',
   group_added: 'groups',
@@ -38,7 +65,7 @@ const TAB_BY_TYPE: Record<string, PushTab> = {
  * likely belongs — but an unknown type is a mapping gap, not a Groups event.
  */
 export function tabForPush(type: string | undefined): PushTab {
-  return (type && TAB_BY_TYPE[type]) || 'groups'
+  return (type && TAB_BY_TYPE[type as NotificationType]) || 'groups'
 }
 
 /** True when tapping this push should open a DM, given the payload carries a sender. */
@@ -46,7 +73,7 @@ export function isDmPush(data: { type?: string; senderId?: string; senderName?: 
   return data.type === 'group_message' && !!data.senderId && !!data.senderName
 }
 
-const KEYS_BY_TYPE: Record<string, string[]> = {
+const KEYS_BY_TYPE: Record<NotificationType, string[]> = {
   group_message: ['conversations', 'dm'],
   group_chat: ['group-chat', 'groups'],
   group_added: ['groups'],
@@ -69,6 +96,6 @@ const KEYS_BY_TYPE: Record<string, string[]> = {
  * the bell is stale no matter what else changed.
  */
 export function queryKeysForPush(type: string | undefined): string[] {
-  const specific = (type && KEYS_BY_TYPE[type]) || []
+  const specific = (type && KEYS_BY_TYPE[type as NotificationType]) || []
   return ['notifications', ...specific]
 }
