@@ -28,6 +28,10 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { getAvatarColor, getInitials } from './helpers'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
@@ -38,8 +42,6 @@ const SCHEDULE_OPTIONS = [
   { value: 'evening', label: 'Evening', desc: 'Sunset sessions' },
 ] as const
 
-// Mirrors GENDERS in lib/enums, plus an explicit "prefer not to say" (empty
-// value → stored as null). Labels are the founder's to refine.
 const GENDER_OPTIONS = [
   { value: 'woman', label: 'Woman' },
   { value: 'man', label: 'Man' },
@@ -51,21 +53,21 @@ export function ProfileTab() {
   const { currentUser, updateProfile, profileView, setProfileView } = useRunsembleStore()
   const queryClient = useQueryClient()
 
-  // Edit dialog state
   const [editOpen, setEditOpen] = useState(false)
   const [editName, setEditName] = useState('')
   const [editBio, setEditBio] = useState('')
   const [editCity, setEditCity] = useState('')
   const [editPaceLevel, setEditPaceLevel] = useState<PaceLevel>('beginner')
   const [editSchedule, setEditSchedule] = useState<string[]>([])
-  const [editGender, setEditGender] = useState<string>('') // '' = prefer not to say
+  const [editGender, setEditGender] = useState<string>('')
 
-  // Availability — derived from store
+  // ── AlertDialog state ──
+  const [deleteAccountOpen, setDeleteAccountOpen] = useState(false)
+
   const isAvailable = currentUser?.isAvailable ?? false
   const [availableMinutesLeft, setAvailableMinutesLeft] = useState(45)
   const availTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Cleanup timer on unmount
   useEffect(() => {
     return () => { if (availTimerRef.current) clearInterval(availTimerRef.current) }
   }, [])
@@ -78,7 +80,6 @@ export function ProfileTab() {
 
   const badges = badgesData?.badges ?? []
 
-  // PUT mutation for profile updates
   const updateMutation = useMutation({
     mutationFn: (data: Record<string, unknown>) =>
       fetch(`/api/users/${currentUser?.id}`, {
@@ -91,12 +92,8 @@ export function ProfileTab() {
     },
   })
 
-  // Availability callbacks (after mutation to avoid "used before declared")
   const startAvailability = useCallback(async () => {
     setAvailableMinutesLeft(45)
-    // Stamp the expiry the map already uses. Without it the server row has no
-    // end time, so to other people this "free to run now" pin never goes stale —
-    // the 45-min timer below only clears local state, not the server.
     const availableUntil = new Date(Date.now() + AVAILABLE_NOW_MINUTES * 60_000).toISOString()
     updateProfile({ isAvailable: true, availableUntil })
     if (currentUser?.id) {
@@ -130,8 +127,6 @@ export function ProfileTab() {
     setEditBio(currentUser.bio || '')
     setEditCity(currentUser.city)
     setEditPaceLevel(currentUser.paceLevel)
-    // schedulePreference may be typed narrowly in the store — cast to unknown
-    // first so TypeScript accepts the typeof / Array.isArray narrowing below.
     const stored = currentUser.schedulePreference as unknown
     const parsed = Array.isArray(stored)
       ? (stored as string[])
@@ -152,18 +147,14 @@ export function ProfileTab() {
   const handleSaveProfile = async () => {
     const trimmedName = editName.trim()
     if (!trimmedName) return
-
     const updates = {
       name: trimmedName,
       bio: editBio.trim() || null,
       city: editCity.trim() || 'Antwerp',
       paceLevel: editPaceLevel,
-      // Empty select = prefer not to say → null. Only a valid gender is sent.
       gender: editGender || null,
-      // DB column is String — persist as comma-separated
       schedulePreference: editSchedule.join(','),
     }
-
     updateMutation.mutate(updates, {
       onSuccess: () => {
         updateProfile({ ...updates, schedulePreference: editSchedule as never })
@@ -174,14 +165,9 @@ export function ProfileTab() {
 
   const toggleAvailability = () => {
     if (!currentUser) return
-    if (isAvailable) {
-      stopAvailability()
-    } else {
-      startAvailability()
-    }
+    if (isAvailable) { stopAvailability() } else { startAvailability() }
   }
 
-  // ── Account & data (GDPR) ──────────────────────────────────────────
   const handleExportData = async () => {
     if (!currentUser) return
     try {
@@ -222,7 +208,6 @@ export function ProfileTab() {
 
   const handleDeleteAccount = async () => {
     if (!currentUser) return
-    if (!confirm('Delete your account and ALL your data (runs, posts, messages, buddies)? This cannot be undone.')) return
     const res = await fetch('/api/auth/account', { method: 'DELETE' }).catch(() => null)
     if (!res?.ok) {
       toast.error('Could not delete your account right now — try again in a moment.')
@@ -234,7 +219,6 @@ export function ProfileTab() {
 
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
 
-  // Sub-views reachable from the profile.
   if (profileView === 'leaderboard') return <Leaderboard />
   if (profileView === 'runs') return <RunHistory />
   if (profileView === 'challenges') return <ChallengesView />
@@ -243,8 +227,6 @@ export function ProfileTab() {
   const rank = getRankFromXP(currentUser.xp)
   const xpProgress = rank.progress * 100
 
-  // Render schedulePreference as a readable label regardless of whether it's
-  // an array (new) or a plain string (old persisted value).
   const scheduleLabel = Array.isArray(currentUser.schedulePreference)
     ? (currentUser.schedulePreference as string[]).join(', ')
     : String(currentUser.schedulePreference || '')
@@ -262,13 +244,7 @@ export function ProfileTab() {
         <div className="flex items-center justify-center gap-2 mt-2">
           <motion.h2 className="text-xl font-bold" {...fadeUp}>{currentUser.name}</motion.h2>
           <motion.div {...fadeUp}>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-7 w-7 text-muted-foreground hover:text-primary"
-              onClick={openEditDialog}
-              aria-label="Edit profile"
-            >
+            <Button variant="ghost" size="icon" className="h-7 w-7 text-muted-foreground hover:text-primary" onClick={openEditDialog} aria-label="Edit profile">
               <Pencil className="h-3.5 w-3.5" />
             </Button>
           </motion.div>
@@ -301,27 +277,17 @@ export function ProfileTab() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    {/* A static dot with a soft ring: the card already says
-                        "Available for a run", so the forever-ping was decoration
-                        against the no-looping-animations rule. The one looping
-                        pulse that stays is the live run recorder. */}
                     <span className="relative flex h-3.5 w-3.5">
                       <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400/40" />
                       <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-emerald-500" />
                     </span>
                     <div className="text-left">
-                      <p className="font-semibold text-sm text-emerald-700 dark:text-emerald-400">
-                        Available for a run
-                      </p>
-                      <p className="text-xs text-emerald-600/70 dark:text-emerald-500/70">
-                        Others can see you're ready to go
-                      </p>
+                      <p className="font-semibold text-sm text-emerald-700 dark:text-emerald-400">Available for a run</p>
+                      <p className="text-xs text-emerald-600/70 dark:text-emerald-500/70">Others can see you're ready to go</p>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-                      {availableMinutesLeft}m left
-                    </p>
+                    <p className="text-xs font-medium text-emerald-600 dark:text-emerald-400">{availableMinutesLeft}m left</p>
                     <div className="h-1.5 w-16 bg-emerald-200 dark:bg-emerald-900 rounded-full mt-1.5 overflow-hidden">
                       <motion.div
                         className="h-full bg-emerald-500 rounded-full"
@@ -345,12 +311,8 @@ export function ProfileTab() {
                 <div className="flex items-center gap-3">
                   <div className="h-3.5 w-3.5 rounded-full bg-muted-foreground/30" />
                   <div className="text-left">
-                    <p className="font-semibold text-sm">
-                      I'm available for a run now
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      Toggle to let others know you're ready
-                    </p>
+                    <p className="font-semibold text-sm">I'm available for a run now</p>
+                    <p className="text-xs text-muted-foreground">Toggle to let others know you're ready</p>
                   </div>
                 </div>
               </motion.div>
@@ -415,22 +377,14 @@ export function ProfileTab() {
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{rank.icon}</span>
                 <div>
-                  <p className="font-bold text-sm">
-                    {rank.tier}{rank.isMax ? ' · Prestige' : ''}
-                  </p>
+                  <p className="font-bold text-sm">{rank.tier}{rank.isMax ? ' · Prestige' : ''}</p>
                   <p className="text-xs text-muted-foreground">
-                    {rank.isMax
-                      ? `${currentUser.xp.toLocaleString()} XP earned`
-                      : `${currentUser.xp} XP`
-                    }
+                    {rank.isMax ? `${currentUser.xp.toLocaleString()} XP earned` : `${currentUser.xp} XP`}
                   </p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {rank.isMax
-                  ? `+${rank.xpBeyondMax!.toLocaleString()} beyond Elite`
-                  : `Next: ${rank.nextTierXP} XP`
-                }
+                {rank.isMax ? `+${rank.xpBeyondMax!.toLocaleString()} beyond Elite` : `Next: ${rank.nextTierXP} XP`}
               </p>
             </div>
             <Progress value={Math.min(xpProgress, 100)} className="h-2" />
@@ -462,11 +416,7 @@ export function ProfileTab() {
           <span className="text-xs text-muted-foreground">{badges?.length || 0} earned</span>
         </div>
         {badgesLoading ? (
-          <div className="grid grid-cols-3 gap-2">
-            {[1,2,3,4,5,6].map(i => (
-              <Skeleton key={i} className="h-20 rounded-xl" />
-            ))}
-          </div>
+          <div className="grid grid-cols-3 gap-2">{[1,2,3,4,5,6].map(i => <Skeleton key={i} className="h-20 rounded-xl" />)}</div>
         ) : badges && badges.length > 0 ? (
           <div className="grid grid-cols-3 gap-2">
             {badges.map((b) => (
@@ -480,11 +430,7 @@ export function ProfileTab() {
             ))}
           </div>
         ) : (
-          <Card>
-            <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              No badges yet. Join your first run to earn one!
-            </CardContent>
-          </Card>
+          <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">No badges yet. Join your first run to earn one!</CardContent></Card>
         )}
       </motion.div>
 
@@ -501,15 +447,13 @@ export function ProfileTab() {
         </Card>
       </motion.div>
 
-      {/* Analytics consent (privacy) */}
+      {/* Analytics consent */}
       <motion.div {...fadeUp}>
         <Card>
           <CardContent className="p-4 flex items-center justify-between gap-4">
             <div>
               <p id="analytics-label" className="font-semibold text-sm">Usage analytics</p>
-              <p className="text-xs text-muted-foreground">
-                Anonymous, never your location. Helps us improve Runsemble.
-              </p>
+              <p className="text-xs text-muted-foreground">Anonymous, never your location. Helps us improve Runsemble.</p>
             </div>
             <Switch
               aria-labelledby="analytics-label"
@@ -518,7 +462,6 @@ export function ProfileTab() {
                 if (!currentUser) return
                 updateProfile({ analyticsConsent: v })
                 apiSend(`/api/users/${currentUser.id}`, 'PATCH', { analyticsConsent: v }).catch(() => {
-                  // Revert the optimistic flip if the server didn't take it.
                   updateProfile({ analyticsConsent: !v })
                   toast.error('Could not update that setting')
                 })
@@ -528,12 +471,10 @@ export function ProfileTab() {
         </Card>
       </motion.div>
 
-      {/* Safe zones (privacy) */}
-      <motion.div {...fadeUp}>
-        <SafeZonesCard />
-      </motion.div>
+      {/* Safe zones */}
+      <motion.div {...fadeUp}><SafeZonesCard /></motion.div>
 
-      {/* Account & data (GDPR) */}
+      {/* Account & data */}
       <motion.div {...fadeUp}>
         <Card>
           <CardContent className="p-4 space-y-3">
@@ -553,7 +494,7 @@ export function ProfileTab() {
               </Button>
             </div>
             <button
-              onClick={handleDeleteAccount}
+              onClick={() => setDeleteAccountOpen(true)}
               className="block w-full text-center text-xs text-muted-foreground/70 hover:text-destructive transition-colors pt-1"
             >
               Delete my account and all data…
@@ -562,57 +503,47 @@ export function ProfileTab() {
         </Card>
       </motion.div>
 
+      {/* Delete account confirmation */}
+      <AlertDialog open={deleteAccountOpen} onOpenChange={setDeleteAccountOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete your account?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently deletes your runs, posts, messages, and buddies. There is no undo.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { setDeleteAccountOpen(false); handleDeleteAccount() }}
+            >
+              Delete my account
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Edit Profile Dialog */}
       <Dialog open={editOpen} onOpenChange={setEditOpen}>
         <DialogContent className="max-w-[calc(100vw-2rem)] sm:max-w-md max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Edit Profile</DialogTitle>
-          </DialogHeader>
-
+          <DialogHeader><DialogTitle>Edit Profile</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
-            {/* Name */}
             <div className="space-y-2">
               <Label htmlFor="edit-name">Name</Label>
-              <Input
-                id="edit-name"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                placeholder="Your name"
-              />
+              <Input id="edit-name" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Your name" />
             </div>
-
-            {/* Bio */}
             <div className="space-y-2">
               <Label htmlFor="edit-bio">Bio</Label>
-              <Textarea
-                id="edit-bio"
-                value={editBio}
-                onChange={(e) => setEditBio(e.target.value)}
-                placeholder="Tell others about yourself..."
-                rows={3}
-                className="resize-none"
-              />
+              <Textarea id="edit-bio" value={editBio} onChange={(e) => setEditBio(e.target.value)} placeholder="Tell others about yourself..." rows={3} className="resize-none" />
             </div>
-
-            {/* City */}
             <div className="space-y-2">
               <Label htmlFor="edit-city">City</Label>
-              <Input
-                id="edit-city"
-                value={editCity}
-                onChange={(e) => setEditCity(e.target.value)}
-                placeholder="Your city"
-              />
+              <Input id="edit-city" value={editCity} onChange={(e) => setEditCity(e.target.value)} placeholder="Your city" />
             </div>
-
-            {/* Pace Level */}
             <div className="space-y-2.5">
               <Label>Pace Level</Label>
-              <RadioGroup
-                value={editPaceLevel}
-                onValueChange={(v) => setEditPaceLevel(v as PaceLevel)}
-                className="grid grid-cols-2 gap-2"
-              >
+              <RadioGroup value={editPaceLevel} onValueChange={(v) => setEditPaceLevel(v as PaceLevel)} className="grid grid-cols-2 gap-2">
                 {([
                   { value: 'beginner', label: 'Beginner' },
                   { value: 'intermediate', label: 'Intermediate' },
@@ -623,30 +554,20 @@ export function ProfileTab() {
                     key={option.value}
                     htmlFor={`pace-${option.value}`}
                     className={`flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 ${
-                      editPaceLevel === option.value
-                        ? 'border-primary bg-primary/5 text-foreground'
-                        : 'border-border hover:bg-muted/50 text-muted-foreground'
+                      editPaceLevel === option.value ? 'border-primary bg-primary/5 text-foreground' : 'border-border hover:bg-muted/50 text-muted-foreground'
                     }`}
                   >
                     <RadioGroupItem value={option.value} id={`pace-${option.value}`} className="sr-only" />
-                    <span
-                      className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
-                        editPaceLevel === option.value
-                          ? 'border-primary bg-primary'
-                          : 'border-muted-foreground/30'
-                      }`}
-                    >
-                      {editPaceLevel === option.value && (
-                        <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />
-                      )}
+                    <span className={`h-4 w-4 rounded-full border-2 shrink-0 flex items-center justify-center transition-colors ${
+                      editPaceLevel === option.value ? 'border-primary bg-primary' : 'border-muted-foreground/30'
+                    }`}>
+                      {editPaceLevel === option.value && <span className="h-1.5 w-1.5 rounded-full bg-primary-foreground" />}
                     </span>
                     {option.label}
                   </Label>
                 ))}
               </RadioGroup>
             </div>
-
-            {/* Schedule Preference — multi-select checkboxes */}
             <div className="space-y-2.5">
               <Label>When do you like to move?</Label>
               <div className="grid grid-cols-3 gap-2">
@@ -656,16 +577,10 @@ export function ProfileTab() {
                     <label
                       key={opt.value}
                       className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 ${
-                        active
-                          ? 'border-primary bg-primary/5 shadow-sm'
-                          : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                        active ? 'border-primary bg-primary/5 shadow-sm' : 'border-border hover:border-primary/30 hover:bg-muted/50'
                       }`}
                     >
-                      <Checkbox
-                        checked={active}
-                        onCheckedChange={() => toggleScheduleSlot(opt.value)}
-                        className="sr-only"
-                      />
+                      <Checkbox checked={active} onCheckedChange={() => toggleScheduleSlot(opt.value)} className="sr-only" />
                       <span className="text-sm font-medium capitalize">{opt.label}</span>
                       <span className="text-[10px] text-muted-foreground text-center">{opt.desc}</span>
                     </label>
@@ -673,8 +588,6 @@ export function ProfileTab() {
                 })}
               </div>
             </div>
-
-            {/* Gender — optional, self-declared; only used to gate women-only runs. */}
             <div className="space-y-2.5">
               <Label>Gender <span className="text-muted-foreground font-normal">(optional — lets you join women-only runs)</span></Label>
               <div className="grid grid-cols-2 gap-2">
@@ -686,9 +599,7 @@ export function ProfileTab() {
                       type="button"
                       onClick={() => setEditGender(opt.value)}
                       className={`rounded-xl border-2 px-3 py-2.5 text-sm font-medium transition-all ${
-                        active
-                          ? 'border-primary bg-primary/5 text-primary'
-                          : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                        active ? 'border-primary bg-primary/5 text-primary' : 'border-border hover:border-primary/30 hover:bg-muted/50'
                       }`}
                     >
                       {opt.label}
@@ -698,21 +609,10 @@ export function ProfileTab() {
               </div>
             </div>
           </div>
-
           <DialogFooter className="gap-2 sm:gap-0 pt-2">
-            <Button variant="outline" onClick={() => setEditOpen(false)} className="flex-1 sm:flex-none">
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveProfile}
-              disabled={!editName.trim() || updateMutation.isPending}
-              className="flex-1 sm:flex-none"
-            >
-              {updateMutation.isPending ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <Check className="h-4 w-4 mr-2" />
-              )}
+            <Button variant="outline" onClick={() => setEditOpen(false)} className="flex-1 sm:flex-none">Cancel</Button>
+            <Button onClick={handleSaveProfile} disabled={!editName.trim() || updateMutation.isPending} className="flex-1 sm:flex-none">
+              {updateMutation.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Check className="h-4 w-4 mr-2" />}
               Save Changes
             </Button>
           </DialogFooter>

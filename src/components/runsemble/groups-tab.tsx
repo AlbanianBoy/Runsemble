@@ -20,6 +20,10 @@ import { Label } from '@/components/ui/label'
 import { Switch } from '@/components/ui/switch'
 import { Skeleton } from '@/components/ui/skeleton'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog'
 import { getAvatarColor, getInitials } from './helpers'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
@@ -36,10 +40,6 @@ export function GroupsTab() {
   const [newPublic, setNewPublic] = useState(true)
   const queryClient = useQueryClient()
 
-  // Discover is paged, so the tab no longer pulls every group in the database
-  // on open. Page 1 carries your groups plus the first slice of Discover;
-  // later pages are Discover only (the server drops "mine" once a cursor is
-  // present, so the flattened list can't duplicate them).
   const [search, setSearch] = useState('')
   const [query, setQuery] = useState('')
   useEffect(() => {
@@ -66,16 +66,7 @@ export function GroupsTab() {
     getNextPageParam: (last) => last.nextCursor ?? null,
   })
 
-  // DM conversations — use apiGetSilent so a 401 never triggers the global
-  // reload loop. retry:false + throwOnError:false means an error just gives an
-  // empty list rather than crashing the whole tab.
   const { data: convData } = useQuery({
-    // Keyed on the user, like every other conversations query. It wasn't, and
-    // invalidation is prefix-based in the other direction: sending a DM
-    // invalidates ['conversations', me], which never matched a bare
-    // ['conversations'] because the bare key is shorter, not longer. So the one
-    // conversation list people actually look at was the one that didn't refresh
-    // after they sent a message — it waited out the 15s poll instead.
     queryKey: ['conversations', currentUser?.id],
     queryFn: () => apiGetSilent<ConversationsResponse>('/api/messages'),
     enabled: !!currentUser?.id,
@@ -86,10 +77,6 @@ export function GroupsTab() {
 
   const conversations = convData?.conversations ?? []
 
-  // Keep the Groups-tab badge in sync with actual unread count.
-  // We track the last-synced total in a ref so we only call setUnreadDmCount
-  // when the number actually changes — calling it on every render would create
-  // an infinite update loop (store update → re-render → effect → store update…).
   const lastUnreadTotal = useRef<number>(-1)
   useEffect(() => {
     const total = conversations.reduce((sum, c) => sum + (c.unread ?? 0), 0)
@@ -110,18 +97,12 @@ export function GroupsTab() {
 
   const selectedGroup: ApiGroup | null = selectedGroupData?.group ?? null
 
-  // Hoisted out of the ternary below because hooks can't be called
-  // conditionally — the *condition* stays in the query, this only supplies the
-  // interval it uses when the chat is open.
   const chatPoll = useVisiblePoll(5000)
 
   const { data: messagesData } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => apiGet<GroupMessagesResponse>(`/api/groups/${selectedGroupId}/chat`),
     enabled: !!selectedGroupId && groupView === 'chat',
-    // Poll while the chat is open so new messages arrive — the same fallback the
-    // DM thread uses. A push invalidates this key too when one lands. Open but
-    // hidden is still not open to a human, so chatPoll goes false there too.
     refetchInterval: groupView === 'chat' && selectedGroupId ? chatPoll : false,
   })
 
@@ -192,6 +173,10 @@ export function GroupsTab() {
   const [editName, setEditName] = useState('')
   const [editDesc, setEditDesc] = useState('')
   const [editPublic, setEditPublic] = useState(true)
+  // ── AlertDialog state ──
+  const [removeMemberTarget, setRemoveMemberTarget] = useState<{ userId: string; name: string } | null>(null)
+  const [deleteGroupOpen, setDeleteGroupOpen] = useState(false)
+
   const editGroup = useMutation({
     mutationFn: (data: Record<string, unknown>) => apiSend(`/api/groups/${selectedGroupId}`, 'PATCH', data),
     onSuccess: () => {
@@ -313,7 +298,7 @@ export function GroupsTab() {
                     )}
                     {canRemove && (
                       <button
-                        onClick={() => { if (confirm(`Remove ${m.user?.name} from the group?`)) removeMember.mutate(m.userId) }}
+                        onClick={() => setRemoveMemberTarget({ userId: m.userId, name: m.user?.name ?? 'this member' })}
                         disabled={removeMember.isPending}
                         aria-label="Remove member"
                         className="text-muted-foreground/60 hover:text-destructive transition-colors"
@@ -327,6 +312,30 @@ export function GroupsTab() {
             </div>
           </div>
         </div>
+
+        {/* Remove member confirmation */}
+        <AlertDialog open={!!removeMemberTarget} onOpenChange={(o) => { if (!o) setRemoveMemberTarget(null) }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove member?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {removeMemberTarget?.name} will be removed from the group. They can rejoin if the group is public.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => {
+                  if (removeMemberTarget) removeMember.mutate(removeMemberTarget.userId)
+                  setRemoveMemberTarget(null)
+                }}
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
 
         <Sheet open={inviteOpen} onOpenChange={setInviteOpen}>
           <SheetContent side="bottom" className="rounded-t-2xl">
@@ -377,7 +386,7 @@ export function GroupsTab() {
               </Button>
               {isOwner && (
                 <button
-                  onClick={() => { if (confirm('Delete this group for everyone? This cannot be undone.')) deleteGroup.mutate() }}
+                  onClick={() => setDeleteGroupOpen(true)}
                   disabled={deleteGroup.isPending}
                   className="w-full text-center text-xs text-destructive/80 hover:text-destructive transition-colors pt-1 flex items-center justify-center gap-1"
                 >
@@ -387,6 +396,27 @@ export function GroupsTab() {
             </div>
           </SheetContent>
         </Sheet>
+
+        {/* Delete group confirmation */}
+        <AlertDialog open={deleteGroupOpen} onOpenChange={setDeleteGroupOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete group?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This will permanently delete <strong>{selectedGroup.name}</strong> for all members. This cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => { setDeleteGroupOpen(false); deleteGroup.mutate() }}
+              >
+                Delete group
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     )
   }
@@ -446,7 +476,6 @@ export function GroupsTab() {
 
   return (
     <div className="space-y-5 pb-4">
-      {/* ── Direct Messages ──────────────────────────────────────────────────── */}
       {conversations.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">Messages</h3>
@@ -483,7 +512,6 @@ export function GroupsTab() {
         </div>
       )}
 
-      {/* ── Groups ───────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Groups</h2>
         <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
@@ -519,9 +547,6 @@ export function GroupsTab() {
       <div>
         <div className="flex items-baseline justify-between mb-2 gap-2">
           <h3 className="text-sm font-semibold text-muted-foreground">Discover</h3>
-          {/* Say which city you're browsing, so an empty list reads as "none
-              here" rather than "none anywhere" — and so searching, which drops
-              the city scope, is an obvious way out. */}
           {scopedToCity && (
             <span className="text-[11px] text-muted-foreground shrink-0">in {scopedToCity}</span>
           )}
@@ -534,13 +559,11 @@ export function GroupsTab() {
           className="mb-3 rounded-full"
         />
 
-        {/* One empty state, not two: this is the only place a "nothing here"
-            card appears, so a brand-new account doesn't get a stack of them. */}
         {discoverGroups.length === 0 && !isLoading && (
           <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
             <Users className="h-7 w-7 mx-auto mb-2 text-muted-foreground/50" />
             {query
-              ? `No groups match “${query}”.`
+              ? `No groups match "${query}".`
               : scopedToCity
                 ? `No ${myGroups.length > 0 ? 'other ' : ''}groups in ${scopedToCity} yet — search to look further afield, or create one.`
                 : `No ${myGroups.length > 0 ? 'other ' : ''}groups to join yet — create one to get started.`}
