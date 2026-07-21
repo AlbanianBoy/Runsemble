@@ -110,9 +110,9 @@ function LocationPickerMap({
   onPick: (latlng: LatLng) => void
 }) {
   const containerRef = useRef<HTMLDivElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const mapRef = useRef<any>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+   
   const markerRef = useRef<any>(null)
   // Always call the latest onPick — avoids stale closure inside map.on('click')
   const onPickRef = useRef(onPick)
@@ -149,7 +149,7 @@ function LocationPickerMap({
       mapRef.current = null
       markerRef.current = null
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [])
 
   // Sync pin changes (from text geocoding or map clicks)
