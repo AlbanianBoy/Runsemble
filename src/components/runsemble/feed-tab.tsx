@@ -31,6 +31,7 @@ import { fileToCompressedDataUrl } from '@/lib/image'
 import { isAvailableNow } from '@/lib/availability'
 import { CommentsSheet } from './comments-sheet'
 import { ReportSheet } from './report-sheet'
+import { TrustBadge } from './trust-badge'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
@@ -342,6 +343,7 @@ export function FeedTab() {
         <motion.div className="space-y-3" variants={staggerContainer} initial="initial" animate="animate">
           {posts.map((post) => {
             const isLiked = post.likedByMe ?? false
+            const isOwnPost = post.authorId === currentUser?.id
             return (
               <motion.div key={post.id} variants={fadeUp}>
                 <Card className="hover:shadow-md hover:-translate-y-0.5 transition-all duration-300 border-border/60">
@@ -358,6 +360,14 @@ export function FeedTab() {
                         <div className="flex items-start gap-2">
                           <div className="flex items-center gap-2 flex-wrap flex-1 min-w-0">
                             <span className="font-semibold text-sm">{post.author?.name}</span>
+                            {/* Trust signal — only on strangers, never on your own posts */}
+                            {!isOwnPost && post.author && (
+                              <TrustBadge
+                                totalRuns={post.author.totalRuns ?? 0}
+                                totalPeopleRunWith={post.author.totalPeopleRunWith ?? 0}
+                                isSelf={false}
+                              />
+                            )}
                             {post.group?.name && (
                               <Badge variant="secondary" className="text-xs px-1.5 py-0">
                                 {post.group.name}
@@ -376,7 +386,7 @@ export function FeedTab() {
                             <span className="text-xs text-muted-foreground">{timeAgo(post.createdAt)}</span>
                           </div>
                           {/* Report — only on other people's posts. You don't report yourself. */}
-                          {post.authorId !== currentUser?.id && (
+                          {!isOwnPost && (
                             <button
                               onClick={() => setReportPost({ id: post.id, author: post.author?.name ?? 'this post' })}
                               aria-label="Report post"

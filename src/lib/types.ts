@@ -84,6 +84,10 @@ export interface FeedAuthor {
   paceLevel: string
   streak: number
   xp: number
+  // M56: needed for TrustBadge on feed cards — already in the public user
+  // projection so no extra join is required; just select them in the feed query.
+  totalRuns: number
+  totalPeopleRunWith: number
 }
 
 export interface ApiFeedPost {
