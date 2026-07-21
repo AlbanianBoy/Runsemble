@@ -32,18 +32,21 @@ updates:
       patch-updates:
         update-types: ["patch"]
     ignore:
-      # Next, React and Prisma majors are migrations, not updates — each needs a
-      # deliberate sitting with the changelog and a run through the app, not a
-      # green check. Minor and patch still come through.
-      - dependency-name: "next"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "react-dom"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "prisma"
-        update-types: ["version-update:semver-major"]
-      - dependency-name: "@prisma/client"
+      # No majors, from anything. A major version is a migration, not an update:
+      # it needs a sitting with the changelog and a run through the app, not a
+      # green check on a Monday morning.
+      #
+      # This started as a short list — next, react, prisma — and that was too
+      # clever by half. The first Monday it ran, Dependabot proposed TypeScript
+      # 5→7 and recharts 2→3; both failed the build, and neither was on the list
+      # because nobody predicts which library breaks next. Minor and patch, where
+      # nearly all published fixes actually live, still come through.
+      #
+      # The trade: Dependabot's security updates also respect this, so an
+      # advisory whose only fix is a major bump won't arrive as a PR. That is
+      # what the audit job in ci.yml is for — it runs weekly and gates on
+      # critical, and a major-version security fix is manual work regardless.
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 
   # The workflow's own actions are dependencies too, and they run with a token.
