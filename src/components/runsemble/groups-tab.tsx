@@ -70,7 +70,13 @@ export function GroupsTab() {
   // reload loop. retry:false + throwOnError:false means an error just gives an
   // empty list rather than crashing the whole tab.
   const { data: convData } = useQuery({
-    queryKey: ['conversations'],
+    // Keyed on the user, like every other conversations query. It wasn't, and
+    // invalidation is prefix-based in the other direction: sending a DM
+    // invalidates ['conversations', me], which never matched a bare
+    // ['conversations'] because the bare key is shorter, not longer. So the one
+    // conversation list people actually look at was the one that didn't refresh
+    // after they sent a message — it waited out the 15s poll instead.
+    queryKey: ['conversations', currentUser?.id],
     queryFn: () => apiGetSilent<ConversationsResponse>('/api/messages'),
     enabled: !!currentUser?.id,
     refetchInterval: useVisiblePoll(15_000),

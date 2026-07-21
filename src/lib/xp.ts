@@ -119,11 +119,16 @@ export async function grantBadge(userId: string, spec: BadgeSpec): Promise<Badge
 }
 
 export const BADGES = {
+  // Naming here has to match what the badge actually costs. "First Run" used to
+  // be granted for tapping Join — you could hold it having never run a step,
+  // while the badge that does require a tracked run was called "On the Board".
+  // The names are now the right way round. badgeType is the stable key and is
+  // deliberately unchanged, so nobody loses a badge or earns a duplicate.
   firstRun: {
     badgeType: 'first_run',
-    title: 'First Run',
+    title: 'First Signup',
     description: 'Joined your very first run',
-    icon: '🎉',
+    icon: '🙋',
   },
   social5: {
     badgeType: 'social_5',
@@ -133,9 +138,9 @@ export const BADGES = {
   },
   firstTrack: {
     badgeType: 'first_track',
-    title: 'On the Board',
-    description: 'Tracked your first run',
-    icon: '📍',
+    title: 'First Run',
+    description: 'Tracked your first run from start to finish',
+    icon: '🎉',
   },
   distance10: {
     badgeType: 'distance_10',

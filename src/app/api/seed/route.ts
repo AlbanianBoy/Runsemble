@@ -486,34 +486,34 @@ async function seed() {
   const badges = await db.userBadge.createMany({
     data: [
       // Maya
-      { id: 'badge-1', userId: 'user-maya', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-1', userId: 'user-maya', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-2', userId: 'user-maya', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-3', userId: 'user-maya', badgeType: 'streak_30', title: 'Monthly Legend', description: '30-day running streak', icon: 'star' },
       { id: 'badge-4', userId: 'user-maya', badgeType: 'social_butterfly', title: 'Social Butterfly', description: 'Ran with 25+ different people', icon: 'heart' },
       { id: 'badge-5', userId: 'user-maya', badgeType: 'early_bird', title: 'Early Bird', description: 'Completed 20+ morning runs', icon: 'sun' },
       // Jonas
-      { id: 'badge-6', userId: 'user-jonas', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-6', userId: 'user-jonas', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-7', userId: 'user-jonas', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-8', userId: 'user-jonas', badgeType: 'streak_21', title: 'Three-Week Titan', description: '21-day running streak', icon: 'trophy' },
       { id: 'badge-9', userId: 'user-jonas', badgeType: 'night_owl', title: 'Night Owl', description: 'Completed 15+ evening runs', icon: 'moon' },
       // Sophie
-      { id: 'badge-10', userId: 'user-sophie', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-10', userId: 'user-sophie', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-11', userId: 'user-sophie', badgeType: 'streak_3', title: 'Hat Trick', description: '3-day running streak', icon: 'zap' },
       // Lars
-      { id: 'badge-12', userId: 'user-lars', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-12', userId: 'user-lars', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-13', userId: 'user-lars', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-14', userId: 'user-lars', badgeType: 'streak_14', title: 'Two-Week Wonder', description: '14-day running streak', icon: 'sparkles' },
       // Emma
-      { id: 'badge-15', userId: 'user-emma', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-15', userId: 'user-emma', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-16', userId: 'user-emma', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-17', userId: 'user-emma', badgeType: 'social_butterfly', title: 'Social Butterfly', description: 'Ran with 20+ different people', icon: 'heart' },
       // Kai
-      { id: 'badge-18', userId: 'user-kai', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-18', userId: 'user-kai', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-19', userId: 'user-kai', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-20', userId: 'user-kai', badgeType: 'speed_demon', title: 'Speed Demon', description: 'Ran a sub-40 10K', icon: 'bolt' },
       { id: 'badge-21', userId: 'user-kai', badgeType: 'night_owl', title: 'Night Owl', description: 'Completed 15+ evening runs', icon: 'moon' },
       // Anja
-      { id: 'badge-22', userId: 'user-anja', badgeType: 'first_run', title: 'First Steps', description: 'Completed your first run', icon: 'runner' },
+      { id: 'badge-22', userId: 'user-anja', badgeType: 'first_run', title: 'First Signup', description: 'Joined your very first run', icon: '🙋' },
       { id: 'badge-23', userId: 'user-anja', badgeType: 'streak_7', title: 'Week Warrior', description: '7-day running streak', icon: 'flame' },
       { id: 'badge-24', userId: 'user-anja', badgeType: 'explorer', title: 'Explorer', description: 'Joined 5+ different hotspots', icon: 'compass' },
     ],

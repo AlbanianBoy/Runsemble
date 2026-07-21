@@ -432,6 +432,8 @@ export function FeedTab() {
                           <motion.button
                             onClick={() => handleLike(post.id)}
                             whileTap={{ scale: 0.85 }}
+                            aria-pressed={isLiked}
+                            aria-label={post.likes > 0 ? `${post.likes} likes` : 'Like'}
                             className={`flex items-center gap-1.5 transition-colors duration-200 ${
                               isLiked
                                 ? 'text-rose-500'
@@ -452,18 +454,30 @@ export function FeedTab() {
                                 strokeWidth={isLiked ? 0 : 2}
                               />
                             </motion.div>
-                            <span className="text-xs font-medium tabular">
-                              {post.likes}
-                            </span>
+                            {/* A zero is worse than nothing here. At cold start
+                                every post reads "0 likes, 0 comments", which
+                                is a row of evidence that nobody engages —
+                                exactly the wrong first impression for a feed
+                                that's new rather than dead. The icon alone is
+                                still a working button; the number appears the
+                                moment there's a number worth showing. */}
+                            {post.likes > 0 && (
+                              <span className="text-xs font-medium tabular">
+                                {post.likes}
+                              </span>
+                            )}
                           </motion.button>
                           {/* Comment button */}
                           <motion.button
                             whileTap={{ scale: 0.9 }}
                             onClick={() => setCommentsPostId(post.id)}
                             className="flex items-center gap-1.5 text-muted-foreground hover:text-primary transition-colors duration-200"
+                            aria-label={post.comments > 0 ? `${post.comments} comments` : 'Add a comment'}
                           >
                             <MessageCircle className="h-4 w-4" />
-                            <span className="text-xs font-medium tabular">{post.comments}</span>
+                            {post.comments > 0 && (
+                              <span className="text-xs font-medium tabular">{post.comments}</span>
+                            )}
                           </motion.button>
                         </div>
                       </div>
