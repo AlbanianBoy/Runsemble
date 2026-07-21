@@ -45,7 +45,14 @@ async function loadLobby(hotspotId: string) {
     },
     participants: hotspot.participants.map((p) => ({
       userId: p.userId,
-      status: p.status,
+      // "Here" decays like it does in the group lobby. Stored status alone made
+      // a check-in permanent, so a lobby kept showing people as present hours
+      // after the run — you'd turn up expecting a group that had long gone.
+      // completed/cancelled are terminal and left alone.
+      status:
+        p.status === 'here' && !(p.checkedInAt && Date.now() - p.checkedInAt.getTime() < START_FRESH_MS)
+          ? 'joined'
+          : p.status,
       checkedInAt: p.checkedInAt,
       user: p.user,
     })),
