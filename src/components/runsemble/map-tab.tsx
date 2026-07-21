@@ -552,6 +552,27 @@ export function MapTab() {
                   Start run
                 </Button>
               </div>
+              {/* Only the organiser sees this. A run you created had no way to be
+                  called off — so the alternative to going was leaving people
+                  waiting at a park for someone who isn't coming. */}
+              {selectedHotspot.createdBy && selectedHotspot.createdBy === currentUser?.id && (
+                <button
+                  onClick={() => {
+                    const hs = selectedHotspot
+                    if (!confirm(`Cancel "${hs.name}"? Everyone who joined will be told.`)) return
+                    apiSend(`/api/hotspots/${hs.id}`, 'DELETE')
+                      .then(() => {
+                        toast.success('Run cancelled — everyone who joined has been told')
+                        queryClient.invalidateQueries({ queryKey: ['hotspots'] })
+                        setSelectedHotspot(null)
+                      })
+                      .catch(() => toast.error('Could not cancel the run'))
+                  }}
+                  className="w-full text-center text-[11px] text-muted-foreground/70 hover:text-destructive transition-colors pt-1"
+                >
+                  Cancel this run
+                </button>
+              )}
             </div>
           )}
         </SheetContent>

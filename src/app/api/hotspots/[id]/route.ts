@@ -1,5 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser } from '@/lib/auth'
+import { notify } from '@/lib/notify'
 
 export async function GET(
   _request: NextRequest,
@@ -54,8 +56,21 @@ export async function GET(
     const msUntil = hotspot.startTime.getTime() - now.getTime()
     const minutesUntil = Math.max(0, Math.round(msUntil / 60000))
 
+    // Who organised this. createdBy is a bare id with no relation, so it needs a
+    // lookup — but a stranger meetup with no visible host is exactly the thing
+    // that should make someone hesitate, and the profile it links to is where
+    // reporting and blocking live. Null for official/system runs, which have no
+    // individual behind them.
+    const host = hotspot.createdBy
+      ? await db.user.findUnique({
+          where: { id: hotspot.createdBy },
+          select: { id: true, name: true, avatar: true, paceLevel: true },
+        })
+      : null
+
     const result = {
       ...hotspot,
+      host,
       participantCount: hotspot.participants.length,
       participantNames: hotspot.participants.map((p) => p.user.name),
       minutesUntil,
@@ -68,5 +83,62 @@ export async function GET(
       { error: 'Failed to fetch hotspot' },
       { status: 500 }
     )
+  }
+}
+
+// Cancel a run you created. Soft: isActive=false takes it off the board (the
+// list query already filters on it) while keeping the row, its participants and
+// its history intact — a hard delete would erase the record of a meetup that
+// people had arranged their evening around.
+//
+// Organiser-only. Everyone who joined gets told, because a run vanishing from
+// the board without a word is how someone ends up standing at a park alone.
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const { id } = await params
+    const me = await getSessionUser()
+    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+
+    const hotspot = await db.hotspot.findUnique({ where: { id } })
+    if (!hotspot) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+
+    // Official/recurring runs have no individual owner and aren't one person's
+    // to call off.
+    if (!hotspot.createdBy || hotspot.createdBy !== me.id) {
+      return NextResponse.json(
+        { error: 'Only the person who created this run can cancel it' },
+        { status: 403 }
+      )
+    }
+
+    await db.hotspot.update({ where: { id }, data: { isActive: false } })
+
+    after(async () => {
+      const others = await db.hotspotParticipant.findMany({
+        where: { hotspotId: id, userId: { not: me.id } },
+        select: { userId: true },
+      })
+      await Promise.all(
+        others.map((p) =>
+          notify({
+            userId: p.userId,
+            actorId: me.id,
+            type: 'hotspot_join',
+            title: `${hotspot.name} was cancelled`,
+            body: `${me.name} called off this run — don't head out for it.`,
+            entityId: id,
+            icon: '🚫',
+          })
+        )
+      )
+    })
+
+    return NextResponse.json({ ok: true, cancelled: true })
+  } catch (error) {
+    console.error('Error cancelling hotspot:', error)
+    return NextResponse.json({ error: 'Failed to cancel the run' }, { status: 500 })
   }
 }
