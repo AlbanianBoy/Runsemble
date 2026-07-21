@@ -195,7 +195,7 @@ export function ProfileTab() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {
-      alert('Could not export your data right now — try again in a moment.')
+      toast.error('Could not export your data right now — try again in a moment.')
     }
   }
 
@@ -225,7 +225,7 @@ export function ProfileTab() {
     if (!confirm('Delete your account and ALL your data (runs, posts, messages, buddies)? This cannot be undone.')) return
     const res = await fetch('/api/auth/account', { method: 'DELETE' }).catch(() => null)
     if (!res?.ok) {
-      alert('Could not delete your account right now — try again in a moment.')
+      toast.error('Could not delete your account right now — try again in a moment.')
       return
     }
     localStorage.removeItem('runsemble-store')

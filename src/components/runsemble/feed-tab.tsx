@@ -407,7 +407,7 @@ export function FeedTab() {
                                   <RouteMap points={pts} />
                                   {/* Distance overlaid, bottom-left, over a soft scrim so it reads on any map tile. */}
                                   <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/55 to-transparent pointer-events-none">
-                                    <p className="text-2xl font-extrabold tabular-nums text-white leading-none drop-shadow-sm">
+                                    <p className="text-2xl font-extrabold tabular text-white leading-none drop-shadow-sm">
                                       {rs.distanceKm.toFixed(2)}
                                       <span className="text-sm font-semibold ml-1">km</span>
                                     </p>
@@ -416,7 +416,7 @@ export function FeedTab() {
                               ) : (
                                 <div className="flex items-center gap-2 px-3.5 pt-3 text-sm font-bold text-foreground">
                                   <Route className="h-4 w-4 text-primary" />
-                                  <span className="tabular-nums">{rs.distanceKm.toFixed(2)} km</span>
+                                  <span className="tabular">{rs.distanceKm.toFixed(2)} km</span>
                                 </div>
                               )}
                               <div className="flex items-center divide-x divide-border/70 px-1 py-2 text-center">
@@ -584,7 +584,7 @@ export function FeedTab() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex-1 px-2">
-      <p className="text-sm font-bold tabular-nums leading-tight">{value}</p>
+      <p className="text-sm font-bold tabular leading-tight">{value}</p>
       <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</p>
     </div>
   )

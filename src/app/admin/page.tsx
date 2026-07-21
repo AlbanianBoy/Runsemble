@@ -113,7 +113,7 @@ export default async function AdminPage() {
       <section className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {stats.map((s) => (
           <div key={s.label} className="rounded-xl border bg-card p-3">
-            <p className="text-2xl font-bold tabular-nums">{s.value}</p>
+            <p className="text-2xl font-bold tabular">{s.value}</p>
             <p className="text-[11px] text-muted-foreground mt-0.5">{s.label}</p>
           </div>
         ))}
