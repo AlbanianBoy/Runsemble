@@ -81,6 +81,9 @@ export function GroupsTab() {
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => apiGet<GroupMessagesResponse>(`/api/groups/${selectedGroupId}/chat`),
     enabled: !!selectedGroupId && groupView === 'chat',
+    // Poll while the chat is open so new messages arrive — the same fallback the
+    // DM thread uses. A push invalidates this key too when one lands.
+    refetchInterval: groupView === 'chat' && selectedGroupId ? 5000 : false,
   })
 
   const messages: ApiGroupMessage[] = messagesData?.messages ?? []

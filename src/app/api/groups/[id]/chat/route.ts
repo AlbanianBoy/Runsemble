@@ -1,6 +1,7 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
 
 export async function GET(
@@ -80,6 +81,30 @@ export async function POST(
           select: { id: true, name: true, avatar: true },
         },
       },
+    })
+
+    // Tell the other members — group chat used to create the row and notify
+    // nobody, so a message only arrived if someone happened to have the chat
+    // open. Fan-out runs AFTER the response via after(), so a big group doesn't
+    // make the sender wait on N notification writes + pushes.
+    after(async () => {
+      const others = await db.groupMember.findMany({
+        where: { groupId: id, userId: { not: senderId } },
+        select: { userId: true },
+      })
+      await Promise.all(
+        others.map((m) =>
+          notify({
+            userId: m.userId,
+            actorId: senderId,
+            type: 'group_chat',
+            title: `${message.sender.name} in ${group.name}`,
+            body: content.slice(0, 120),
+            entityId: id,
+            icon: '💬',
+          })
+        )
+      )
     })
 
     return NextResponse.json({ message }, { status: 201 })

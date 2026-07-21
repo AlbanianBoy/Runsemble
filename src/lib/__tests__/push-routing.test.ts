@@ -15,8 +15,17 @@ describe('tabForPush', () => {
     ['hotspot_join', 'hotspots'],
     ['hotspot_reminder', 'hotspots'],
     ['run_invite', 'groups'],
+    // Group events used to masquerade as hotspot_join and open the Hotspots tab.
+    ['group_chat', 'groups'],
+    ['group_added', 'groups'],
+    ['group_role', 'groups'],
+    ['group_run_started', 'groups'],
   ])('%s opens the %s tab', (type, tab) => {
     expect(tabForPush(type)).toBe(tab)
+  })
+
+  it('routes a group run-start to Groups, not Hotspots (the overloaded-type bug)', () => {
+    expect(tabForPush('group_run_started')).toBe('groups')
   })
 
   it('falls back to groups for a type it has never heard of', () => {

@@ -17,6 +17,10 @@ export type PushTab = 'feed' | 'map' | 'hotspots' | 'groups' | 'profile'
 /** Notification types, mirroring NotificationType in notify.ts. */
 const TAB_BY_TYPE: Record<string, PushTab> = {
   group_message: 'groups', // DMs live under Groups
+  group_chat: 'groups',
+  group_added: 'groups',
+  group_role: 'groups',
+  group_run_started: 'groups',
   like: 'feed',
   comment: 'feed',
   badge: 'profile',
@@ -44,6 +48,10 @@ export function isDmPush(data: { type?: string; senderId?: string; senderName?: 
 
 const KEYS_BY_TYPE: Record<string, string[]> = {
   group_message: ['conversations', 'dm'],
+  group_chat: ['group-chat', 'groups'],
+  group_added: ['groups'],
+  group_role: ['groups', 'group'],
+  group_run_started: ['groups', 'group'],
   like: ['feed'],
   comment: ['feed'],
   badge: ['badges', 'users'],

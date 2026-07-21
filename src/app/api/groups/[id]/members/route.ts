@@ -55,7 +55,7 @@ export async function POST(
     await notify({
       userId,
       actorId: me.id,
-      type: 'hotspot_join',
+      type: 'group_added',
       title: `${me.name} added you to ${group.name}`,
       body: 'Open the group to say hi and plan a run together.',
       entityId: id,

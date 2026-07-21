@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
@@ -112,22 +112,25 @@ export async function POST(
       const stale = !group.lobbyStartedAt || !isFresh(group.lobbyStartedAt)
       if (stale) {
         await db.runGroup.update({ where: { id }, data: { lobbyStartedAt: new Date() } })
-        const others = await db.groupMember.findMany({
-          where: { groupId: id, userId: { not: me.id } },
-        })
-        await Promise.all(
-          others.map((m) =>
-            notify({
-              userId: m.userId,
-              actorId: me.id,
-              type: 'hotspot_join',
-              title: `${me.name} started a ${group.name} run`,
-              body: 'The group is off — open the run to join in!',
-              entityId: id,
-              icon: '🏃',
-            })
+        // Fan-out after the response so "start" returns immediately.
+        after(async () => {
+          const others = await db.groupMember.findMany({
+            where: { groupId: id, userId: { not: me.id } },
+          })
+          await Promise.all(
+            others.map((m) =>
+              notify({
+                userId: m.userId,
+                actorId: me.id,
+                type: 'group_run_started',
+                title: `${me.name} started a ${group.name} run`,
+                body: 'The group is off — open the run to join in!',
+                entityId: id,
+                icon: '🏃',
+              })
+            )
           )
-        )
+        })
       }
     } else {
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

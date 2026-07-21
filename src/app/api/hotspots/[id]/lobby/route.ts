@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { haversineKm } from '@/lib/geo'
 import { awardXpAmount } from '@/lib/xp'
@@ -131,24 +131,28 @@ export async function POST(
       if (stale) {
         await db.hotspot.update({ where: { id }, data: { lobbyStartedAt: new Date() } })
 
-        // Tell everyone else in the lobby the run just kicked off.
-        const starter = await db.user.findUnique({ where: { id: userId }, select: { name: true } })
-        const others = await db.hotspotParticipant.findMany({
-          where: { hotspotId: id, userId: { not: userId }, status: { in: ['joined', 'here'] } },
-        })
-        await Promise.all(
-          others.map((p) =>
-            notify({
-              userId: p.userId,
-              actorId: userId,
-              type: 'hotspot_join',
-              title: `${starter?.name ?? 'Someone'} started ${hotspot.name}`,
-              body: 'The group is off — open the run to join in!',
-              entityId: id,
-              icon: '🏃',
-            })
+        // Tell everyone else in the lobby the run just kicked off — after the
+        // response, so a big lobby doesn't make the starter wait on N writes +
+        // pushes before "start" returns.
+        after(async () => {
+          const starter = await db.user.findUnique({ where: { id: userId }, select: { name: true } })
+          const others = await db.hotspotParticipant.findMany({
+            where: { hotspotId: id, userId: { not: userId }, status: { in: ['joined', 'here'] } },
+          })
+          await Promise.all(
+            others.map((p) =>
+              notify({
+                userId: p.userId,
+                actorId: userId,
+                type: 'hotspot_join',
+                title: `${starter?.name ?? 'Someone'} started ${hotspot.name}`,
+                body: 'The group is off — open the run to join in!',
+                entityId: id,
+                icon: '🏃',
+              })
+            )
           )
-        )
+        })
       }
     } else {
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })

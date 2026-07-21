@@ -70,7 +70,7 @@ export async function PATCH(
     if (role === 'admin') {
       const group = await db.runGroup.findUnique({ where: { id }, select: { name: true } })
       await notify({
-        userId, actorId: me.id, type: 'hotspot_join',
+        userId, actorId: me.id, type: 'group_role',
         title: `You're now an admin of ${group?.name ?? 'a group'} ⭐`,
         body: 'You can manage members and edit the group.',
         entityId: id, icon: '⭐',

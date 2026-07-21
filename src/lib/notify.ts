@@ -11,6 +11,10 @@ export type NotificationType =
   | 'hotspot_reminder'
   | 'run_invite'
   | 'group_message'
+  | 'group_chat' // a message in a group's chat
+  | 'group_added' // you were added to a group
+  | 'group_role' // your role in a group changed
+  | 'group_run_started' // a group's "run now" was started
   | 'badge'
   | 'rank_up'
   | 'comment'
@@ -31,6 +35,11 @@ export interface NotifySpec {
   entityId?: string | null
   icon?: string | null
 }
+
+// Types that are a self-directed activity-log entry, not news from someone else.
+// They still get an in-app row (your history), but pushing them is noise —
+// run_complete would buzz your phone about the run you just finished holding it.
+const NO_PUSH_TYPES = new Set<NotificationType>(['run_complete'])
 
 export async function notify(spec: NotifySpec): Promise<void> {
   try {
@@ -60,7 +69,7 @@ export async function notify(spec: NotifySpec): Promise<void> {
     // The type and entity travel with it: the client routes a tap on them, and a
     // push that doesn't say what it is lands the user on whatever screen is
     // hardcoded.
-    if (devices.length > 0) {
+    if (devices.length > 0 && !NO_PUSH_TYPES.has(spec.type)) {
       const payload = {
         title: spec.title,
         body: spec.body,
