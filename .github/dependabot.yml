@@ -1,0 +1,53 @@
+version: 2
+
+# Nobody here reads advisory feeds. This is the compensating control: the robot
+# watches, opens the pull request, and CI says whether the update is safe. A
+# solo maintainer's realistic security posture is "the update arrives already
+# tested", not "the maintainer checks weekly".
+updates:
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "Europe/Brussels"
+    # Enough to be useful, few enough to actually look at. Security updates are
+    # exempt from this cap by Dependabot, so a real advisory is never queued
+    # behind a pile of routine version bumps.
+    open-pull-requests-limit: 5
+    groups:
+      # One PR per family instead of eleven. These move in lockstep upstream and
+      # reviewing them separately tells you nothing extra.
+      radix:
+        patterns: ["@radix-ui/*"]
+      capacitor:
+        patterns: ["@capacitor/*", "@capacitor-community/*"]
+      tanstack:
+        patterns: ["@tanstack/*"]
+      types:
+        patterns: ["@types/*"]
+      # Patch bumps across everything else: individually boring, collectively
+      # where most published fixes actually live.
+      patch-updates:
+        update-types: ["patch"]
+    ignore:
+      # Next, React and Prisma majors are migrations, not updates — each needs a
+      # deliberate sitting with the changelog and a run through the app, not a
+      # green check. Minor and patch still come through.
+      - dependency-name: "next"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "react-dom"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "prisma"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@prisma/client"
+        update-types: ["version-update:semver-major"]
+
+  # The workflow's own actions are dependencies too, and they run with a token.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
