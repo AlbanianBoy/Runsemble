@@ -132,6 +132,12 @@ export async function GET() {
     }
   }
   if (!reachable) warnings.push('The database did not answer a SELECT 1.')
+  if (!process.env.LOCATION_SALT) {
+    warnings.push(
+      'LOCATION_SALT is not set, so each map cell is offset by an amount derived from a public ' +
+        'user id — recomputable by anyone who reads the code. Set it and redeploy.'
+    )
+  }
 
   return NextResponse.json({
     region: process.env.VERCEL_REGION ?? null,
@@ -148,6 +154,10 @@ export async function GET() {
       blob: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
       cronSecret: Boolean(process.env.CRON_SECRET),
       adminEmails: Boolean(process.env.ADMIN_EMAILS),
+      // Not an integration, but the same question: is it actually set on the
+      // instance that's serving? Without it the per-user location grid falls
+      // back to an offset derived from public user ids.
+      locationSalt: Boolean(process.env.LOCATION_SALT),
     },
     warnings,
   })
