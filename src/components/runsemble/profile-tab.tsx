@@ -301,8 +301,12 @@ export function ProfileTab() {
               >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
+                    {/* A static dot with a soft ring: the card already says
+                        "Available for a run", so the forever-ping was decoration
+                        against the no-looping-animations rule. The one looping
+                        pulse that stays is the live run recorder. */}
                     <span className="relative flex h-3.5 w-3.5">
-                      <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+                      <span className="absolute inline-flex h-full w-full rounded-full bg-emerald-400/40" />
                       <span className="relative inline-flex h-3.5 w-3.5 rounded-full bg-emerald-500" />
                     </span>
                     <div className="text-left">
@@ -608,7 +612,7 @@ export function ProfileTab() {
                   <Label
                     key={option.value}
                     htmlFor={`pace-${option.value}`}
-                    className={`flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors text-sm ${
+                    className={`flex items-center gap-2.5 rounded-lg border p-3 cursor-pointer transition-colors text-sm has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 ${
                       editPaceLevel === option.value
                         ? 'border-primary bg-primary/5 text-foreground'
                         : 'border-border hover:bg-muted/50 text-muted-foreground'
@@ -641,7 +645,7 @@ export function ProfileTab() {
                   return (
                     <label
                       key={opt.value}
-                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 ${
+                      className={`flex flex-col items-center gap-1.5 rounded-xl border-2 p-3 cursor-pointer transition-all duration-200 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-ring has-[:focus-visible]:ring-offset-2 ${
                         active
                           ? 'border-primary bg-primary/5 shadow-sm'
                           : 'border-border hover:border-primary/30 hover:bg-muted/50'
