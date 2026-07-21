@@ -181,7 +181,7 @@ export function ProfileTab() {
     }
   }
 
-  // ── Account & data (GDPR) ──────────────────────────────────────────────────
+  // ── Account & data (GDPR) ──────────────────────────────────────────
   const handleExportData = async () => {
     if (!currentUser) return
     try {
@@ -415,12 +415,22 @@ export function ProfileTab() {
               <div className="flex items-center gap-2">
                 <span className="text-2xl">{rank.icon}</span>
                 <div>
-                  <p className="font-bold text-sm">{rank.tier}</p>
-                  <p className="text-xs text-muted-foreground">{currentUser.xp} XP</p>
+                  <p className="font-bold text-sm">
+                    {rank.tier}{rank.isMax ? ' · Prestige' : ''}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {rank.isMax
+                      ? `${currentUser.xp.toLocaleString()} XP earned`
+                      : `${currentUser.xp} XP`
+                    }
+                  </p>
                 </div>
               </div>
               <p className="text-xs text-muted-foreground">
-                {rank.isMax ? 'Max rank reached' : `Next: ${rank.nextTierXP} XP`}
+                {rank.isMax
+                  ? `+${rank.xpBeyondMax!.toLocaleString()} beyond Elite`
+                  : `Next: ${rank.nextTierXP} XP`
+                }
               </p>
             </div>
             <Progress value={Math.min(xpProgress, 100)} className="h-2" />
