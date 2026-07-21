@@ -12,7 +12,7 @@ export const ANTWERP_CENTER: LatLng = { lat: 51.2194, lng: 4.4025 }
 
 const EARTH_RADIUS_KM = 6371
 
-function toRad(deg: number): number {
+export function toRad(deg: number): number {
   return (deg * Math.PI) / 180
 }
 

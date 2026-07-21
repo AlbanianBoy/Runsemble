@@ -18,7 +18,7 @@ import { Fragment, useCallback, useEffect, useRef } from 'react'
 import { LocateFixed } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { ANTWERP_CENTER, fuzzCoord, type LatLng } from '@/lib/geo'
+import { ANTWERP_CENTER, type LatLng } from '@/lib/geo'
 import type { ApiHotspot, ApiUser } from '@/lib/types'
 import { getAvatarHex } from './helpers'
 
@@ -117,12 +117,15 @@ function buildClusters(runners: ApiUser[]): RunnerCluster[] {
   const map = new Map<string, RunnerCluster>()
   for (const u of runners) {
     if (u.lat == null || u.lng == null) continue
-    const fuzzed = fuzzCoord({ lat: u.lat, lng: u.lng }, 200)
-    const key = clusterKey(fuzzed.lat, fuzzed.lng)
+    // These coordinates arrive already snapped — /api/users never sends a true
+    // position. Re-snapping them here was pointless when the grid was shared and
+    // is wrong now that it isn't: the client has no access to the per-user
+    // offset, so a second snap would drag the pin off the cell the server chose.
+    const key = clusterKey(u.lat, u.lng)
     if (map.has(key)) {
       map.get(key)!.runners.push(u)
     } else {
-      map.set(key, { key, lat: fuzzed.lat, lng: fuzzed.lng, runners: [u] })
+      map.set(key, { key, lat: u.lat, lng: u.lng, runners: [u] })
     }
   }
   return Array.from(map.values())

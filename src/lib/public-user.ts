@@ -4,7 +4,7 @@
 // coordinates are snapped to the same ~200m privacy grid the map promises —
 // server-side, so exact home locations aren't visible in the network tab.
 
-import { fuzzCoord } from './geo'
+import { fuzzCoordForUser } from './location-privacy'
 import { isInsideSafeZone, type SafeZoneLike } from './safe-zones'
 
 interface UserRow {
@@ -59,10 +59,12 @@ export function toPublicUser<T extends UserRow>({
       ? isInsideSafeZone({ lat, lng }, zones)
       : false
 
-  // Hidden profiles share no location at all; visible ones share a ~200m cell.
+  // Hidden profiles share no location at all; visible ones share a ~200m cell
+  // on a grid that is this user's alone — see location-privacy.ts for why one
+  // shared grid meant a pin named a specific rectangle rather than a rough area.
   const fuzzed =
     !inSafeZone && privacyVisible && typeof lat === 'number' && typeof lng === 'number'
-      ? fuzzCoord({ lat, lng }, 200)
+      ? fuzzCoordForUser({ lat, lng }, user.id, 200)
       : null
 
   // Re-assert the public scalar whitelist by deleting known-sensitive keys that

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { toPublicUser } from '@/lib/public-user'
-import { fuzzCoord } from '@/lib/geo'
+import { fuzzCoordForUser } from '@/lib/location-privacy'
 
 const baseUser = {
   id: 'u1',
@@ -46,11 +46,20 @@ describe('toPublicUser (what one user may see about another)', () => {
 
   it('snaps coordinates to the privacy grid instead of exact position', () => {
     const pub = toPublicUser(baseUser)
-    const expected = fuzzCoord({ lat: baseUser.lat, lng: baseUser.lng }, 200)
+    const expected = fuzzCoordForUser({ lat: baseUser.lat, lng: baseUser.lng }, baseUser.id, 200)
     expect(pub.lat).toBe(expected.lat)
     expect(pub.lng).toBe(expected.lng)
     // And the exact coordinate is actually gone (grid-snapped, not passed through).
     expect(pub.lat).not.toBe(baseUser.lat)
+  })
+
+  it('gives two users in the exact same spot different published coordinates', () => {
+    // The point of the per-user grid. On the old shared grid these two returned
+    // byte-identical pins, which told anyone reading the payload that the two
+    // accounts were within 200m of each other — and exactly which cell.
+    const a = toPublicUser({ ...baseUser, id: 'user-a' })
+    const b = toPublicUser({ ...baseUser, id: 'user-b' })
+    expect(a.lat === b.lat && a.lng === b.lng).toBe(false)
   })
 
   it('shares no location at all when the profile is hidden', () => {
