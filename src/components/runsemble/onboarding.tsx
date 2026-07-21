@@ -24,6 +24,7 @@ interface DbUser {
   id: string; name: string; email: string; emailVerified?: boolean
   avatar?: string | null; bio?: string | null; city?: string
   lat?: number | null; lng?: number | null
+  gender?: string | null
   preferredSport?: string; paceLevel?: string; schedulePreference?: string
   xp?: number; streak?: number; longestStreak?: number
   totalRuns?: number; totalPeopleRunWith?: number
@@ -50,6 +51,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     city: u.city ?? 'Antwerp',
     lat: u.lat ?? null,
     lng: u.lng ?? null,
+    gender: u.gender ?? null,
     preferredSport: u.preferredSport ?? 'running',
     paceLevel: (u.paceLevel ?? 'beginner') as PaceLevel,
     schedulePreference,

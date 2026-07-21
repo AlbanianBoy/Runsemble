@@ -38,6 +38,15 @@ const SCHEDULE_OPTIONS = [
   { value: 'evening', label: 'Evening', desc: 'Sunset sessions' },
 ] as const
 
+// Mirrors GENDERS in lib/enums, plus an explicit "prefer not to say" (empty
+// value → stored as null). Labels are the founder's to refine.
+const GENDER_OPTIONS = [
+  { value: 'woman', label: 'Woman' },
+  { value: 'man', label: 'Man' },
+  { value: 'nonbinary', label: 'Non-binary' },
+  { value: '', label: 'Prefer not to say' },
+] as const
+
 export function ProfileTab() {
   const { currentUser, updateProfile, profileView, setProfileView } = useRunsembleStore()
   const queryClient = useQueryClient()
@@ -49,6 +58,7 @@ export function ProfileTab() {
   const [editCity, setEditCity] = useState('')
   const [editPaceLevel, setEditPaceLevel] = useState<PaceLevel>('beginner')
   const [editSchedule, setEditSchedule] = useState<string[]>([])
+  const [editGender, setEditGender] = useState<string>('') // '' = prefer not to say
 
   // Availability — derived from store
   const isAvailable = currentUser?.isAvailable ?? false
@@ -129,6 +139,7 @@ export function ProfileTab() {
         ? stored.split(',')
         : []
     setEditSchedule(parsed)
+    setEditGender(currentUser.gender ?? '')
     setEditOpen(true)
   }
 
@@ -147,6 +158,8 @@ export function ProfileTab() {
       bio: editBio.trim() || null,
       city: editCity.trim() || 'Antwerp',
       paceLevel: editPaceLevel,
+      // Empty select = prefer not to say → null. Only a valid gender is sent.
+      gender: editGender || null,
       // DB column is String — persist as comma-separated
       schedulePreference: editSchedule.join(','),
     }
@@ -641,6 +654,30 @@ export function ProfileTab() {
                       <span className="text-sm font-medium capitalize">{opt.label}</span>
                       <span className="text-[10px] text-muted-foreground text-center">{opt.desc}</span>
                     </label>
+                  )
+                })}
+              </div>
+            </div>
+
+            {/* Gender — optional, self-declared; only used to gate women-only runs. */}
+            <div className="space-y-2.5">
+              <Label>Gender <span className="text-muted-foreground font-normal">(optional — lets you join women-only runs)</span></Label>
+              <div className="grid grid-cols-2 gap-2">
+                {GENDER_OPTIONS.map((opt) => {
+                  const active = editGender === opt.value
+                  return (
+                    <button
+                      key={opt.value || 'unset'}
+                      type="button"
+                      onClick={() => setEditGender(opt.value)}
+                      className={`rounded-xl border-2 px-3 py-2.5 text-sm font-medium transition-all ${
+                        active
+                          ? 'border-primary bg-primary/5 text-primary'
+                          : 'border-border hover:border-primary/30 hover:bg-muted/50'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
                   )
                 })}
               </div>

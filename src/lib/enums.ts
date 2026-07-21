@@ -21,6 +21,11 @@ export const INVITE_STATUSES = ['pending', 'accepted', 'declined'] as const
 export const REPORT_SUBJECT_TYPES = ['user', 'post', 'message'] as const
 export const REPORT_REASONS = ['harassment', 'spam', 'inappropriate', 'unsafe', 'impersonation', 'other'] as const
 export const REPORT_STATUSES = ['open', 'reviewing', 'resolved', 'dismissed'] as const
+// Self-declared, optional, and only used to gate audience-restricted runs. Kept
+// deliberately simple and inclusive — a trans woman selects 'woman'. Which
+// audiences each value can join lives in canJoinAudience so the rule is in one
+// place; the exact policy is a product/inclusivity call worth the founder's eye.
+export const GENDERS = ['woman', 'man', 'nonbinary', 'prefer_not'] as const
 
 export type PaceLevel = (typeof PACE_LEVELS)[number]
 export type SchedulePreference = (typeof SCHEDULE_PREFERENCES)[number]
@@ -32,6 +37,19 @@ export type InviteStatus = (typeof INVITE_STATUSES)[number]
 export type ReportSubjectType = (typeof REPORT_SUBJECT_TYPES)[number]
 export type ReportReason = (typeof REPORT_REASONS)[number]
 export type ReportStatus = (typeof REPORT_STATUSES)[number]
+export type Gender = (typeof GENDERS)[number]
+
+/**
+ * Whether a runner may join a run restricted to a given audience. Server-side
+ * source of truth for "women-only" — without this the badge was cosmetic and
+ * anyone could join. 'women' requires a self-declared 'woman'; 'beginner' and
+ * 'all' are open. Missing gender fails a restricted audience closed.
+ */
+export function canJoinAudience(gender: string | null | undefined, audience: string | null | undefined): boolean {
+  if (!audience || audience === 'all' || audience === 'beginner') return true
+  if (audience === 'women') return gender === 'woman'
+  return true
+}
 
 /** True when `value` is one of `allowed`. Narrows the type on the way through. */
 export function isOneOf<const T extends readonly string[]>(

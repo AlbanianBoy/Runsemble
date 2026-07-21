@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { hashPassword, validatePassword } from '@/lib/password'
 import { CURRENT_POLICY_VERSION, MIN_AGE, isOldEnough } from '@/lib/consent'
+import { GENDERS } from '@/lib/enums'
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
@@ -23,6 +24,7 @@ export async function POST(request: NextRequest) {
       analyticsConsent,
       bio,
       city,
+      gender,
       paceLevel,
       schedulePreference,
       lat,
@@ -74,6 +76,9 @@ export async function POST(request: NextRequest) {
         analyticsConsent: analyticsConsent === true,
         bio: bio ?? null,
         city: city ?? 'Antwerp',
+        // Optional and self-declared; only valid values are stored, anything else
+        // is treated as unset. Gates women-only runs (see canJoinAudience).
+        gender: (GENDERS as readonly string[]).includes(gender) ? gender : null,
         paceLevel: paceLevel ?? 'beginner',
         // Empty = no preference (the multi-select default), not the old single
         // 'evening'. A user who skips the profile step shouldn't be pre-set to a

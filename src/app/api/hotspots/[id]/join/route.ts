@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { awardXp, grantBadge, BADGES } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { canJoinAudience } from '@/lib/enums'
 
 export async function POST(
   request: NextRequest,
@@ -20,6 +21,16 @@ export async function POST(
       return NextResponse.json(
         { error: 'Hotspot not found' },
         { status: 404 }
+      )
+    }
+
+    // Enforce a restricted audience server-side. The women-only badge was
+    // advertised but never checked — anyone could join. Now the join is refused
+    // unless the runner is eligible.
+    if (!canJoinAudience(me.gender, hotspot.audience)) {
+      return NextResponse.json(
+        { error: 'This run is for women only.' },
+        { status: 403 }
       )
     }
 

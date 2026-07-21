@@ -6,6 +6,7 @@ import { LIMITS, overLimit } from '@/lib/limits'
 import {
   PACE_LEVELS,
   SCHEDULE_PREFERENCES,
+  GENDERS,
   validateEnumFields,
   validateCsvEnumFields,
 } from '@/lib/enums'
@@ -15,7 +16,7 @@ import {
 // 500 instead of a 400.
 //
 // paceLevel is a single enum value.
-const ENUM_FIELDS = { paceLevel: PACE_LEVELS }
+const ENUM_FIELDS = { paceLevel: PACE_LEVELS, gender: GENDERS }
 // schedulePreference is NOT one value. Onboarding is multi-select — you might run
 // mornings and evenings — so it's a comma-separated set in a plain String column
 // ("morning,evening"), and "" means no preference. Validating it as a single enum
@@ -109,6 +110,7 @@ export async function PATCH(
       'avatar',
       'bio',
       'city',
+      'gender',
       'preferredSport',
       'paceLevel',
       'schedulePreference',
@@ -194,6 +196,7 @@ export async function PUT(
       'avatar',
       'bio',
       'city',
+      'gender',
       'preferredSport',
       'paceLevel',
       'schedulePreference',

@@ -32,6 +32,7 @@ export interface UserProfile {
   city: string
   lat?: number | null
   lng?: number | null
+  gender?: string | null
   preferredSport: string
   paceLevel: PaceLevel
   schedulePreference: SchedulePreference
