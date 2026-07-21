@@ -14,7 +14,8 @@
 // Loaded via next/dynamic with { ssr: false } from map-tab.
 
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
-import { Fragment, useCallback } from 'react'
+import { Fragment, useCallback, useEffect, useRef } from 'react'
+import { LocateFixed } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { ANTWERP_CENTER, fuzzCoord, type LatLng } from '@/lib/geo'
@@ -186,6 +187,35 @@ function RunnerMarkers({
   )
 }
 
+// ─── Recentre ────────────────────────────────────────────────────────────────
+// One tap back to where you are. Panning away had no way back short of
+// switching tabs and returning, which is a strange thing to have to discover on
+// the screen the whole app opens to. The zoom buttons stay hidden on purpose —
+// pinch works, and two more chrome elements on a phone-sized map cost more than
+// they give — but "where am I" is not a gesture.
+function RecentreControl({ me }: { me: LatLng }) {
+  const map = useMap()
+  const ref = useRef<HTMLButtonElement>(null)
+
+  // Leaflet listens for clicks on the map container itself, and this button
+  // sits inside it — without this, recentring also registers as a map tap.
+  useEffect(() => {
+    if (ref.current) L.DomEvent.disableClickPropagation(ref.current)
+  }, [])
+
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={() => map.flyTo([me.lat, me.lng], Math.max(map.getZoom(), 14), { duration: 0.5 })}
+      aria-label="Centre the map on your location"
+      className="absolute right-3 bottom-3 z-[1000] h-11 w-11 rounded-full bg-background/95 border border-border shadow-md flex items-center justify-center text-foreground active:scale-95 transition-transform"
+    >
+      <LocateFixed className="h-5 w-5" />
+    </button>
+  )
+}
+
 export interface MapCanvasProps {
   hotspots: ApiHotspot[]
   runners: ApiUser[]
@@ -237,6 +267,8 @@ export default function MapCanvas({
 
       {/* You */}
       <Marker position={[me.lat, me.lng]} icon={youIcon(myName, available)} />
+
+      <RecentreControl me={me} />
     </MapContainer>
   )
 }
