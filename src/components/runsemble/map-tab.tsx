@@ -27,6 +27,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '
 import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
 import { HotspotsTab } from './hotspots-tab'
 import { ReportSheet } from './report-sheet'
+import { TrustBadge } from './trust-badge'
 
 // Leaflet must never render on the server — load the canvas client-side only.
 const MapCanvas = dynamic(() => import('./map-canvas'), {
@@ -588,7 +589,18 @@ export function MapTab() {
               </Avatar>
               <div>
                 <p className="font-bold text-lg">{selectedRunner.name}</p>
-                <p className="text-sm text-muted-foreground">
+                {/* The trust signal belongs here most of all. This sheet is the
+                    moment someone decides whether to go and meet a stranger in
+                    a park, and the raw counts below it don't tell a newcomer
+                    whether "3 runs" is a lot or nothing. The badge does. */}
+                <div className="flex justify-center mt-1.5">
+                  <TrustBadge
+                    totalRuns={selectedRunner.totalRuns}
+                    totalPeopleRunWith={selectedRunner.totalPeopleRunWith}
+                    isSelf={selectedRunner.id === currentUser?.id}
+                  />
+                </div>
+                <p className="text-sm text-muted-foreground mt-1.5">
                   {selectedRunner.city} &middot; {selectedRunner.paceLevel}
                   {runnerDistance ? ` \u00B7 ${runnerDistance}` : ''}
                 </p>

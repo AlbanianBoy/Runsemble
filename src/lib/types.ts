@@ -84,8 +84,10 @@ export interface FeedAuthor {
   paceLevel: string
   streak: number
   xp: number
-  // M56: needed for TrustBadge on feed cards — already in the public user
-  // projection so no extra join is required; just select them in the feed query.
+  // Feeds the TrustBadge on each feed card. Required, not optional: when they
+  // were absent from the feed query the client fell back to 0 and labelled
+  // every author "New runner", so the type now forces the projection to carry
+  // them rather than letting the fallback quietly lie.
   totalRuns: number
   totalPeopleRunWith: number
 }

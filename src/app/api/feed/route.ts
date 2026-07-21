@@ -72,6 +72,12 @@ export async function GET(request: NextRequest) {
             paceLevel: true,
             streak: true,
             xp: true,
+            // Feeds the TrustBadge on each card. Without these two the client
+            // read undefined, fell back to 0, and labelled every author on the
+            // feed "New runner" — including someone with two hundred runs. A
+            // trust signal that wrong is worse than no trust signal.
+            totalRuns: true,
+            totalPeopleRunWith: true,
           },
         },
         group: {
@@ -204,6 +210,12 @@ export async function POST(request: NextRequest) {
             paceLevel: true,
             streak: true,
             xp: true,
+            // Feeds the TrustBadge on each card. Without these two the client
+            // read undefined, fell back to 0, and labelled every author on the
+            // feed "New runner" — including someone with two hundred runs. A
+            // trust signal that wrong is worse than no trust signal.
+            totalRuns: true,
+            totalPeopleRunWith: true,
           },
         },
         group: {
