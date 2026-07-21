@@ -175,11 +175,33 @@ export const BADGES = {
 } as const satisfies Record<string, BadgeSpec>
 
 // ─── Streaks ──────────────────────────────────────────────────────────────────
-// A streak counts consecutive calendar days with at least one tracked run.
-// Same day → no change; yesterday → +1; older gap → reset to 1.
+// A streak counts running days, with one rest day forgiven between them.
+// Same day → no change; yesterday or the day before → +1; older gap → reset.
+//
+// The grace day is the point. "Run every single calendar day or lose 40 days of
+// progress" is a rule that rewards running injured, which is the opposite of
+// what a running app should push someone towards. Every coaching plan ever
+// written has rest days in it. One forgiven day keeps the streak a measure of
+// habit rather than a measure of stubbornness, and a real break — three days,
+// a holiday, an injury — still ends it honestly.
+
+/** Missed days forgiven before a streak breaks. */
+export const STREAK_GRACE_DAYS = 1
+
+// Days are the runner's days, not the server's. Vercel runs in UTC, so a run
+// finished at 00:30 in Antwerp was filed under the previous day — two late-night
+// runs in a row landed on one UTC date and the second one silently didn't count.
+// One city means one timezone; this becomes per-user the day the app leaves it.
+const APP_TIME_ZONE = 'Europe/Brussels'
+const DAY_KEY_FORMAT = new Intl.DateTimeFormat('en-CA', {
+  timeZone: APP_TIME_ZONE,
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+})
 
 function dayKey(d: Date): string {
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+  return DAY_KEY_FORMAT.format(d) // YYYY-MM-DD
 }
 
 function daysBetween(a: string, b: string): number {
@@ -195,6 +217,8 @@ export interface StreakResult {
   longestStreak: number
   lastActiveDate: string
   incremented: boolean
+  /** True when a rest day was forgiven to keep this streak alive — worth saying out loud. */
+  usedGrace: boolean
 }
 
 /**
@@ -210,18 +234,32 @@ export function computeStreak(
   const todayKey = dayKey(today)
 
   if (!lastActiveDate) {
-    return { streak: 1, longestStreak: Math.max(1, longestStreak), lastActiveDate: todayKey, incremented: true }
+    return {
+      streak: 1,
+      longestStreak: Math.max(1, longestStreak),
+      lastActiveDate: todayKey,
+      incremented: true,
+      usedGrace: false,
+    }
   }
   const gap = daysBetween(lastActiveDate, todayKey)
   if (gap <= 0) {
     // Already ran today — no streak change.
-    return { streak: currentStreak || 1, longestStreak, lastActiveDate: todayKey, incremented: false }
+    return {
+      streak: currentStreak || 1,
+      longestStreak,
+      lastActiveDate: todayKey,
+      incremented: false,
+      usedGrace: false,
+    }
   }
-  const next = gap === 1 ? currentStreak + 1 : 1
+  const continues = gap <= 1 + STREAK_GRACE_DAYS
+  const next = continues ? currentStreak + 1 : 1
   return {
     streak: next,
     longestStreak: Math.max(longestStreak, next),
     lastActiveDate: todayKey,
     incremented: true,
+    usedGrace: continues && gap > 1,
   }
 }

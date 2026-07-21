@@ -203,7 +203,7 @@ export interface RunSaveResponse {
   session: ApiRunSession
   xp?: XpAward | null
   badgesEarned: RunBadgeSpec[]
-  streak: { streak: number; longestStreak: number; incremented: boolean }
+  streak: { streak: number; longestStreak: number; incremented: boolean; usedGrace: boolean }
   newBuddyCount: number
 }
 

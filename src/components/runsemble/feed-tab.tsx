@@ -248,8 +248,11 @@ export function FeedTab() {
             <div className="min-w-0">
               {(currentUser?.streak ?? 0) > 0 ? (
                 <>
-                  <p className="font-bold text-base leading-none tabular">{currentUser?.streak} {currentUser?.streak === 1 ? 'day' : 'days'}</p>
-                  <p className="text-[11px] text-muted-foreground mt-1">current streak</p>
+                  <p className="font-bold text-base leading-none tabular">{currentUser?.streak} {currentUser?.streak === 1 ? 'run day' : 'run days'}</p>
+                  {/* "run days", not "days": the streak survives one rest day,
+                      so calling it a consecutive-day count would be a lie the
+                      first time someone takes the rest day we want them to. */}
+                  <p className="text-[11px] text-muted-foreground mt-1">one rest day won&apos;t break it</p>
                 </>
               ) : (
                 <>

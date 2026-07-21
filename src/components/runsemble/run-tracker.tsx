@@ -594,6 +594,10 @@ export function RunTracker() {
       if (res.xp?.rankedUp) toast.success(`Rank up! You're now ${res.xp.rankAfter} 🎉`)
       else toast.success(`+${res.xp?.awarded ?? 0} XP — nice run!`)
       if (res.newBuddyCount > 0) toast(`🤝 ${res.newBuddyCount} new run budd${res.newBuddyCount > 1 ? 'ies' : 'y'}!`)
+      // Say when the rest day was spent. A streak that silently survives a
+      // missed day teaches nothing; naming it teaches the actual rule, at the
+      // one moment the person is looking.
+      if (res.streak.usedGrace) toast(`🔥 Streak kept at ${res.streak.streak} — rest day forgiven`)
       res.badgesEarned.forEach((b) => toast(`${b.icon} Badge unlocked: ${b.title}`))
 
       closeRunTracker()
