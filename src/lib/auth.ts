@@ -50,6 +50,11 @@ export async function getSessionUser() {
     await db.session.delete({ where: { id: session.id } }).catch(() => {})
     return null
   }
+  // A suspended account is treated as not-logged-in: every route resolves the
+  // acting user through here, so this one check pulls a suspended user out of
+  // messaging, hotspots, runs and discovery at once. This is what makes the
+  // moderation queue's Suspend action actually stop someone.
+  if (session.user.suspendedAt) return null
   return session.user
 }
 

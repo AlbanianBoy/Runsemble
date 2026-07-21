@@ -135,6 +135,12 @@ model User {
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
   onboardingComplete Boolean  @default(false)
+  // Moderation. A suspended account is refused a session (so it can't act) and
+  // is hidden from discovery, DMs and hotspots. Null = in good standing. This is
+  // what gives the report queue actual enforcement power rather than just a
+  // status flag on the report.
+  suspendedAt       DateTime?
+  suspendedReason   String?
   // NOTE: fcmToken (a single column) was removed — see UserDevice. One column
   // meant a second device overwrote the first, which then silently received
   // nothing forever.
@@ -323,6 +329,12 @@ model FeedPost {
   runSession  RunSession? @relation(fields: [runSessionId], references: [id], onDelete: SetNull)
   likedBy     PostLike[]
   commentThread PostComment[]
+
+  // The feed is the hottest read in the app and paginates by (createdAt, id)
+  // desc; without this it was a full-table scan + top-N sort on every load.
+  @@index([createdAt, id])
+  @@index([authorId])
+  @@index([groupId])
 }
 
 model PostLike {
@@ -426,6 +438,9 @@ model ChatMessage {
 
   @@index([senderId, recipientId])
   @@index([groupId])
+  // The DM inbox and unread badge query by recipient; this backs those without a
+  // scan as message volume grows.
+  @@index([recipientId, read])
 }
 
 model RunInvite {
@@ -514,6 +529,10 @@ model Block {
   blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
+  // Every block-aware read filters "is X blocked by / blocking me" in both
+  // directions; the blockerId side is covered by the unique index, this covers
+  // the reverse lookup that otherwise sequential-scans.
+  @@index([blockedId])
 }
 
 // A report an operator needs to see and act on. This app arranges for strangers
@@ -527,7 +546,10 @@ model Block {
 // report time, captured server-side, so a deleted post can still be reviewed.
 model Report {
   id           String            @id @default(cuid())
-  reporterId   String
+  // Nullable + SetNull, NOT Cascade: when a reporter deletes their account the
+  // report and its evidence snapshot must survive — otherwise anyone could erase
+  // the abuse case filed against them by deleting the account that filed it.
+  reporterId   String?
   subjectType  ReportSubjectType
   subjectId    String
   reason       ReportReason
@@ -538,7 +560,7 @@ model Report {
   resolvedAt   DateTime?
   createdAt    DateTime          @default(now())
 
-  reporter     User              @relation("Reporter", fields: [reporterId], references: [id], onDelete: Cascade)
+  reporter     User?             @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
 
   // One report per person per subject: re-filing updates rather than piling up,
   // so one reporter can't flood the queue. Many DIFFERENT reporters on the same

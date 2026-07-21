@@ -60,6 +60,31 @@ export function ReportQueue({ reports }: { reports: AdminReport[] }) {
     }
   }
 
+  // Suspend the reported account, then resolve the report. This is the queue's
+  // enforcement power — a reviewed report can now end in the subject being
+  // pulled from the app, not just a status change.
+  const suspendSubject = async (report: AdminReport) => {
+    if (!confirm(`Suspend this account? They'll be logged out and hidden from the app until reinstated.`)) return
+    setBusyId(report.id)
+    try {
+      const res = await fetch(`/api/admin/users/${report.subjectId}/suspend`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ suspend: true, reason: `report ${report.id}: ${report.reason}` }),
+      })
+      if (res.ok) {
+        await fetch(`/api/reports/${report.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'resolved' }),
+        })
+        router.refresh()
+      }
+    } finally {
+      setBusyId(null)
+    }
+  }
+
   if (reports.length === 0) {
     return (
       <p className="text-sm text-muted-foreground rounded-xl border border-dashed p-4">
@@ -124,6 +149,15 @@ export function ReportQueue({ reports }: { reports: AdminReport[] }) {
                   className="rounded-full border text-xs px-3 py-1 text-muted-foreground disabled:opacity-50"
                 >
                   Mark reviewing
+                </button>
+              )}
+              {r.subjectType === 'user' && (
+                <button
+                  onClick={() => suspendSubject(r)}
+                  disabled={busyId === r.id}
+                  className="rounded-full border border-destructive/40 text-destructive text-xs px-3 py-1 font-medium disabled:opacity-50"
+                >
+                  Suspend user
                 </button>
               )}
             </div>

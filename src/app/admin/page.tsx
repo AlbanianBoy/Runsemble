@@ -85,8 +85,10 @@ export default async function AdminPage() {
     evidence: r.evidence,
     status: r.status,
     createdAt: r.createdAt.toISOString(),
-    reporterName: r.reporter.name,
-    reporterEmail: r.reporter.email,
+    // reporter is null once they delete their account — the report survives
+    // (SetNull) so the case isn't lost, but there's no name to show.
+    reporterName: r.reporter?.name ?? '(deleted account)',
+    reporterEmail: r.reporter?.email ?? '—',
     subjectReportCount: countBySubject.get(countKey(r.subjectType, r.subjectId)) ?? 1,
   }))
 

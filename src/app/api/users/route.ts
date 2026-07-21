@@ -19,7 +19,12 @@ export async function GET() {
     const excludeIds = blocks.map((b) => (b.blockerId === viewerId ? b.blockedId : b.blockerId))
 
     const users = await db.user.findMany({
-      where: excludeIds.length ? { id: { notIn: excludeIds } } : undefined,
+      // Suspended accounts never appear in discovery — the other half of the
+      // moderation action (the first is getSessionUser refusing their session).
+      where: {
+        suspendedAt: null,
+        ...(excludeIds.length ? { id: { notIn: excludeIds } } : {}),
+      },
       orderBy: { createdAt: 'asc' },
       take: 500, // bound the query; the map/people views work on a local set
       include: {
