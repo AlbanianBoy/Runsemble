@@ -48,7 +48,30 @@ export async function GET(request: NextRequest) {
     })
 
     const entries = users.map((u, i) => ({ ...u, position: i + 1 }))
-    return NextResponse.json({ metric, entries })
+
+    // The viewer's TRUE rank, even when they're outside the top 50 — otherwise
+    // the "your position" row could never render (they simply weren't in the
+    // list). Their rank is however many visible users sit strictly above them.
+    let viewer: (typeof entries)[number] | null = null
+    if (viewerId && !entries.some((e) => e.id === viewerId)) {
+      const me = await db.user.findUnique({
+        where: { id: viewerId },
+        select: {
+          id: true, name: true, avatar: true, city: true, xp: true, streak: true,
+          totalRuns: true, totalDistanceKm: true, totalPeopleRunWith: true, paceLevel: true,
+        },
+      })
+      if (me) {
+        // field is always one of the numeric metric columns.
+        const myValue = Number((me as Record<string, unknown>)[field])
+        const above = await db.user.count({
+          where: { AND: [{ privacyVisible: true }, { [field]: { gt: myValue } }] },
+        })
+        viewer = { ...me, position: above + 1 }
+      }
+    }
+
+    return NextResponse.json({ metric, entries, viewer })
   } catch (error) {
     console.error('Error building leaderboard:', error)
     return NextResponse.json({ error: 'Failed to build leaderboard' }, { status: 500 })

@@ -159,6 +159,8 @@ export interface LeaderboardEntry {
 export interface LeaderboardResponse {
   metric: LeaderboardMetric
   entries: LeaderboardEntry[]
+  /** The viewer's own row + true rank when they fall outside the top list; null if in it. */
+  viewer?: LeaderboardEntry | null
 }
 
 // ─── Run sessions ───────────────────────────────────────────────────────────

@@ -46,7 +46,9 @@ export function Leaderboard() {
   const entries = data?.entries ?? []
   const top3 = entries.slice(0, 3)
   const rest = entries.slice(3)
-  const myEntry = entries.find((e) => e.id === currentUser?.id)
+  // The viewer's row when they're OUTSIDE the top list — the API returns it with
+  // their true rank so it can be pinned at the bottom.
+  const viewerEntry = data?.viewer ?? null
 
   return (
     <div className="space-y-4 pb-4">
@@ -115,10 +117,10 @@ export function Leaderboard() {
             ))}
           </div>
 
-          {/* Your position pinned at the bottom if outside the top list */}
-          {myEntry && myEntry.position > entries.length && (
-            <div className="pt-2">
-              <Row entry={myEntry} metric={metric} isMe />
+          {/* Your position pinned at the bottom when you're outside the top list */}
+          {viewerEntry && (
+            <div className="pt-2 border-t mt-2">
+              <Row entry={viewerEntry} metric={metric} isMe />
             </div>
           )}
         </>
