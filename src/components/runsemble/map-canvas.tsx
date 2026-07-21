@@ -19,21 +19,15 @@ import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { ANTWERP_CENTER, fuzzCoord, type LatLng } from '@/lib/geo'
 import type { ApiHotspot, ApiUser } from '@/lib/types'
+import { getAvatarHex } from './helpers'
 
 // How close two fuzzed coordinates must be (in degrees) to be treated as the
 // same cluster. 0.002° ≈ 200 m, matching the fuzz grid cell size.
 const CLUSTER_THRESHOLD = 0.002
 
-const HEX_COLORS = [
-  '#14b8a6', '#d97706', '#059669', '#f43f5e', '#8b5cf6',
-  '#14b8a6', '#ec4899', '#ca8a04', '#ef4444', '#0891b2',
-]
-
-function colorForName(name: string): string {
-  let hash = 0
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return HEX_COLORS[Math.abs(hash) % HEX_COLORS.length]
-}
+// Pin colour comes from the shared avatar palette (no violet/pink, and the same
+// hash) so a runner's map pin matches their avatar everywhere else in the app.
+const colorForName = getAvatarHex
 
 function initials(name: string): string {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)

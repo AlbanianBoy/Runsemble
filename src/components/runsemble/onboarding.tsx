@@ -108,25 +108,7 @@ export function OnboardingWelcome() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden gradient-brand">
-      <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <motion.div
-          className="absolute -top-20 -right-20 w-72 h-72 rounded-full bg-white/5"
-          animate={{ scale: [1, 1.15, 1], x: [0, 10, 0], y: [0, -10, 0] }}
-          transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute -bottom-32 -left-16 w-80 h-80 rounded-full bg-white/5"
-          animate={{ scale: [1, 1.1, 1], x: [0, -8, 0], y: [0, 12, 0] }}
-          transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut' }}
-        />
-        <motion.div
-          className="absolute top-1/3 left-1/4 w-40 h-40 rounded-full bg-white/[0.03]"
-          animate={{ scale: [1, 1.2, 1] }}
-          transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-        />
-      </div>
-
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-brand">
       <div className="relative z-10 flex flex-col items-center w-full">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}

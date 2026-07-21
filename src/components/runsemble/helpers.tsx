@@ -29,11 +29,35 @@ const AVATAR_COLORS = [
   'bg-red-600',
 ]
 
-export function getAvatarColor(name: string) {
+// The same eight colours as hex, in the SAME ORDER, for places that can't use a
+// Tailwind class — Leaflet map markers draw with raw hex. Kept beside
+// AVATAR_COLORS and consumed through getAvatarHex so a runner's map pin and their
+// avatar resolve to the same colour instead of drifting into two palettes.
+const AVATAR_HEX = [
+  '#0d9488', // teal-600
+  '#ea580c', // orange-600
+  '#059669', // emerald-600
+  '#d97706', // amber-600
+  '#475569', // slate-600
+  '#78716c', // stone-500
+  '#0e7490', // cyan-700
+  '#dc2626', // red-600
+]
+
+function hashName(name: string): number {
   let hash = 0
   for (let i = 0; i < name.length; i++)
     hash = name.charCodeAt(i) + ((hash << 5) - hash)
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length]
+  return Math.abs(hash)
+}
+
+export function getAvatarColor(name: string) {
+  return AVATAR_COLORS[hashName(name) % AVATAR_COLORS.length]
+}
+
+/** Hex form of getAvatarColor — same name maps to the same colour on the map. */
+export function getAvatarHex(name: string) {
+  return AVATAR_HEX[hashName(name) % AVATAR_HEX.length]
 }
 
 export function getInitials(name: string) {
