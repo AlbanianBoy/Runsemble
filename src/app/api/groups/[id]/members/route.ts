@@ -49,8 +49,6 @@ export async function POST(
     if (existing) return NextResponse.json({ error: 'Already a member' }, { status: 409 })
 
     await db.groupMember.create({ data: { groupId: id, userId, role: 'member' } })
-    const memberCount = await db.groupMember.count({ where: { groupId: id } })
-    await db.runGroup.update({ where: { id }, data: { memberCount } })
 
     await notify({
       userId,

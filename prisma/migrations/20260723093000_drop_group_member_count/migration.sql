@@ -1,0 +1,11 @@
+-- Drop RunGroup.memberCount.
+--
+-- Four routes maintained this column with an extra COUNT + UPDATE on every
+-- join, leave, add and remove. No route ever read it: every read path already
+-- counted the members it had. It was two round-trips per membership change
+-- buying a number nobody asked for — and one crash between the delete and the
+-- update away from being quietly wrong forever.
+--
+-- Same reasoning that retired the single fcmToken column and the stored
+-- "km this week": derive it, don't store it.
+ALTER TABLE "RunGroup" DROP COLUMN IF EXISTS "memberCount";

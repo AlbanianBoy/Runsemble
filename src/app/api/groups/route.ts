@@ -27,11 +27,14 @@ export async function GET(request: NextRequest) {
     const q = (url.searchParams.get('q') ?? '').trim().slice(0, MAX_QUERY)
     const cursor = url.searchParams.get('cursor')
 
+    // The list shows a member *count* and a weekly-km total, never a member's
+    // name or face — those live on the detail screen, behind its own request.
+    // So take the ids the km stat needs and let the database do the counting;
+    // pulling every member's user row to call .length on the array was most of
+    // this endpoint's payload.
     const memberInclude = {
-      members: {
-        include: { user: { select: { id: true, name: true, avatar: true } } },
-      },
-      _count: { select: { chatMessages: true } },
+      members: { select: { userId: true } },
+      _count: { select: { chatMessages: true, members: true } },
     } as const
 
     // Yours: unbounded on purpose. Nobody is in hundreds of running groups, and
@@ -92,7 +95,7 @@ export async function GET(request: NextRequest) {
 
     const withMeta = groups.map((group) => ({
       ...group,
-      memberCount: group.members.length,
+      memberCount: group._count.members,
       messageCount: group._count.chatMessages,
       totalKmThisWeek:
         Math.round(group.members.reduce((s, m) => s + (kmByUser.get(m.userId) ?? 0), 0) * 10) / 10,
@@ -142,7 +145,6 @@ export async function POST(request: NextRequest) {
         isPublic: isPublic ?? true,
         coverImage: coverImage ?? null,
         city: city ?? 'Antwerp',
-        memberCount: 1,
         createdBy,
         members: {
           create: {

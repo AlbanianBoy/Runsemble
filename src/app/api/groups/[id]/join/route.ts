@@ -50,15 +50,6 @@ export async function POST(
       },
     })
 
-    // Update member count
-    const memberCount = await db.groupMember.count({
-      where: { groupId: id },
-    })
-    await db.runGroup.update({
-      where: { id },
-      data: { memberCount },
-    })
-
     const updatedGroup = await db.runGroup.findUnique({
       where: { id },
       include: {
@@ -121,15 +112,6 @@ export async function DELETE(
       where: {
         groupId_userId: { groupId: id, userId },
       },
-    })
-
-    // Update member count
-    const memberCount = await db.groupMember.count({
-      where: { groupId: id },
-    })
-    await db.runGroup.update({
-      where: { id },
-      data: { memberCount },
     })
 
     const updatedGroup = await db.runGroup.findUnique({

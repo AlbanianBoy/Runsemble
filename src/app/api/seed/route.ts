@@ -317,7 +317,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        memberCount: 5,
         createdBy: 'user-maya',
       },
       {
@@ -327,7 +326,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        memberCount: 4,
         createdBy: 'user-jonas',
       },
       {
@@ -337,7 +335,6 @@ async function seed() {
         isPublic: true,
         coverImage: null,
         city: 'Antwerp',
-        memberCount: 3,
         createdBy: 'user-maya',
       },
       {
@@ -347,7 +344,6 @@ async function seed() {
         isPublic: false,
         coverImage: null,
         city: 'Antwerp',
-        memberCount: 3,
         createdBy: 'user-kai',
       },
     ],

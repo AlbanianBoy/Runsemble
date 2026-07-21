@@ -289,7 +289,6 @@ model RunGroup {
   isPublic    Boolean  @default(true)
   coverImage  String?
   city        String   @default("Antwerp")
-  memberCount Int      @default(0)
   lobbyStartedAt DateTime? // set when someone taps "Start together" in the group lobby
   createdBy   String?
   createdAt   DateTime @default(now())

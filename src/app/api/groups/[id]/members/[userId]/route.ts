@@ -6,10 +6,6 @@ import { notify } from '@/lib/notify'
 async function membership(groupId: string, userId: string) {
   return db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } })
 }
-async function refreshCount(groupId: string) {
-  const memberCount = await db.groupMember.count({ where: { groupId } })
-  await db.runGroup.update({ where: { id: groupId }, data: { memberCount } })
-}
 
 // Remove a member. Owner can remove anyone but themselves; an admin can remove
 // plain members (not the owner or other admins).
@@ -35,7 +31,6 @@ export async function DELETE(
     }
 
     await db.groupMember.delete({ where: { groupId_userId: { groupId: id, userId } } })
-    await refreshCount(id)
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error removing member:', error)
