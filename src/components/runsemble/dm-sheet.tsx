@@ -2,8 +2,9 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Loader2, Flag } from 'lucide-react'
+import { Send, Loader2, Flag, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
+import { format, isToday, isYesterday } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { useVisiblePoll } from '@/lib/use-visible-poll'
@@ -52,6 +53,16 @@ export function DmSheet() {
 
   const submit = () => { if (text.trim() && me && partnerId && !send.isPending) send.mutate(text.trim()) }
 
+  // L23 — find the last outgoing message that the recipient has read, so we
+  // can render a "Seen" receipt beneath it. Only the most-recent read message
+  // gets the label; earlier ones are implicitly read and don't need clutter.
+  const lastReadIndex = (() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].senderId === me && messages[i].read) return i
+    }
+    return -1
+  })()
+
   return (
     <>
     <Sheet open={!!dmPartner} onOpenChange={(o) => { if (!o) closeDm() }}>
@@ -70,17 +81,30 @@ export function DmSheet() {
           </button>
         </SheetHeader>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-2">
+        <div className="flex-1 overflow-y-auto p-4 space-y-1">
           {messages.length === 0 ? (
             <p className="text-sm text-muted-foreground text-center py-10">Say hi 👋 — plan your next run together.</p>
           ) : (
-            messages.map((m) => {
+            messages.map((m, idx) => {
               const mine = m.senderId === me
+              const showReceipt = mine && idx === lastReadIndex
               return (
-                <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                <div key={m.id} className={`flex flex-col ${mine ? 'items-end' : 'items-start'}`}>
                   <div className={`max-w-[75%] px-3.5 py-2 rounded-2xl text-sm ${mine ? 'bg-primary text-primary-foreground rounded-br-md' : 'bg-muted rounded-bl-md'}`}>
                     {m.content}
                   </div>
+                  {/* L23 — per-message timestamp, small and unobtrusive */}
+                  <span className="text-[10px] text-muted-foreground mt-0.5 px-1 select-none">
+                    {formatMsgTime(m.createdAt)}
+                  </span>
+                  {/* L23 — read receipt: shown only beneath the last outgoing
+                      message the recipient has opened. */}
+                  {showReceipt && (
+                    <span className="flex items-center gap-0.5 text-[10px] text-primary/70 -mt-0.5 px-1 select-none">
+                      <CheckCheck className="h-3 w-3" />
+                      Seen
+                    </span>
+                  )}
                 </div>
               )
             })
@@ -117,4 +141,21 @@ export function DmSheet() {
     />
     </>
   )
+}
+
+/**
+ * L23 — Format a message's createdAt into a human-friendly string:
+ *   today    → "14:32"
+ *   yesterday → "Yesterday 14:32"
+ *   older    → "Mon 14:32"
+ */
+function formatMsgTime(iso: string): string {
+  try {
+    const d = new Date(iso)
+    if (isToday(d)) return format(d, 'HH:mm')
+    if (isYesterday(d)) return `Yesterday ${format(d, 'HH:mm')}`
+    return format(d, 'EEE HH:mm')
+  } catch {
+    return ''
+  }
 }

@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route } from 'lucide-react'
+import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
@@ -68,6 +68,9 @@ export function FeedTab() {
   const {
     data: feedData,
     isLoading,
+    isError,
+    error,
+    refetch,
     fetchNextPage,
     hasNextPage,
     isFetchingNextPage,
@@ -320,6 +323,29 @@ export function FeedTab() {
             </Card>
           ))}
         </div>
+      ) : isError ? (
+        // M30 — show a real error state instead of silently falling through to
+        // the empty-feed copy, which would imply the request succeeded with 0
+        // posts. The user needs to know something went wrong and have a way out.
+        <Card className="border-destructive/40 bg-destructive/5">
+          <CardContent className="p-8 text-center space-y-3">
+            <WifiOff className="h-8 w-8 mx-auto text-destructive/70" />
+            <div>
+              <p className="font-medium text-sm text-foreground">Couldn't load the feed</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {error instanceof Error ? error.message : 'Something went wrong — please try again.'}
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-full"
+              onClick={() => refetch()}
+            >
+              Try again
+            </Button>
+          </CardContent>
+        </Card>
       ) : posts.length === 0 ? (
         <Card className="border-dashed">
           <CardContent className="p-8 text-center text-sm text-muted-foreground">
