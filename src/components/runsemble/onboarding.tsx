@@ -361,11 +361,17 @@ export function OnboardingProfile() {
     setOnboardingStep('runs')
   }
 
+  // M28 fix: map the internal sub-step to its dot position so the indicator
+  // actually advances. Previously hardcoded to 1 regardless of `step`.
+  //   'account' → dot 1  (create your account form)
+  //   'about'   → dot 2  (running profile details)
+  const dotIndex = step === 'account' ? 1 : 2
+
   return (
     <div className="min-h-screen flex flex-col p-6 bg-background">
       <div className="flex-1 max-w-md mx-auto w-full">
         <div className="mb-6">
-          <StepDots current={1} />
+          <StepDots current={dotIndex} />
         </div>
 
         {/* No AnimatePresence: mode="wait" could leave the exiting panel mid-exit
