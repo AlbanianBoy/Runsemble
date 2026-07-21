@@ -12,6 +12,9 @@ import { verifyRunDistance } from '@/lib/run-math'
 // request. Generous enough that a real group run is never clipped.
 const MAX_COMPANIONS = 20
 const MAX_TAGGED_BUDDIES = 20
+// How many people a single run pays social XP for. Beyond this you can still tag
+// everyone you ran with — it just stops being worth farming.
+const XP_PAID_PEOPLE = 3
 // A pure backstop set ABOVE the legitimate maximum (a GPS-verified 200km run at
 // 10 XP/km plus 20 buddies and 20 companions tops out ~2920), so it never clips
 // a real ultra — it only trips if a future change reintroduces an unbounded term.
@@ -154,13 +157,18 @@ export async function POST(request: NextRequest) {
 
     const companionCount = untaggedCompanions + taggedIds.length
 
-    // XP: showing up (20) + effort (10/km) + a new buddy (30 each, the real value)
-    // + other companions (15 each). Capped at MAX_RUN_XP as a backstop so no
-    // combination of inputs — even a 200km run tagged to the max — can mint an
-    // outlier that distorts the board.
+    // XP: showing up (20) + effort (10/km) + running with people.
+    //
+    // The social part is paid on the FIRST few people only, not linearly per
+    // head. Linear per-person XP made "collect as many people as possible" the
+    // optimal play — which is what turned buddy-tagging into something you do TO
+    // someone rather than with them. A group run still pays more than a solo one;
+    // tagging twenty strangers pays the same as running with three friends.
+    const paidBuddies = Math.min(newBuddyCount, XP_PAID_PEOPLE)
+    const paidCompanions = Math.min(untaggedCompanions, XP_PAID_PEOPLE)
     const xpEarned = Math.min(
       MAX_RUN_XP,
-      20 + Math.round(dist * 10) + newBuddyCount * 30 + untaggedCompanions * 15
+      20 + Math.round(dist * 10) + paidBuddies * 30 + paidCompanions * 15
     )
 
     // ── Streak ──

@@ -63,11 +63,17 @@ export async function POST(
     let xp: Awaited<ReturnType<typeof awardXp>> = null
     let badgeEarned: Awaited<ReturnType<typeof grantBadge>> = null
     try {
-      // No XP for joining your own hotspot — otherwise "create a hotspot, join
-      // it" is a free 50 XP on repeat. (The broader rejoin-farm — leave then
-      // re-join someone else's — needs a persistent per-hotspot award record;
-      // tracked separately.)
-      if (hotspot.createdBy !== userId) {
+      // Join XP is paid for INTENT, not a completed run, so it needs bounding on
+      // two axes:
+      //   - not your own hotspot ("create one, join it" was a free 50 XP loop)
+      //   - once per day, so leave/rejoin (here or across hotspots) can't be
+      //     farmed. The row we just created counts, hence <= 1.
+      const startOfDay = new Date()
+      startOfDay.setHours(0, 0, 0, 0)
+      const joinsToday = await db.hotspotParticipant.count({
+        where: { userId, joinedAt: { gte: startOfDay } },
+      })
+      if (hotspot.createdBy !== userId && joinsToday <= 1) {
         xp = await awardXp(userId, 'joinHotspot')
       }
 

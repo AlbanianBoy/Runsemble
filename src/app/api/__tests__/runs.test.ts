@@ -182,12 +182,13 @@ describe('social XP inputs are clamped (anti-farming)', () => {
     }
 
     const { POST } = await import('@/app/api/runs/route')
-    // 5km run + a claimed 99999 companions. Base 20 + 50 (5km) + 20 companions*15
-    // = 370, NOT 20 + 50 + 99999*15.
     await POST(post({ distanceKm: 5, durationSec: 1800, path: RUN_PATH, companions: 99999 }))
 
-    expect(seenData!.xp).toEqual({ increment: 370 })
-    // totalPeopleRunWith is moved by the same clamped count, not the raw claim.
+    // Two separate defences show up here. The count is clamped to 20, and social
+    // XP is only paid for the first 3 people — so 20 + 50 (5km) + 3*15 = 115,
+    // nowhere near 99999*15. Tagging a crowd stops being worth farming.
+    expect(seenData!.xp).toEqual({ increment: 115 })
+    // They still "ran with" the clamped 20 — we just don't pay XP for all of them.
     expect(seenData!.totalPeopleRunWith).toEqual({ increment: 20 })
   })
 })
