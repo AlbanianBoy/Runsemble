@@ -349,6 +349,10 @@ export interface ApiGroupMessage {
 }
 export interface GroupsResponse {
   groups: ApiGroup[]
+  /** Cursor for the next page of Discover; null when there are no more. */
+  nextCursor?: string | null
+  /** The city Discover was narrowed to, or null when it wasn't (search, or no city on file). */
+  scopedToCity?: string | null
 }
 export interface GroupResponse {
   group: ApiGroup

@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useInfiniteQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight, Play, Settings, Shield, X, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
@@ -36,9 +36,34 @@ export function GroupsTab() {
   const [newPublic, setNewPublic] = useState(true)
   const queryClient = useQueryClient()
 
-  const { data: groupsData, isLoading } = useQuery({
-    queryKey: ['groups'],
-    queryFn: () => apiGet<GroupsResponse>(`/api/groups?userId=${currentUser?.id}`),
+  // Discover is paged, so the tab no longer pulls every group in the database
+  // on open. Page 1 carries your groups plus the first slice of Discover;
+  // later pages are Discover only (the server drops "mine" once a cursor is
+  // present, so the flattened list can't duplicate them).
+  const [search, setSearch] = useState('')
+  const [query, setQuery] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setQuery(search.trim()), 250)
+    return () => clearTimeout(t)
+  }, [search])
+
+  const {
+    data: groupsPages,
+    isLoading,
+    fetchNextPage,
+    hasNextPage,
+    isFetchingNextPage,
+  } = useInfiniteQuery({
+    queryKey: ['groups', query],
+    initialPageParam: null as string | null,
+    queryFn: ({ pageParam }) =>
+      apiGet<GroupsResponse>(
+        `/api/groups?${new URLSearchParams({
+          ...(query ? { q: query } : {}),
+          ...(pageParam ? { cursor: pageParam } : {}),
+        })}`
+      ),
+    getNextPageParam: (last) => last.nextCursor ?? null,
   })
 
   // DM conversations — use apiGetSilent so a 401 never triggers the global
@@ -68,7 +93,8 @@ export function GroupsTab() {
     }
   })
 
-  const groups: ApiGroup[] = groupsData?.groups ?? []
+  const groups: ApiGroup[] = groupsPages?.pages.flatMap((p) => p.groups) ?? []
+  const scopedToCity = groupsPages?.pages[0]?.scopedToCity ?? null
 
   const { data: selectedGroupData, isLoading: groupLoading } = useQuery({
     queryKey: ['group', selectedGroupId],
@@ -457,13 +483,6 @@ export function GroupsTab() {
         <Button size="sm" variant="outline" className="rounded-full" onClick={() => setCreateOpen(true)}><Plus className="h-4 w-4 mr-1" />Create</Button>
       </div>
 
-      {myGroups.length === 0 && discoverGroups.length === 0 && (
-        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
-          <Users className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
-          No groups yet. Create one to get started!
-        </CardContent></Card>
-      )}
-
       {myGroups.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">My Groups</h3>
@@ -491,9 +510,38 @@ export function GroupsTab() {
         </div>
       )}
 
-      {discoverGroups.length > 0 && (
-        <div>
-          <h3 className="text-sm font-semibold text-muted-foreground mb-2">Discover</h3>
+      <div>
+        <div className="flex items-baseline justify-between mb-2 gap-2">
+          <h3 className="text-sm font-semibold text-muted-foreground">Discover</h3>
+          {/* Say which city you're browsing, so an empty list reads as "none
+              here" rather than "none anywhere" — and so searching, which drops
+              the city scope, is an obvious way out. */}
+          {scopedToCity && (
+            <span className="text-[11px] text-muted-foreground shrink-0">in {scopedToCity}</span>
+          )}
+        </div>
+        <Input
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          placeholder="Search groups by name…"
+          aria-label="Search groups by name"
+          className="mb-3 rounded-full"
+        />
+
+        {/* One empty state, not two: this is the only place a "nothing here"
+            card appears, so a brand-new account doesn't get a stack of them. */}
+        {discoverGroups.length === 0 && !isLoading && (
+          <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
+            <Users className="h-7 w-7 mx-auto mb-2 text-muted-foreground/50" />
+            {query
+              ? `No groups match “${query}”.`
+              : scopedToCity
+                ? `No ${myGroups.length > 0 ? 'other ' : ''}groups in ${scopedToCity} yet — search to look further afield, or create one.`
+                : `No ${myGroups.length > 0 ? 'other ' : ''}groups to join yet — create one to get started.`}
+          </CardContent></Card>
+        )}
+
+        {discoverGroups.length > 0 && (
           <div className="space-y-2">
             {discoverGroups.map((g) => (
               <motion.div key={g.id} {...fadeUp}>
@@ -515,8 +563,19 @@ export function GroupsTab() {
               </motion.div>
             ))}
           </div>
-        </div>
-      )}
+        )}
+
+        {hasNextPage && (
+          <Button
+            variant="outline"
+            className="w-full rounded-full mt-3"
+            onClick={() => fetchNextPage()}
+            disabled={isFetchingNextPage}
+          >
+            {isFetchingNextPage ? 'Loading…' : 'Show more groups'}
+          </Button>
+        )}
+      </div>
 
       <Sheet open={createOpen} onOpenChange={setCreateOpen}>
         <SheetContent side="bottom" className="rounded-t-3xl">

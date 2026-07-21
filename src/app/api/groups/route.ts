@@ -3,60 +3,110 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 
-export async function GET() {
+// ─── Group discovery ─────────────────────────────────────────────────────────
+// Two lists, not one. Groups you're IN are always returned in full: one you
+// belong to must never fall off because you moved city or because it sat past a
+// page boundary. Groups you might JOIN are scoped to your city, ordered newest
+// first, and paginated — that half used to load every group in the database,
+// with every member row and every member's user row, on every tab open, and
+// then throw the private ones away in JavaScript afterwards.
+//
+// Newest-first is deliberate over most-members: it's the order a keyset cursor
+// can page stably (memberCount moves under you), and a brand-new group is the
+// one that actually needs to be found.
+const DISCOVER_PAGE = 20
+const MAX_QUERY = 60
+
+export async function GET(request: NextRequest) {
   try {
     // Membership flags come from the session, not a client-claimed id.
-    const userId = (await getSessionUser())?.id ?? null
+    const me = await getSessionUser()
+    const userId = me?.id ?? null
 
-    const groups = await db.runGroup.findMany({
-      include: {
-        members: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                avatar: true,
-              },
-            },
-          },
-        },
-        _count: {
-          select: {
-            chatMessages: true,
-          },
-        },
+    const url = new URL(request.url)
+    const q = (url.searchParams.get('q') ?? '').trim().slice(0, MAX_QUERY)
+    const cursor = url.searchParams.get('cursor')
+
+    const memberInclude = {
+      members: {
+        include: { user: { select: { id: true, name: true, avatar: true } } },
       },
-      orderBy: { createdAt: 'desc' },
+      _count: { select: { chatMessages: true } },
+    } as const
+
+    // Yours: unbounded on purpose. Nobody is in hundreds of running groups, and
+    // hiding one behind a "load more" would be a bug, not a saving. Only on the
+    // first page though — a cursor means "more Discover, please", and repeating
+    // your groups on every page would duplicate them in the flattened list.
+    const mine = userId && !cursor
+      ? await db.runGroup.findMany({
+          where: { members: { some: { userId } } },
+          include: memberInclude,
+          orderBy: { createdAt: 'desc' },
+        })
+      : []
+    const mineIds = new Set(mine.map((g) => g.id))
+
+    // Theirs: public only — private groups aren't discoverable by name+members,
+    // which mirrors the members-only detail/chat/lobby. Searching by name means
+    // you already know what you're after, so a search ignores the city scope;
+    // browsing does not.
+    const discoverWhere = {
+      isPublic: true,
+      ...(userId ? { members: { none: { userId } } } : {}),
+      ...(q
+        ? { name: { contains: q, mode: 'insensitive' as const } }
+        : me?.city
+          ? { city: me.city }
+          : {}),
+    }
+
+    const discoverPage = await db.runGroup.findMany({
+      where: discoverWhere,
+      include: memberInclude,
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: DISCOVER_PAGE + 1, // one extra: its existence is the "more" signal
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     })
+    const hasMore = discoverPage.length > DISCOVER_PAGE
+    const discover = hasMore ? discoverPage.slice(0, DISCOVER_PAGE) : discoverPage
+
+    const groups = [...mine, ...discover]
 
     // Honest stat: "km this week" is computed from members' real tracked runs
-    // since Monday. There is no stored counter to fall out of date.
+    // since Monday. There is no stored counter to fall out of date. Scoped to
+    // the members actually on screen — this used to aggregate every run in the
+    // database by every user, whether or not they were in a listed group.
+    const memberIds = [...new Set(groups.flatMap((g) => g.members.map((m) => m.userId)))]
     const weekStart = new Date()
     weekStart.setHours(0, 0, 0, 0)
     weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7))
-    const weekly = await db.runSession.groupBy({
-      by: ['userId'],
-      where: { endedAt: { gte: weekStart } },
-      _sum: { distanceKm: true },
-    })
+    const weekly = memberIds.length
+      ? await db.runSession.groupBy({
+          by: ['userId'],
+          where: { userId: { in: memberIds }, endedAt: { gte: weekStart } },
+          _sum: { distanceKm: true },
+        })
+      : []
     const kmByUser = new Map(weekly.map((w) => [w.userId, w._sum.distanceKm ?? 0]))
 
-    const groupsWithMeta = groups.map((group) => ({
+    const withMeta = groups.map((group) => ({
       ...group,
       memberCount: group.members.length,
       messageCount: group._count.chatMessages,
       totalKmThisWeek:
         Math.round(group.members.reduce((s, m) => s + (kmByUser.get(m.userId) ?? 0), 0) * 10) / 10,
-      isMember: userId ? group.members.some((m: any) => m.userId === userId) : false,
+      isMember: mineIds.has(group.id),
       _count: undefined,
     }))
 
-    // Private groups only appear in the list for their members — mirrors the
-    // members-only detail/chat/lobby so a private group isn't discoverable
-    // (name + members) by everyone.
-    const visible = groupsWithMeta.filter((g) => g.isPublic || g.isMember)
-    return NextResponse.json({ groups: visible })
+    return NextResponse.json({
+      groups: withMeta,
+      nextCursor: hasMore ? discover[discover.length - 1]!.id : null,
+      // Tells the client whether an empty Discover means "none here" or
+      // "none matching" — the two need different empty states.
+      scopedToCity: !q && me?.city ? me.city : null,
+    })
   } catch (error) {
     console.error('Error fetching groups:', error)
     return NextResponse.json(

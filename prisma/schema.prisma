@@ -300,6 +300,9 @@ model RunGroup {
   posts       FeedPost[]
   runSessions RunSession[]
   challenges  Challenge[]
+
+  // Backs group discovery exactly: public groups in one city, newest first.
+  @@index([isPublic, city, createdAt])
 }
 
 model GroupMember {
@@ -314,6 +317,9 @@ model GroupMember {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
+  // The unique above leads with groupId, so "which groups is this user in?" —
+  // the filter behind both halves of discovery — couldn't use it and scanned.
+  @@index([userId])
 }
 
 model FeedPost {
