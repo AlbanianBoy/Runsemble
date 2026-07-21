@@ -322,7 +322,10 @@ export async function POST(request: NextRequest) {
         data: {
           authorId: userId,
           groupId: groupId ?? null,
-          postType: 'milestone',
+          // Only a run that actually unlocked something is a milestone. Every
+          // shared run used to carry the badge, which made it mean nothing —
+          // an ordinary Tuesday 5k is a moment, not an achievement.
+          postType: badgesEarned.length > 0 ? 'milestone' : 'moment',
           runSessionId: session.id,
           content:
             note?.trim() ||

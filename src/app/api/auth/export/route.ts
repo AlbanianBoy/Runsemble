@@ -10,7 +10,7 @@ export async function GET() {
     if (!user) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const userId = user.id
 
-    const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges, groupChats, invites] =
+    const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges, groupChats, invites, safeZones, blocks, devices, reports] =
       await Promise.all([
         db.runSession.findMany({ where: { userId } }),
         db.feedPost.findMany({ where: { authorId: userId } }),
@@ -31,6 +31,19 @@ export async function GET() {
         db.challengeParticipant.findMany({ where: { userId } }),
         db.chatMessage.findMany({ where: { senderId: userId, groupId: { not: null } } }),
         db.runInvite.findMany({ where: { OR: [{ senderId: userId }, { recipientId: userId }] } }),
+        // Safe zones are the single most sensitive thing we hold — they're home
+        // and work addresses — and they were missing from the export entirely.
+        // An access request that omits them isn't complete (Art. 15).
+        db.safeZone.findMany({ where: { userId } }),
+        // Who you've blocked is your data too (the reverse direction is the other
+        // person's, so only the blocker side is exported).
+        db.block.findMany({ where: { blockerId: userId } }),
+        db.userDevice.findMany({
+          where: { userId },
+          // The push token is a device credential, not useful to the subject.
+          select: { id: true, platform: true, enabled: true, lastSeenAt: true, createdAt: true },
+        }),
+        db.report.findMany({ where: { reporterId: userId } }),
       ])
 
     return new NextResponse(
@@ -40,7 +53,7 @@ export async function GET() {
           profile: toSafeUser(user),
           runs, posts, comments, likes, badges, buddies,
           notifications, messages, participations, memberships, ratings, challenges,
-          groupChats, invites,
+          groupChats, invites, safeZones, blocks, devices, reports,
         },
         null,
         2
