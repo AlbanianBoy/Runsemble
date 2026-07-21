@@ -14,6 +14,9 @@ import { getSessionUser } from '@/lib/auth'
 const CHECKIN_XP = 25 // showing up is the whole point — reward it
 const GEOFENCE_KM = 0.3 // ~300m around the start point (GPS jitter friendly)
 const START_FRESH_MS = 2 * 60 * 60 * 1000 // a start older than 2h is a past run
+// How early anyone present may call the start if the host hasn't. Groups gather
+// a few minutes before the hour; a no-show host shouldn't strand them.
+const START_GRACE_MS = 10 * 60 * 1000
 
 async function loadLobby(hotspotId: string) {
   const hotspot = await db.hotspot.findUnique({
@@ -114,7 +117,10 @@ export async function POST(
       })
       const firstCheckin = !existing || existing.status !== 'here'
 
-      // Not joined yet? Checking in joins you too — no needless friction.
+      // Checking in still joins you — the lobby has no separate join button, and
+      // turning up IS the commitment. The risk this used to carry (a passer-by
+      // auto-joining and immediately broadcasting "we've started" to someone
+      // else's run) is handled on the 'start' action below instead.
       await db.hotspotParticipant.upsert({
         where: { hotspotId_userId: { hotspotId: id, userId } },
         create: { hotspotId: id, userId, status: 'here', checkedInAt: new Date() },
@@ -130,6 +136,20 @@ export async function POST(
       })
       if (!participant || participant.status !== 'here') {
         return NextResponse.json({ error: 'Check in first, then start the run' }, { status: 400 })
+      }
+
+      // "Start" pushes a notification to everyone in the lobby, so it needs an
+      // owner. Being merely present isn't enough: check-in auto-joins, so anyone
+      // passing the start point could otherwise announce that a stranger's run
+      // had begun. The host calls it — or anyone present once the run is
+      // actually due, so a no-show host can't strand the group.
+      const dueAt = hotspot.startTime.getTime() - START_GRACE_MS
+      const isHost = !hotspot.createdBy || hotspot.createdBy === userId
+      if (!isHost && Date.now() < dueAt) {
+        return NextResponse.json(
+          { error: 'Only the person who created this run can start it before its start time' },
+          { status: 403 }
+        )
       }
 
       const stale =
