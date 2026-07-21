@@ -70,8 +70,19 @@ export function MapTab() {
     queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
   })
   const { data: usersData } = useQuery({
-    queryKey: ['users', currentUser?.id],
-    queryFn: () => apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}`),
+    // Position is part of the key: move city and the neighbourhood you're asking
+    // about changes, so the cached answer for the old one is not the answer.
+    queryKey: ['users', currentUser?.id, currentUser?.lat, currentUser?.lng],
+    queryFn: () => {
+      // Scope discovery to the area around the viewer. Without this the endpoint
+      // hands every visible user's location cell to anyone logged in, which is
+      // the privacy leak — the client-side radius chips only ever hid rows the
+      // browser had already been given. The server default radius (25km) is far
+      // wider than the widest chip (5km), so the filters still work untouched.
+      const { lat, lng } = currentUser ?? {}
+      const scope = lat != null && lng != null ? `&lat=${lat}&lng=${lng}` : ''
+      return apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}${scope}`)
+    },
   })
 
   const hotspots = hotspotsData?.hotspots ?? []

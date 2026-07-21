@@ -179,6 +179,9 @@ model User {
   @@index([totalRuns])
   @@index([totalDistanceKm])
   @@index([totalPeopleRunWith])
+  // Discovery filters on a lat/lng bounding box (see /api/users). Without this
+  // the range predicate is a sequential scan of every user on every map load.
+  @@index([lat, lng])
 }
 
 // One row per device a user gets push on.

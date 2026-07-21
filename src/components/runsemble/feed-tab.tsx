@@ -84,8 +84,14 @@ export function FeedTab() {
     queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
   })
   const { data: usersData } = useQuery({
-    queryKey: ['users', currentUser?.id],
-    queryFn: () => apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}`),
+    // Same viewer-scoped discovery the map uses — this list only powers the
+    // "available near you" strip, so it has no business fetching the whole city.
+    queryKey: ['users', currentUser?.id, currentUser?.lat, currentUser?.lng],
+    queryFn: () => {
+      const { lat, lng } = currentUser ?? {}
+      const scope = lat != null && lng != null ? `&lat=${lat}&lng=${lng}` : ''
+      return apiGet<UsersResponse>(`/api/users?viewerId=${currentUser?.id ?? ''}${scope}`)
+    },
   })
 
   // Pull the next page in slightly before the sentinel is actually on screen, so
