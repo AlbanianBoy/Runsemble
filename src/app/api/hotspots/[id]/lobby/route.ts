@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { haversineKm } from '@/lib/geo'
 import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
 
 // ─── Run lobby ────────────────────────────────────────────────────────────────
@@ -18,11 +19,15 @@ const START_FRESH_MS = 2 * 60 * 60 * 1000 // a start older than 2h is a past run
 // a few minutes before the hour; a no-show host shouldn't strand them.
 const START_GRACE_MS = 10 * 60 * 1000
 
-async function loadLobby(hotspotId: string) {
+async function loadLobby(hotspotId: string, viewerId?: string | null) {
   const hotspot = await db.hotspot.findUnique({
     where: { id: hotspotId },
     include: {
       participants: {
+        // Someone you've blocked (or who blocked you) shouldn't appear in a
+        // lobby you're standing in. Blocking held on the map and in DMs but not
+        // here, which is the one place you'd actually be next to them.
+        where: viewerId ? { userId: { notIn: await blockedUserIds(viewerId) } } : undefined,
         include: { user: { select: { id: true, name: true, avatar: true, paceLevel: true } } },
         orderBy: { joinedAt: 'asc' },
       },
@@ -69,7 +74,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params
-    const lobby = await loadLobby(id)
+    const lobby = await loadLobby(id, (await getSessionUser())?.id ?? null)
     if (!lobby) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
     return NextResponse.json(lobby)
   } catch (error) {
@@ -185,7 +190,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     }
 
-    const lobby = await loadLobby(id)
+    const lobby = await loadLobby(id, userId)
     return NextResponse.json({ lobby, xp })
   } catch (error) {
     console.error('Error updating lobby:', error)

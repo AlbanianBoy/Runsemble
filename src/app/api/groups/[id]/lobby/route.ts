@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
 
 // ─── Group run lobby ──────────────────────────────────────────────────────────
@@ -17,11 +18,14 @@ function isFresh(d: Date | null): boolean {
   return !!d && Date.now() - d.getTime() < FRESH_MS
 }
 
-async function loadLobby(groupId: string) {
+async function loadLobby(groupId: string, viewerId?: string | null) {
   const group = await db.runGroup.findUnique({
     where: { id: groupId },
     include: {
       members: {
+        // Blocking has to hold where you'd actually stand next to someone, not
+        // just on the map and in DMs.
+        where: viewerId ? { userId: { notIn: await blockedUserIds(viewerId) } } : undefined,
         include: { user: { select: { id: true, name: true, avatar: true, paceLevel: true } } },
         orderBy: { joinedAt: 'asc' },
       },
@@ -65,7 +69,7 @@ export async function GET(
       if (!member) return NextResponse.json({ error: 'This group is private' }, { status: 403 })
     }
 
-    const lobby = await loadLobby(id)
+    const lobby = await loadLobby(id, (await getSessionUser())?.id ?? null)
     if (!lobby) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
     return NextResponse.json(lobby)
   } catch (error) {
@@ -136,7 +140,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
     }
 
-    const lobby = await loadLobby(id)
+    const lobby = await loadLobby(id, me.id)
     return NextResponse.json({ lobby, xp })
   } catch (error) {
     console.error('Error updating group lobby:', error)
