@@ -169,3 +169,25 @@ describe('the run and the stats it moves are written together', () => {
     expect(seenData!.totalDurationSec).toEqual({ increment: 1800 })
   })
 })
+
+describe('social XP inputs are clamped (anti-farming)', () => {
+  // Companions and buddy tags are client-declared. Uncapped, a single request
+  // could mint enormous XP and top every board — distance is GPS-verified but
+  // these are not, so they must be bounded server-side.
+  it('clamps an absurd companion count instead of paying XP for it', async () => {
+    let seenData: Record<string, unknown> | null = null
+    overrides['user.update'] = (...args: unknown[]) => {
+      seenData = (args[0] as { data?: Record<string, unknown> })?.data ?? null
+      return {}
+    }
+
+    const { POST } = await import('@/app/api/runs/route')
+    // 5km run + a claimed 99999 companions. Base 20 + 50 (5km) + 20 companions*15
+    // = 370, NOT 20 + 50 + 99999*15.
+    await POST(post({ distanceKm: 5, durationSec: 1800, path: RUN_PATH, companions: 99999 }))
+
+    expect(seenData!.xp).toEqual({ increment: 370 })
+    // totalPeopleRunWith is moved by the same clamped count, not the raw claim.
+    expect(seenData!.totalPeopleRunWith).toEqual({ increment: 20 })
+  })
+})

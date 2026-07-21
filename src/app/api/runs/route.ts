@@ -6,6 +6,17 @@ import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
 import { verifyRunDistance } from '@/lib/run-math'
 
+// Anti-abuse caps on client-declared social inputs. A run's distance is already
+// verified against its GPS evidence; these bound the parts that aren't — how
+// many people you say you ran with — so the XP economy can't be farmed from one
+// request. Generous enough that a real group run is never clipped.
+const MAX_COMPANIONS = 20
+const MAX_TAGGED_BUDDIES = 20
+// A pure backstop set ABOVE the legitimate maximum (a GPS-verified 200km run at
+// 10 XP/km plus 20 buddies and 20 companions tops out ~2920), so it never clips
+// a real ultra — it only trips if a future change reintroduces an unbounded term.
+const MAX_RUN_XP = 3200
+
 // List YOUR tracked runs (newest first). GPS traces are private — session only.
 export async function GET() {
   try {
@@ -110,14 +121,19 @@ export async function POST(request: NextRequest) {
     const avgPaceSecPerKm = dist > 0 ? Math.round(dur / dist) : 0
     // Rough calorie estimate: ~60 kcal per km (bodyweight-agnostic demo value).
     const calories = Math.round(dist * 60)
-    const untaggedCompanions = Math.max(0, Math.round(Number(companions) || 0))
+    // Companions and buddy tags are client-declared, so they're untrusted the
+    // same way distance is. Uncapped, `companions: 99999` mints ~1.5M XP from a
+    // single request and tops every board — clamp both to a sane per-run max.
+    const untaggedCompanions = Math.min(MAX_COMPANIONS, Math.max(0, Math.round(Number(companions) || 0)))
 
     // ── Run buddies (the "met someone new" loop) ──
     // Tagged people you actually ran with become buddies. New buddies are the
     // real relationship-building moment, so they earn the bigger reward.
-    const taggedIds: string[] = Array.isArray(buddyIds)
-      ? [...new Set(buddyIds.filter((b: unknown) => typeof b === 'string' && b !== userId))] as string[]
-      : []
+    const taggedIds: string[] = (
+      Array.isArray(buddyIds)
+        ? [...new Set(buddyIds.filter((b: unknown) => typeof b === 'string' && b !== userId))] as string[]
+        : []
+    ).slice(0, MAX_TAGGED_BUDDIES)
 
     // Work out who is new, without writing anything yet. The buddy rows are
     // created inside the transaction below alongside the run, and the "you ran
@@ -139,9 +155,13 @@ export async function POST(request: NextRequest) {
     const companionCount = untaggedCompanions + taggedIds.length
 
     // XP: showing up (20) + effort (10/km) + a new buddy (30 each, the real value)
-    // + other companions (15 each).
-    const xpEarned =
+    // + other companions (15 each). Capped at MAX_RUN_XP as a backstop so no
+    // combination of inputs — even a 200km run tagged to the max — can mint an
+    // outlier that distorts the board.
+    const xpEarned = Math.min(
+      MAX_RUN_XP,
       20 + Math.round(dist * 10) + newBuddyCount * 30 + untaggedCompanions * 15
+    )
 
     // ── Streak ──
     const streakRes = computeStreak(user.lastActiveDate, user.streak, user.longestStreak)

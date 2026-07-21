@@ -52,7 +52,13 @@ export async function POST(
     let xp: Awaited<ReturnType<typeof awardXp>> = null
     let badgeEarned: Awaited<ReturnType<typeof grantBadge>> = null
     try {
-      xp = await awardXp(userId, 'joinHotspot')
+      // No XP for joining your own hotspot — otherwise "create a hotspot, join
+      // it" is a free 50 XP on repeat. (The broader rejoin-farm — leave then
+      // re-join someone else's — needs a persistent per-hotspot award record;
+      // tracked separately.)
+      if (hotspot.createdBy !== userId) {
+        xp = await awardXp(userId, 'joinHotspot')
+      }
 
       const joinedCount = await db.hotspotParticipant.count({ where: { userId } })
       if (joinedCount === 1) {
