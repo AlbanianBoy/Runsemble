@@ -25,6 +25,7 @@ interface DbUser {
   avatar?: string | null; bio?: string | null; city?: string
   lat?: number | null; lng?: number | null
   gender?: string | null
+  availabilityAudience?: string | null
   preferredSport?: string; paceLevel?: string; schedulePreference?: string
   xp?: number; streak?: number; longestStreak?: number
   totalRuns?: number; totalPeopleRunWith?: number
@@ -66,6 +67,9 @@ export function toUserProfile(u: DbUser): UserProfile {
     isAvailable: u.isAvailable ?? false,
     availableFrom: u.availableFrom ?? null,
     privacyVisible: u.privacyVisible ?? true,
+    // Only ever present on your OWN payload — toPublicUser strips it, so this
+    // falls back to 'everyone' for anyone else's profile, which is right.
+    availabilityAudience: u.availabilityAudience ?? 'everyone',
     analyticsConsent: u.analyticsConsent ?? false,
     consentVersion: u.consentVersion ?? null,
     onboardingComplete: true,

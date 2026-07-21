@@ -51,6 +51,37 @@ export function canJoinAudience(gender: string | null | undefined, audience: str
   return true
 }
 
+/**
+ * Who may see that you're free to run.
+ *
+ * Saying "free at 18:30" is the most useful thing in the app and also the most
+ * revealing: repeated over a few weeks it is a routine — when you're out, and
+ * roughly from where, since it sits next to your fuzzed home cell. Broadcasting
+ * that to every nearby stranger was the only option, on an app whose reason to
+ * exist is getting people (women especially) out running safely.
+ */
+export const AVAILABILITY_AUDIENCES = ['everyone', 'women'] as const
+export type AvailabilityAudience = (typeof AVAILABILITY_AUDIENCES)[number]
+
+/**
+ * Whether `viewerGender` may see a runner whose availability audience is
+ * `audience`. Fails closed exactly like canJoinAudience: an unset or unknown
+ * audience is treated as restricted rather than open, and a viewer who has not
+ * declared a gender does not qualify for a women-only broadcast.
+ *
+ * Note the asymmetry with canJoinAudience, which defaults an unrecognised
+ * audience to open. Joining a run is a thing you do; this is a thing about you
+ * that other people see, so an unrecognised value here must not publish it.
+ */
+export function canSeeAvailability(
+  viewerGender: string | null | undefined,
+  audience: string | null | undefined
+): boolean {
+  if (!audience || audience === 'everyone') return true
+  if (audience === 'women') return viewerGender === 'woman'
+  return false
+}
+
 /** True when `value` is one of `allowed`. Narrows the type on the way through. */
 export function isOneOf<const T extends readonly string[]>(
   allowed: T,

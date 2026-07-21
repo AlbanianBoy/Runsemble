@@ -9,6 +9,7 @@ import {
   GENDERS,
   validateEnumFields,
   validateCsvEnumFields,
+  AVAILABILITY_AUDIENCES,
 } from '@/lib/enums'
 
 // The allowlist further down governs which *fields* a client may set, not which
@@ -16,7 +17,14 @@ import {
 // 500 instead of a 400.
 //
 // paceLevel is a single enum value.
-const ENUM_FIELDS = { paceLevel: PACE_LEVELS, gender: GENDERS }
+const ENUM_FIELDS = {
+  paceLevel: PACE_LEVELS,
+  gender: GENDERS,
+  // Who may see you're free to run. Validated here so a typo'd value can't be
+  // stored — canSeeAvailability fails closed on anything it doesn't recognise,
+  // so a bad write would silently hide the user's availability from everyone.
+  availabilityAudience: AVAILABILITY_AUDIENCES,
+}
 // schedulePreference is NOT one value. Onboarding is multi-select — you might run
 // mornings and evenings — so it's a comma-separated set in a plain String column
 // ("morning,evening"), and "" means no preference. Validating it as a single enum
@@ -69,7 +77,9 @@ export async function GET(
 
     // Own profile: everything except the hash. Anyone else: public fields only,
     // with coordinates snapped to the privacy grid.
-    const payload = isSelf ? toSafeUser(user) : toPublicUser(user)
+    const payload = isSelf
+      ? toSafeUser(user)
+      : toPublicUser(user, me ? { id: me.id, gender: me.gender } : null)
     return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)
@@ -118,6 +128,7 @@ export async function PATCH(
       'availableFrom',
       'availableUntil',
       'privacyVisible',
+      'availabilityAudience',
       'analyticsConsent', // withdrawing/granting analytics consent from settings
       'onboardingComplete',
       'lastActiveDate',
@@ -204,6 +215,7 @@ export async function PUT(
       'availableFrom',
       'availableUntil',
       'privacyVisible',
+      'availabilityAudience',
       'analyticsConsent', // withdrawing/granting analytics consent from settings
       'onboardingComplete',
       'lastActiveDate',

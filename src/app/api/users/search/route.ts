@@ -12,7 +12,8 @@ export async function GET(request: NextRequest) {
     const q = searchParams.get('q')?.trim() ?? ''
     if (q.length < 2) return NextResponse.json({ users: [] })
 
-    const viewerId = (await getSessionUser())?.id ?? null
+    const me = await getSessionUser()
+    const viewerId = me?.id ?? null
     let excludeIds: string[] = []
     if (viewerId) {
       const blocks = await db.block.findMany({
@@ -33,7 +34,8 @@ export async function GET(request: NextRequest) {
       take: 20,
     })
 
-    return NextResponse.json({ users: users.map(toPublicUser) })
+    const viewer = me ? { id: me.id, gender: me.gender } : null
+    return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error searching users:', error)
     return NextResponse.json({ error: 'Failed to search' }, { status: 500 })

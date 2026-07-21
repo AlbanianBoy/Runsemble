@@ -82,3 +82,58 @@ describe('toPublicUser (what one user may see about another)', () => {
     expect(pub.earnedBadges).toEqual([{ id: 'b1' }])
   })
 })
+
+describe('availability audience (who may see you are free to run)', () => {
+  const restricted = { ...baseUser, availabilityAudience: 'women', isAvailable: true }
+
+  it('shows availability to everyone by default', () => {
+    const pub = toPublicUser({ ...baseUser, availabilityAudience: 'everyone' }, { id: 'other', gender: 'man' })
+    expect(pub.isAvailable).toBe(true)
+  })
+
+  it('hides a women-only schedule from a man', () => {
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'man' })
+    expect(pub.isAvailable).toBe(false)
+    expect(pub.availableFrom).toBeNull()
+    expect(pub.availableUntil).toBeNull()
+  })
+
+  it('shows a women-only schedule to a woman', () => {
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'woman' })
+    expect(pub.isAvailable).toBe(true)
+  })
+
+  it('fails closed for a viewer who has not declared a gender', () => {
+    const pub = toPublicUser(restricted, { id: 'other', gender: null })
+    expect(pub.isAvailable).toBe(false)
+  })
+
+  it('fails closed for an anonymous viewer', () => {
+    expect(toPublicUser(restricted).isAvailable).toBe(false)
+    expect(toPublicUser(restricted, null).isAvailable).toBe(false)
+  })
+
+  it('fails closed on an unrecognised audience value', () => {
+    // A typo written straight to the column must not publish the schedule.
+    const pub = toPublicUser({ ...baseUser, availabilityAudience: 'wemen' }, { id: 'other', gender: 'woman' })
+    expect(pub.isAvailable).toBe(false)
+  })
+
+  it('always shows you your own availability', () => {
+    const pub = toPublicUser(restricted, { id: baseUser.id, gender: 'man' })
+    expect(pub.isAvailable).toBe(true)
+  })
+
+  it('never leaks the setting itself to anyone else', () => {
+    // Whether someone restricted their schedule is not a hint other people get.
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'woman' })
+    expect((pub as Record<string, unknown>).availabilityAudience).toBeUndefined()
+  })
+
+  it('still lists a restricted runner — only the schedule goes quiet', () => {
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'man' })
+    expect(pub.id).toBe(baseUser.id)
+    expect(pub.name).toBe(baseUser.name)
+    expect(pub.lat).not.toBeNull()
+  })
+})

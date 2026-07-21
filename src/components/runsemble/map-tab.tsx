@@ -11,6 +11,7 @@ import { apiGet, apiSend } from '@/lib/api'
 import { track } from '@/lib/analytics'
 import { ANTWERP_CENTER, haversineKm, distanceLabel, type LatLng } from '@/lib/geo'
 import { isAvailableNow, isComingUp, availableFromLabel, AVAILABLE_NOW_MINUTES } from '@/lib/availability'
+import type { AvailabilityAudience } from '@/lib/enums'
 import { readPosition } from '@/lib/use-location-refresh'
 import type {
   ApiHotspot,
@@ -49,6 +50,11 @@ const RADIUS_OPTIONS: { v: number | null; label: string }[] = [
   { v: 1, label: '< 1 km' },
   { v: 3, label: '< 3 km' },
   { v: 5, label: '< 5 km' },
+]
+
+const AUDIENCE_CHOICES: { value: AvailabilityAudience; label: string }[] = [
+  { value: 'everyone', label: 'Everyone' },
+  { value: 'women', label: 'Women only' },
 ]
 
 export function MapTab() {
@@ -248,6 +254,17 @@ export function MapTab() {
       })()
     }
     setAvailSheetOpen(false)
+  }
+
+  // Optimistic like the other availability controls in this sheet: the server
+  // is authoritative (toPublicUser decides what other people actually see), so
+  // a failed write only means the toggle springs back on the next profile load.
+  const setAvailabilityAudience = (value: AvailabilityAudience) => {
+    if (!currentUser?.id) return
+    updateProfile({ availabilityAudience: value })
+    apiSend(`/api/users/${currentUser.id}`, 'PUT', { availabilityAudience: value }).catch(() => {
+      toast.error('Could not save that — check your connection')
+    })
   }
 
   const stopAvailability = () => {
@@ -706,6 +723,37 @@ export function MapTab() {
                 Remove my {availableFromLabel(myScheduled.toISOString())} slot
               </button>
             )}
+
+            {/* Sits here rather than buried in settings: this is the screen where
+                you decide to tell people when you'll be out, so it's where the
+                question of who hears it belongs. */}
+            <div className="pt-3 border-t border-border/60 space-y-2">
+              <p className="text-xs font-semibold">Who can see when I'm free</p>
+              <div className="flex gap-2">
+                {AUDIENCE_CHOICES.map((choice) => {
+                  const active = (currentUser?.availabilityAudience ?? 'everyone') === choice.value
+                  return (
+                    <button
+                      key={choice.value}
+                      onClick={() => setAvailabilityAudience(choice.value)}
+                      aria-pressed={active}
+                      className={`flex-1 min-h-11 rounded-full px-3 text-xs font-semibold border transition-colors ${
+                        active
+                          ? 'bg-primary text-primary-foreground border-primary'
+                          : 'bg-background text-muted-foreground border-border hover:bg-muted'
+                      }`}
+                    >
+                      {choice.label}
+                    </button>
+                  )
+                })}
+              </div>
+              <p className="text-[11px] text-muted-foreground leading-snug">
+                {(currentUser?.availabilityAudience ?? 'everyone') === 'women'
+                  ? 'Only runners who’ve said they’re women see your times. You still appear on the map.'
+                  : 'Everyone nearby sees the times you set. A regular slot tells people your routine.'}
+              </p>
+            </div>
           </div>
         </SheetContent>
       </Sheet>

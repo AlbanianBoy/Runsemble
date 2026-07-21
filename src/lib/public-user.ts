@@ -5,7 +5,18 @@
 // server-side, so exact home locations aren't visible in the network tab.
 
 import { fuzzCoordForUser } from './location-privacy'
+import { canSeeAvailability } from './enums'
 import { isInsideSafeZone, type SafeZoneLike } from './safe-zones'
+
+/**
+ * Who is asking. Availability is the one field whose visibility depends on the
+ * viewer, so the projection needs to know them. Passing null (or omitting it)
+ * is treated as an anonymous viewer and gets the restrictive answer.
+ */
+export interface Viewer {
+  id: string
+  gender: string | null
+}
 
 interface UserRow {
   id: string
@@ -35,10 +46,13 @@ interface UserRow {
 }
 
 /** Extra relations some endpoints attach (badges, groups, ...) pass through. */
-export function toPublicUser<T extends UserRow>({
-  // Split off everything sensitive; `rest` carries relations through untouched.
-  ...user
-}: T) {
+export function toPublicUser<T extends UserRow>(
+  {
+    // Split off everything sensitive; `rest` carries relations through untouched.
+    ...user
+  }: T,
+  viewer?: Viewer | null
+) {
   const {
     lat,
     lng,
@@ -66,6 +80,22 @@ export function toPublicUser<T extends UserRow>({
     !inSafeZone && privacyVisible && typeof lat === 'number' && typeof lng === 'number'
       ? fuzzCoordForUser({ lat, lng }, user.id, 200)
       : null
+
+  // Availability is the one field whose visibility depends on who's looking.
+  // "Free at 18:30", repeated week after week, is a routine — and it sits right
+  // next to a home cell on the map. Someone who has restricted it to women is
+  // still discoverable; only the schedule goes quiet. You always see your own.
+  const audience = (user as Record<string, unknown>).availabilityAudience
+  const hideAvailability =
+    viewer?.id !== user.id && !canSeeAvailability(viewer?.gender, audience as string | null)
+  if (hideAvailability) {
+    rest.isAvailable = false
+    rest.availableFrom = null
+    rest.availableUntil = null
+  }
+  // The setting itself is the owner's business, not a hint for anyone else
+  // about whether there's something being withheld.
+  delete (rest as Record<string, unknown>).availabilityAudience
 
   // Re-assert the public scalar whitelist by deleting known-sensitive keys that
   // arrive when callers query full rows (defense in depth against future

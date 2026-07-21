@@ -48,7 +48,8 @@ function boundingBox(lat: number, lng: number, radiusKm: number) {
 export async function GET(request?: NextRequest) {
   try {
     // Session required — anonymous scraping of the full social graph is not allowed.
-    const viewerId = (await getSessionUser())?.id
+    const me = await getSessionUser()
+    const viewerId = me?.id
     if (!viewerId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
@@ -124,7 +125,10 @@ export async function GET(request?: NextRequest) {
 
     // Public projection: no email/passwordHash/consent, coordinates snapped to
     // the ~200m privacy grid (exact coords must never reach another client).
-    return NextResponse.json({ users: users.map(toPublicUser) })
+    // The viewer decides whether each runner's availability is visible to
+    // them — see canSeeAvailability.
+    const viewer = me ? { id: me.id, gender: me.gender } : null
+    return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error fetching users:', error)
     return NextResponse.json(

@@ -47,6 +47,8 @@ export interface UserProfile {
   availableFrom?: string | null
   availableUntil?: string | null
   privacyVisible: boolean
+  /** Who may see your free-to-run times: 'everyone' | 'women'. */
+  availabilityAudience?: string | null
   analyticsConsent: boolean
   consentVersion?: string | null
   onboardingComplete: boolean

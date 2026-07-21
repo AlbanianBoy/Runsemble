@@ -134,6 +134,11 @@ model User {
   availableFrom     DateTime? // planned availability ("free to run at 18:30")
   availableUntil    DateTime?
   privacyVisible    Boolean   @default(true)
+  // Who may see that you're free to run: 'everyone' or 'women'. Separate from
+  // privacyVisible, which hides you entirely — this hides only the schedule,
+  // because "free at 18:30" repeated weekly is a routine, and a routine next to
+  // a home cell is the thing worth protecting. See canSeeAvailability.
+  availabilityAudience String @default("everyone")
   onboardingComplete Boolean  @default(false)
   // Moderation. A suspended account is refused a session (so it can't act) and
   // is hidden from discovery, DMs and hotspots. Null = in good standing. This is
