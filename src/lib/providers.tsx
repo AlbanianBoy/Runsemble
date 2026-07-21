@@ -6,7 +6,7 @@ import { ThemeProvider } from 'next-themes'
 import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 import { useCallback } from 'react'
 import { useRunsembleStore } from '@/lib/store'
-import { usePushRegistration } from '@/lib/push-register'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { useLocationRefresh } from '@/lib/use-location-refresh'
 import { setAnalyticsEnabled, identifyUser } from '@/lib/analytics'
 
@@ -27,9 +27,12 @@ function AppBootstrap() {
     if (userId && analyticsConsent) identifyUser(userId)
   }, [userId, analyticsConsent])
 
-  // Register / refresh the FCM token whenever the signed-in user changes.
-  // Silent no-op on web and on native builds without push-notifications.
-  usePushRegistration(userId)
+  // Register / refresh the FCM token whenever the signed-in user changes, and
+  // route arriving pushes. Silent no-op on web and on native builds without
+  // push-notifications. Mounted here rather than in the root layout because it
+  // needs userId — see the note at the top of the hook for what the second,
+  // login-blind copy in layout.tsx was costing.
+  usePushNotifications(userId)
 
   // Re-read where the user is when the app opens. Coordinates used to be written
   // once at onboarding and never again, so every pin was frozen at whatever spot

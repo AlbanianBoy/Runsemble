@@ -5,7 +5,6 @@ import { Providers } from "@/lib/providers";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { RunSyncRegister } from "@/components/run-sync-register";
 import { ErrorBoundary } from "@/components/error-boundary";
-import { PushRegister } from "@/components/push-register";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -53,7 +52,6 @@ export default function RootLayout({
         <Providers>
           <ErrorBoundary>{children}</ErrorBoundary>
           <RunSyncRegister />
-          <PushRegister />
         </Providers>
         <ServiceWorkerRegister />
       </body>
