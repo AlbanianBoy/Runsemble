@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { useQuery, useMutation } from '@tanstack/react-query'
-import { ArrowRight, MapPin, Loader2, Check } from 'lucide-react'
+import { ArrowRight, MapPin, Loader2, Check, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot } from '@/lib/store'
 import { PACE_LEVELS, SCHEDULE_PREFERENCES } from '@/lib/enums'
@@ -322,10 +322,12 @@ export function OnboardingProfile() {
     setLoading(false)
   }
 
-  // Step 2: save the optional profile, then verify email. Skipping does the same
-  // minus the save — the account already exists either way.
+  // Step 2: save the optional profile, then go STRAIGHT to the payoff (browse
+  // runs). Email verification used to sit here as a wall before the user saw any
+  // value; it now comes after runs and is skippable. Skipping the profile does
+  // the same minus the save — the account already exists either way.
   const handleSaveProfile = async () => {
-    if (!userId) return setOnboardingStep('verify')
+    if (!userId) return setOnboardingStep('runs')
     setLoading(true)
     try {
       const patched = await fetch(`/api/users/${userId}`, {
@@ -354,7 +356,7 @@ export function OnboardingProfile() {
     }
     track('onboarding_profile_saved')
     setLoading(false)
-    setOnboardingStep('verify')
+    setOnboardingStep('runs')
   }
 
   return (
@@ -516,7 +518,7 @@ export function OnboardingProfile() {
               </motion.div>
 
               <button
-                onClick={() => { track('onboarding_skipped'); setOnboardingStep('verify') }}
+                onClick={() => { track('onboarding_skipped'); setOnboardingStep('runs') }}
                 className="block mx-auto mt-4 mb-2 text-sm text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
               >
                 Skip for now
@@ -567,9 +569,19 @@ export function OnboardingRuns() {
         </div>
 
         <h2 className="text-2xl font-bold mb-1">Your first runs are waiting</h2>
-        <p className="text-muted-foreground mb-6">
+        <p className="text-muted-foreground mb-4">
           These runs happen every week near you. Join one — showing up is the whole point.
         </p>
+
+        <div className="mb-6 rounded-2xl border border-primary/20 bg-primary/5 p-3.5 flex gap-3">
+          <Shield className="h-5 w-5 text-primary shrink-0 mt-0.5" />
+          <div className="text-xs text-muted-foreground leading-relaxed">
+            <p className="font-semibold text-foreground mb-0.5">Running with new people?</p>
+            Meet in a public place in daylight for a first run, and tell a friend where you&rsquo;ll be.
+            Your location is only ever shown approximately, you can hide areas like home, and you can
+            block or report anyone in a tap.
+          </div>
+        </div>
 
         <div className="space-y-3">
           {isLoading &&
@@ -615,7 +627,7 @@ export function OnboardingRuns() {
           <Button
             size="lg"
             className="w-full rounded-full font-semibold"
-            onClick={() => setOnboardingStep('done')}
+            onClick={() => setOnboardingStep('verify')}
           >
             {joined.size > 0
               ? `Let's go — ${joined.size} run${joined.size > 1 ? 's' : ''} planned`
@@ -642,7 +654,7 @@ export function OnboardingVerifyEmail() {
       await apiSend<{ ok: boolean }>('/api/auth/verify-email', 'POST', { code: code.trim() })
       updateProfile({ emailVerified: true })
       toast.success('Email verified ✅')
-      setOnboardingStep('runs')
+      setOnboardingStep('done')
     } catch (e) {
       setErrorMsg((e as Error).message)
     }
@@ -703,7 +715,7 @@ export function OnboardingVerifyEmail() {
           </button>
           <span className="text-muted-foreground/40">·</span>
           <button
-            onClick={() => setOnboardingStep('runs')}
+            onClick={() => setOnboardingStep('done')}
             className="text-muted-foreground hover:text-foreground transition-colors underline-offset-4 hover:underline"
           >
             Skip for now
