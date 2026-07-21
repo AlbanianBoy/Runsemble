@@ -6,6 +6,7 @@ import { Send, Loader2, Flag } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
+import { useVisiblePoll } from '@/lib/use-visible-poll'
 import type { ApiDirectMessage, DmThreadResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Input } from '@/components/ui/input'
@@ -15,7 +16,8 @@ import { getAvatarColor, getInitials } from './helpers'
 import { ReportSheet } from './report-sheet'
 
 // A 1:1 direct-message thread. Opened from anywhere via store.openDm(partner)
-// and mounted once globally. Polls while open so replies appear.
+// and mounted once globally. Polls while open — and only while the tab is
+// visible, so a thread left open in a background tab costs nothing.
 export function DmSheet() {
   const { currentUser, dmPartner, closeDm } = useRunsembleStore()
   const queryClient = useQueryClient()
@@ -28,7 +30,7 @@ export function DmSheet() {
     queryKey: ['dm', me, partnerId],
     queryFn: () => apiGet<DmThreadResponse>(`/api/messages?userId=${me}&withId=${partnerId}`),
     enabled: !!me && !!partnerId,
-    refetchInterval: 5000,
+    refetchInterval: useVisiblePoll(5000),
   })
   const messages: ApiDirectMessage[] = data?.messages ?? []
 

@@ -6,14 +6,16 @@ import { formatDistanceToNow } from 'date-fns'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
+import { useVisiblePoll } from '@/lib/use-visible-poll'
 import type { NotificationsResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getAvatarColor, getInitials } from './helpers'
 
-// The notification inbox, opened from the header bell. Polls every 20s so the
-// unread badge stays fresh, and marks everything read when opened.
+// The notification inbox, opened from the header bell. Polls every 20s while the
+// tab is visible so the unread badge stays fresh, and marks everything read when
+// opened. This one is mounted app-wide, so pausing it when hidden matters most.
 export function NotificationsSheet() {
   const { currentUser, notificationsOpen, setNotificationsOpen, setUnreadCount } = useRunsembleStore()
   const queryClient = useQueryClient()
@@ -23,7 +25,7 @@ export function NotificationsSheet() {
     queryKey: ['notifications', userId],
     queryFn: () => apiGet<NotificationsResponse>(`/api/notifications?userId=${userId}`),
     enabled: !!userId,
-    refetchInterval: 20_000,
+    refetchInterval: useVisiblePoll(20_000),
   })
 
   const notifications = data?.notifications ?? []

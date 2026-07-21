@@ -8,6 +8,7 @@ import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiGetSilent, apiSend } from '@/lib/api'
+import { useVisiblePoll } from '@/lib/use-visible-poll'
 import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -47,7 +48,7 @@ export function GroupsTab() {
     queryKey: ['conversations'],
     queryFn: () => apiGetSilent<ConversationsResponse>('/api/messages'),
     enabled: !!currentUser?.id,
-    refetchInterval: 15_000,
+    refetchInterval: useVisiblePoll(15_000),
     retry: false,
     throwOnError: false,
   })
@@ -77,13 +78,19 @@ export function GroupsTab() {
 
   const selectedGroup: ApiGroup | null = selectedGroupData?.group ?? null
 
+  // Hoisted out of the ternary below because hooks can't be called
+  // conditionally — the *condition* stays in the query, this only supplies the
+  // interval it uses when the chat is open.
+  const chatPoll = useVisiblePoll(5000)
+
   const { data: messagesData } = useQuery({
     queryKey: ['group-chat', selectedGroupId],
     queryFn: () => apiGet<GroupMessagesResponse>(`/api/groups/${selectedGroupId}/chat`),
     enabled: !!selectedGroupId && groupView === 'chat',
     // Poll while the chat is open so new messages arrive — the same fallback the
-    // DM thread uses. A push invalidates this key too when one lands.
-    refetchInterval: groupView === 'chat' && selectedGroupId ? 5000 : false,
+    // DM thread uses. A push invalidates this key too when one lands. Open but
+    // hidden is still not open to a human, so chatPoll goes false there too.
+    refetchInterval: groupView === 'chat' && selectedGroupId ? chatPoll : false,
   })
 
   const messages: ApiGroupMessage[] = messagesData?.messages ?? []

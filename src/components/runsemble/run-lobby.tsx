@@ -4,8 +4,11 @@
 // The pre-run gathering screen for a group (hotspot) run — this is what makes
 // starting together feel different from starting alone. You see everyone who
 // joined, who's physically checked in ("here"), and once you've checked in you
-// can start the run for the whole group. Clients poll every 3 seconds, so when
-// anyone taps "Start together", everyone's tracker starts within moments.
+// can start the run for the whole group. Clients poll every 3 seconds while the
+// screen is actually on-screen, so when anyone taps "Start together", everyone's
+// tracker starts within moments. A phone in a pocket isn't watching the lobby,
+// and 3s polling from a backgrounded app is the single most expensive thing this
+// app does — so the poll pauses when hidden and resumes on return.
 
 import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -14,6 +17,7 @@ import { X, MapPin, Clock, CheckCircle2, Loader2, Users } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
+import { useVisiblePoll } from '@/lib/use-visible-poll'
 import type { LatLng } from '@/lib/geo'
 import type { LobbyResponse, LobbyActionResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -52,7 +56,7 @@ export function RunLobby({ hotspotId, groupId, pos, onClose, onStarted }: RunLob
   const { data, isLoading } = useQuery({
     queryKey: lobbyKey,
     queryFn: () => apiGet<LobbyResponse>(lobbyUrl),
-    refetchInterval: 3000,
+    refetchInterval: useVisiblePoll(3000),
   })
 
   const me = data?.participants.find((p) => p.userId === myId)
