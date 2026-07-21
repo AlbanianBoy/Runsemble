@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { describeXpAward, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { eligibleBuddyIds } from '@/lib/buddies'
 import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
 import { verifyRunDistance } from '@/lib/run-math'
@@ -132,11 +133,22 @@ export async function POST(request: NextRequest) {
     // ── Run buddies (the "met someone new" loop) ──
     // Tagged people you actually ran with become buddies. New buddies are the
     // real relationship-building moment, so they earn the bigger reward.
-    const taggedIds: string[] = (
+    const claimedIds: string[] = (
       Array.isArray(buddyIds)
         ? [...new Set(buddyIds.filter((b: unknown) => typeof b === 'string' && b !== userId))] as string[]
         : []
     ).slice(0, MAX_TAGGED_BUDDIES)
+
+    // A tag writes a row on someone else's profile and pushes them a
+    // notification, so it needs evidence you actually ran together — see
+    // eligibleBuddyIds. Ineligible ids are dropped, not rejected: the run
+    // already happened and may be arriving from an offline queue, and losing
+    // real data to enforce a social rule would be the wrong trade.
+    const { allowed: taggedIds, rejected: rejectedBuddyIds } = await eligibleBuddyIds(
+      userId,
+      claimedIds,
+      { hotspotId, groupId }
+    )
 
     // Work out who is new, without writing anything yet. The buddy rows are
     // created inside the transaction below alongside the run, and the "you ran
@@ -335,7 +347,7 @@ export async function POST(request: NextRequest) {
     }
 
     return NextResponse.json(
-      { session, xp, badgesEarned, streak: streakRes, newBuddyCount },
+      { session, xp, badgesEarned, streak: streakRes, newBuddyCount, rejectedBuddyCount: rejectedBuddyIds.length },
       { status: 201 }
     )
   } catch (error) {

@@ -194,10 +194,13 @@ describe('XP arithmetic', () => {
     }
     // buddy does not exist yet → will be created
     overrides['buddy.findUnique'] = () => null
+    // ...and they both turned up to the same hotspot, which is what makes them
+    // taggable at all. Without evidence of running together the tag is dropped.
+    overrides['hotspotParticipant.findMany'] = () => [{ userId: 'u2' }]
 
     const { POST } = await import('@/app/api/runs/route')
     const body = await (
-      await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
+      await POST(post({ ...GOOD_RUN, hotspotId: 'h1', buddyIds: ['u2'] }))
     ).json()
     // 20 + 50 + 30 = 100
     expect(body.session.xpEarned).toBe(100)
@@ -295,9 +298,10 @@ describe('buddy tagging', () => {
     overrides['user.findUnique'] = (args: unknown) =>
       (args as { where: { id: string } }).where.id === 'u2' ? OTHER : ME
     overrides['buddy.findUnique'] = () => null
+    overrides['hotspotParticipant.findMany'] = () => [{ userId: 'u2' }]
 
     const { POST } = await import('@/app/api/runs/route')
-    await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))
+    await POST(post({ ...GOOD_RUN, hotspotId: 'h1', buddyIds: ['u2'] }))
 
     const calls = notify.mock.calls as unknown[][]
     const buddyNotify = calls.find(
@@ -305,5 +309,38 @@ describe('buddy tagging', () => {
     )
     expect(buddyNotify).toBeDefined()
     expect((buddyNotify![0] as { type: string }).type).toBe('run_invite')
+  })
+
+  it('drops a tag on someone there is no evidence you ran with', async () => {
+    // The hole this closes: buddyIds accepted any id at all, so twenty
+    // strangers could be collected per save — each one getting a row on their
+    // profile and a push — with nothing tying them to the run.
+    const OTHER = { id: 'u2', name: 'Bart' }
+    overrides['user.findUnique'] = (args: unknown) =>
+      (args as { where: { id: string } }).where.id === 'u2' ? OTHER : ME
+    overrides['buddy.findUnique'] = () => null
+    const buddyCreateMany = vi.fn(() => ({ count: 0 }))
+    overrides['buddy.createMany'] = buddyCreateMany
+
+    const { POST } = await import('@/app/api/runs/route')
+    // No hotspot, no group, not already buddies, no accepted invite.
+    const body = await (await POST(post({ ...GOOD_RUN, buddyIds: ['u2'] }))).json()
+
+    expect(body.newBuddyCount).toBe(0)
+    expect(body.rejectedBuddyCount).toBe(1)
+    expect(buddyCreateMany).not.toHaveBeenCalled()
+    // And crucially: the person was never told anything happened.
+    const calls = notify.mock.calls as unknown[][]
+    expect(calls.find((c) => (c[0] as { userId: string }).userId === 'u2')).toBeUndefined()
+  })
+
+  it('still saves the run when a tag is dropped', async () => {
+    // The run already happened, possibly hours ago on a queued offline save.
+    // Refusing to store it because of who was tagged would lose real data.
+    overrides['buddy.findUnique'] = () => null
+    const { POST } = await import('@/app/api/runs/route')
+    const res = await POST(post({ ...GOOD_RUN, buddyIds: ['stranger'] }))
+    expect(res.status).toBe(201)
+    expect((await res.json()).session.distanceKm).toBe(5)
   })
 })

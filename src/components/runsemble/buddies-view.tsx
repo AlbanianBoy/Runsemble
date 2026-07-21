@@ -1,15 +1,21 @@
 'use client'
 
-import { useQuery } from '@tanstack/react-query'
+import { useState } from 'react'
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
-import { ArrowLeft, Users, MessageCircle } from 'lucide-react'
+import { ArrowLeft, Users, MessageCircle, UserMinus } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
-import { apiGet } from '@/lib/api'
+import { apiGet, apiSend } from '@/lib/api'
 import type { BuddiesResponse, ConversationsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import {
+  AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
+} from '@/components/ui/alert-dialog'
+import { toast } from 'sonner'
 import { getAvatarColor, getInitials } from './helpers'
 
 // Buddies + direct-message inbox — the relationship layer that keeps people
@@ -17,6 +23,21 @@ import { getAvatarColor, getInitials } from './helpers'
 export function BuddiesView() {
   const { currentUser, setProfileView, openDm } = useRunsembleStore()
   const uid = currentUser?.id
+  const queryClient = useQueryClient()
+  const [removing, setRemoving] = useState<{ id: string; name: string } | null>(null)
+
+  // Leaving a buddy list used to require blocking the person — a hostile,
+  // permanent answer to "I don't really know them". This is the quiet exit:
+  // both rows go, nobody is told.
+  const removeBuddy = useMutation({
+    mutationFn: (buddyId: string) => apiSend('/api/buddies', 'DELETE', { buddyId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['buddies'] })
+      queryClient.invalidateQueries({ queryKey: ['users'] })
+      setRemoving(null)
+    },
+    onError: (e: Error) => toast.error(e.message),
+  })
 
   const { data: buddiesData, isLoading } = useQuery({
     queryKey: ['buddies', uid],
@@ -91,12 +112,42 @@ export function BuddiesView() {
                   <Button size="sm" variant="outline" className="rounded-full" onClick={() => openDm({ id: b.id, name: b.name })}>
                     <MessageCircle className="h-4 w-4 mr-1" />Message
                   </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-11 w-11 rounded-full text-muted-foreground hover:text-destructive shrink-0"
+                    aria-label={`Remove ${b.name} as a run buddy`}
+                    onClick={() => setRemoving({ id: b.id, name: b.name })}
+                  >
+                    <UserMinus className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
             ))}
           </div>
         )}
       </div>
+
+      <AlertDialog open={!!removing} onOpenChange={(o) => !o && setRemoving(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove {removing?.name} as a run buddy?</AlertDialogTitle>
+            <AlertDialogDescription>
+              They&apos;ll be removed from both of your buddy lists. Nobody is notified, and you
+              can tag each other again after a future run.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => removing && removeBuddy.mutate(removing.id)}
+              disabled={removeBuddy.isPending}
+            >
+              {removeBuddy.isPending ? 'Removing…' : 'Remove'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
