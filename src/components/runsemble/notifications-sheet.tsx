@@ -1,13 +1,14 @@
 'use client'
 
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { useVisiblePoll } from '@/lib/use-visible-poll'
-import type { NotificationsResponse } from '@/lib/types'
+import { tabForPush, isDmPush, queryKeysForPush } from '@/lib/push-routing'
+import type { ApiNotification, NotificationsResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -16,8 +17,12 @@ import { getAvatarColor, getInitials } from './helpers'
 // The notification inbox, opened from the header bell. Polls every 20s while the
 // tab is visible so the unread badge stays fresh, and marks everything read when
 // opened. This one is mounted app-wide, so pausing it when hidden matters most.
+//
+// Rows route through src/lib/push-routing.ts — the same table usePushNotifications
+// uses for a tapped push. One notification should mean the same thing whether you
+// tap it on the lock screen or in this list; two tables would guarantee it didn't.
 export function NotificationsSheet() {
-  const { currentUser, notificationsOpen, setNotificationsOpen, setUnreadCount } = useRunsembleStore()
+  const { currentUser, notificationsOpen, setNotificationsOpen, setUnreadCount, setActiveTab, openDm, dmPartner } = useRunsembleStore()
   const queryClient = useQueryClient()
   const userId = currentUser?.id
 
@@ -43,6 +48,21 @@ export function NotificationsSheet() {
     },
   })
 
+  const markRead = useMutation({
+    mutationFn: (ids: string[]) => apiSend('/api/notifications', 'PATCH', { ids }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications', userId] }),
+  })
+
+  // The poll keeps handing back the same still-unread rows until the PATCH lands
+  // and the refetch catches up; without this ledger every replay fires again.
+  const submitted = useRef<Set<string>>(new Set())
+  const markReadOnce = (ids: string[]) => {
+    const fresh = ids.filter((id) => !submitted.current.has(id))
+    if (fresh.length === 0) return
+    for (const id of fresh) submitted.current.add(id)
+    markRead.mutate(fresh)
+  }
+
   // Mark read shortly after the sheet opens.
   useEffect(() => {
     if (notificationsOpen && data && data.unread > 0) {
@@ -50,6 +70,46 @@ export function NotificationsSheet() {
       return () => clearTimeout(t)
     }
   }, [notificationsOpen, data, markAll])
+
+  // ── One tally wins for DM unread ────────────────────────────────────────────
+  // A DM used to be counted twice, by two systems that then drifted: the bell
+  // counts 'group_message' notification rows, the Groups badge counts unread
+  // messages. Opening the thread cleared the messages and left the bell insisting
+  // the DM was still waiting.
+  //
+  // The messages are the source of truth — opening a thread is what "read"
+  // actually means, and the server already marks them on the way in. Notification
+  // rows are a log of what happened, not a second inbox, so they follow: opening
+  // a thread marks that sender's DM notifications read too.
+  const dmPartnerId = dmPartner?.id
+  useEffect(() => {
+    if (!dmPartnerId) return
+    markReadOnce(
+      notifications
+        .filter((n) => n.type === 'group_message' && !n.read && n.actor?.id === dmPartnerId)
+        .map((n) => n.id)
+    )
+  }, [dmPartnerId, notifications])
+
+  // Tapping a row does what tapping the push does: go where the thing is, and
+  // refresh what it made stale. tabForPush always answers, so a type we've never
+  // seen lands on a real screen instead of leaving the row inert.
+  const openNotification = (n: ApiNotification) => {
+    if (!n.read) markReadOnce([n.id])
+
+    for (const key of queryKeysForPush(n.type)) {
+      // Prefix match: keys are ['conversations', userId] and the like.
+      queryClient.invalidateQueries({ queryKey: [key] })
+    }
+    setActiveTab(tabForPush(n.type))
+
+    const actor = n.actor
+    if (actor && isDmPush({ type: n.type, senderId: actor.id, senderName: actor.name })) {
+      openDm({ id: actor.id, name: actor.name })
+    }
+
+    setNotificationsOpen(false)
+  }
 
   return (
     <Sheet open={notificationsOpen} onOpenChange={setNotificationsOpen}>
@@ -73,7 +133,12 @@ export function NotificationsSheet() {
           ) : (
             <div className="divide-y">
               {notifications.map((n) => (
-                <div key={n.id} className={`flex items-start gap-3 p-4 ${n.read ? '' : 'bg-primary/5'}`}>
+                <button
+                  key={n.id}
+                  type="button"
+                  onClick={() => openNotification(n)}
+                  className={`w-full text-left flex items-start gap-3 p-4 transition-colors hover:bg-muted/60 active:bg-muted ${n.read ? '' : 'bg-primary/5'}`}
+                >
                   {n.actor ? (
                     <Avatar className="h-9 w-9 shrink-0">
                       <AvatarFallback className={`text-xs text-white ${getAvatarColor(n.actor.name)}`}>{getInitials(n.actor.name)}</AvatarFallback>
@@ -87,7 +152,7 @@ export function NotificationsSheet() {
                     <p className="text-[11px] text-muted-foreground/70 mt-1">{timeAgo(n.createdAt)}</p>
                   </div>
                   {!n.read && <span className="h-2 w-2 rounded-full bg-primary shrink-0 mt-1.5" />}
-                </div>
+                </button>
               ))}
             </div>
           )}

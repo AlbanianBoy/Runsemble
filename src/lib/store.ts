@@ -81,6 +81,15 @@ interface RunsembleState {
   groupView: 'list' | 'detail' | 'chat' | 'create'
   setGroupView: (view: 'list' | 'detail' | 'chat' | 'create') => void
 
+  // Two counters, and a deliberate hierarchy between them. `unreadCount` is the
+  // bell — unread notification rows, a log of things that happened. Every DM
+  // writes one, so a DM lands in both counters and they used to drift: you read
+  // the thread, the badge cleared, the bell kept insisting a message was waiting.
+  //
+  // `unreadDmCount` wins, because it's counted from the messages themselves and
+  // opening a thread is what "read" actually means. NotificationsSheet marks the
+  // matching 'group_message' rows read when a thread opens, so the bell follows.
+  // Anything that adds a third tally here should follow it too.
   unreadCount: number
   setUnreadCount: (count: number) => void
   notificationsOpen: boolean
