@@ -66,8 +66,15 @@ export function MapTab() {
   const queryClient = useQueryClient()
 
   const { data: hotspotsData } = useQuery({
-    queryKey: ['hotspots'],
-    queryFn: () => apiGet<HotspotsResponse>('/api/hotspots'),
+    // The map is the "near me" surface, so it asks for runs near me. Browse
+    // surfaces (the Hotspots tab, the feed's next-run strip) deliberately keep
+    // asking for the unscoped board — they're for finding things further out.
+    queryKey: ['hotspots', currentUser?.lat, currentUser?.lng],
+    queryFn: () => {
+      const { lat, lng } = currentUser ?? {}
+      const scope = lat != null && lng != null ? `?lat=${lat}&lng=${lng}` : ''
+      return apiGet<HotspotsResponse>(`/api/hotspots${scope}`)
+    },
   })
   const { data: usersData } = useQuery({
     // Position is part of the key: move city and the neighbourhood you're asking
@@ -133,6 +140,12 @@ export function MapTab() {
     () => (myLat != null && myLng != null ? { lat: myLat, lng: myLng } : ANTWERP_CENTER),
     [myLat, myLng]
   )
+
+  // Whether `me` is actually me. Without a fix it's the city centre, so every
+  // "1.2 km away" would be the distance from a spot the user has never stood on
+  // — a confident-looking number that is simply untrue. Distances are hidden
+  // rather than guessed until there's a real position.
+  const hasFix = myLat != null && myLng != null
 
   // Runners live on the map right now (explicitly available OR their scheduled
   // slot has started), visible, located, not me, matching the filters.
@@ -269,7 +282,7 @@ export function MapTab() {
   const isLoading = !hotspotsData && !usersData
 
   const runnerDistance =
-    selectedRunner?.lat != null && selectedRunner?.lng != null
+    hasFix && selectedRunner?.lat != null && selectedRunner?.lng != null
       ? distanceLabel(haversineKm(me, { lat: selectedRunner.lat, lng: selectedRunner.lng }))
       : null
 
@@ -372,11 +385,15 @@ export function MapTab() {
           </button>
         ))}
         <span className="h-4 w-px bg-border shrink-0 mx-0.5" />
+        {/* "Within 3 km" of WHAT, if we don't know where you are? Without a fix
+            these would filter on distance from the city centre, so they're
+            disabled rather than quietly lying. */}
         {RADIUS_OPTIONS.map((r) => (
           <button
             key={r.label}
             onClick={() => setRadiusKm(r.v)}
-            className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
+            disabled={!hasFix && r.v !== null}
+            className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
               radiusKm === r.v ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
             }`}
           >
@@ -384,6 +401,11 @@ export function MapTab() {
           </button>
         ))}
       </div>
+      {!hasFix && (
+        <p className="px-1 -mt-1 text-[11px] text-muted-foreground">
+          Turn on location to see how far away people are.
+        </p>
+      )}
 
       {/* dvh (not vh) so the mobile browser's collapsing toolbar is accounted
           for, plus the bottom safe-area inset so the availability toggle and
@@ -455,9 +477,11 @@ export function MapTab() {
                   </Avatar>
                   <p className="text-sm font-semibold truncate">{r.name.split(' ')[0]}</p>
                   <p className="text-[11px] text-muted-foreground capitalize">{r.paceLevel}</p>
-                  <p className="text-[11px] text-primary font-medium mt-0.5 tabular-nums">
-                    {distanceLabel(haversineKm(me, { lat: r.lat!, lng: r.lng! }))}
-                  </p>
+                  {hasFix && (
+                    <p className="text-[11px] text-primary font-medium mt-0.5 tabular">
+                      {distanceLabel(haversineKm(me, { lat: r.lat!, lng: r.lng! }))}
+                    </p>
+                  )}
                 </button>
               ))}
             </div>

@@ -1,21 +1,116 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { sweepHotspotReminders } from '@/lib/hotspot-reminders'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
 
-export async function GET() {
+// One request must never be able to walk the whole table. A city's curated
+// spots plus everything genuinely upcoming fits far inside this; past the cap
+// what gets dropped is the furthest-future runs, which is the right thing to
+// lose from a board that sorts by "starts soonest".
+const MAX_HOTSPOTS = 200
+
+// Same numbers as /api/users on purpose — a client scoping one call to its
+// viewport should get the same slice of the world from the other.
+const MAX_RADIUS_KM = 100
+const DEFAULT_RADIUS_KM = 25
+
+const KM_PER_DEG_LAT = 111.32
+
+/**
+ * Mirrors the bounding box in /api/users. A box is not a circle — it over-
+ * selects the corners by up to ~27% — but it's a plain range predicate on the
+ * lat/lng columns the schema already has, and the map re-filters by exact
+ * haversine distance anyway.
+ */
+function boundingBox(lat: number, lng: number, radiusKm: number) {
+  const latDelta = radiusKm / KM_PER_DEG_LAT
+  // A degree of longitude narrows towards the poles and collapses to zero at 90°,
+  // so the cosine is floored: a polar viewer gets an over-wide box instead of a
+  // division by zero.
+  const cosLat = Math.max(Math.cos((lat * Math.PI) / 180), 0.01)
+  const lngDelta = radiusKm / (KM_PER_DEG_LAT * cosLat)
+  const minLng = lng - lngDelta
+  const maxLng = lng + lngDelta
+
+  return {
+    minLat: Math.max(lat - latDelta, -90),
+    maxLat: Math.min(lat + latDelta, 90),
+    minLng,
+    maxLng,
+    // A box straddling ±180 is two ranges, not one gte/lte pair. Dropping the
+    // longitude bound keeps the latitude band, which over-selects rather than
+    // hiding every spot on the far side of the line.
+    wrapsAntimeridian: minLng < -180 || maxLng > 180,
+  }
+}
+
+export async function GET(request?: NextRequest) {
   try {
     const now = new Date()
 
-    // Opportunistically fire "your run starts soon" reminders (throttled, no cron).
-    await sweepHotspotReminders()
+    // The reminder sweep is a write path riding the app's most-polled read, so
+    // it goes after the response rather than in front of it. It stays here
+    // instead of on a cron because the cron budget is spent and a daily tick
+    // can't fire a 30-minutes-before reminder.
+    after(() => sweepHotspotReminders())
 
-    // Fetch all active spots; we decide visibility per-spot below so that
-    // official recurring spots stay on the board even after a slot passes.
+    // Next always supplies the request; the parameter is optional so the handler
+    // stays callable bare, matching /api/users.
+    const searchParams = request ? new URL(request.url).searchParams : new URLSearchParams()
+
+    // Empty values count as absent — callers interpolate `?lat=${x ?? ''}`.
+    const rawLat = searchParams.get('lat')?.trim() ?? ''
+    const rawLng = searchParams.get('lng')?.trim() ?? ''
+    const rawRadius = searchParams.get('radiusKm')?.trim() ?? ''
+
+    let box: ReturnType<typeof boundingBox> | null = null
+    if (rawLat || rawLng) {
+      const lat = Number(rawLat)
+      const lng = Number(rawLng)
+      const radiusKm = rawRadius ? Number(rawRadius) : DEFAULT_RADIUS_KM
+
+      // Half a coordinate, or a typo'd one, would silently fall through to the
+      // unscoped board. So it's a 400, not a shrug — same rule as /api/users.
+      const usable =
+        rawLat !== '' &&
+        rawLng !== '' &&
+        Number.isFinite(lat) &&
+        Math.abs(lat) <= 90 &&
+        Number.isFinite(lng) &&
+        Math.abs(lng) <= 180 &&
+        Number.isFinite(radiusKm) &&
+        radiusKm > 0
+      if (!usable) {
+        return NextResponse.json(
+          { error: 'lat and lng must both be valid coordinates, and radiusKm positive' },
+          { status: 400 }
+        )
+      }
+
+      box = boundingBox(lat, lng, Math.min(radiusKm, MAX_RADIUS_KM))
+    }
+
+    // Visibility is still decided per-spot below; this where clause is the same
+    // rule pushed into the query so a spot that expired years ago stops being
+    // fetched only to be thrown away.
     const hotspots = await db.hotspot.findMany({
-      where: { isActive: true },
+      where: {
+        isActive: true,
+        // An official spot's startTime is a recurrence anchor, not a deadline —
+        // it is normally in the past, and bounding officials by it would empty
+        // the board. Only one-off runs expire.
+        OR: [{ isOfficial: true }, { startTime: { gte: now } }],
+        // Absent lat/lng keeps the old whole-board response, so existing
+        // clients are unaffected.
+        ...(box
+          ? {
+              lat: { gte: box.minLat, lte: box.maxLat },
+              ...(box.wrapsAntimeridian ? {} : { lng: { gte: box.minLng, lte: box.maxLng } }),
+            }
+          : {}),
+      },
       include: {
         participants: {
           include: {
@@ -31,6 +126,7 @@ export async function GET() {
         },
       },
       orderBy: { startTime: 'asc' },
+      take: MAX_HOTSPOTS,
     })
 
     // Roll a recurring spot forward to its next future slot so curated city

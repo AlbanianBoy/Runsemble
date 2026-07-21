@@ -2,12 +2,18 @@ import { db } from './db'
 import { notify } from './notify'
 
 // ─── Lazy hotspot reminders ───────────────────────────────────────────────────
-// "Your run starts soon" notifications, without a scheduler. Vercel's free cron
-// granularity is too coarse for 30-min-before reminders, so instead we sweep
-// opportunistically from GET /api/hotspots (which clients poll constantly) and
-// throttle it in-memory. Duplicates are prevented in the DB, so even across
-// multiple serverless instances each participant is reminded at most once per
-// occurrence — correctness doesn't depend on the throttle.
+// "Your run starts soon" notifications, without a scheduler. Cron granularity
+// is too coarse for a 30-min-before reminder, so the sweep rides GET
+// /api/hotspots (which clients poll constantly), scheduled with after() so it
+// never sits in front of that response.
+//
+// The throttle below is a module-level timestamp, which makes it per warm
+// instance and therefore best-effort, not exact: serverless instances are
+// ephemeral, so a fleet of cold starts sweeps more often than THROTTLE_MS and
+// an instance nobody hits sweeps not at all. That's fine, because correctness
+// doesn't live here — the DB dedup does, and it holds across every instance.
+// The throttle exists only to keep a hot read from paying for two extra
+// queries on every single request.
 
 let lastSweep = 0
 const THROTTLE_MS = 5 * 60 * 1000 // run the sweep at most every 5 minutes
@@ -17,6 +23,8 @@ const DEDUP_MS = 90 * 60 * 1000 // one reminder per person per hotspot per 90 mi
 export async function sweepHotspotReminders(): Promise<void> {
   const now = Date.now()
   if (now - lastSweep < THROTTLE_MS) return
+  // Claimed before the first await: concurrent requests on one instance would
+  // otherwise all pass the check and sweep together.
   lastSweep = now
   try {
     const soon = await db.hotspot.findMany({
