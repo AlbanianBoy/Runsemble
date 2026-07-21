@@ -31,6 +31,7 @@ interface DbUser {
   totalDistanceKm?: number; totalDurationSec?: number
   isAvailable?: boolean; availableFrom?: string | null; privacyVisible?: boolean
   analyticsConsent?: boolean
+  consentVersion?: string | null
 }
 
 export function toUserProfile(u: DbUser): UserProfile {
@@ -66,6 +67,7 @@ export function toUserProfile(u: DbUser): UserProfile {
     availableFrom: u.availableFrom ?? null,
     privacyVisible: u.privacyVisible ?? true,
     analyticsConsent: u.analyticsConsent ?? false,
+    consentVersion: u.consentVersion ?? null,
     onboardingComplete: true,
   }
 }

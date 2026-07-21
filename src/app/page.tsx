@@ -5,6 +5,8 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Bell } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { loadActiveRun } from '@/lib/run-persist'
+import { needsReconsent } from '@/lib/consent'
+import { ReconsentGate } from '@/components/runsemble/reconsent-gate'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { OnboardingWelcome, OnboardingProfile, OnboardingVerifyEmail, OnboardingLogin, OnboardingRuns, toUserProfile } from '@/components/runsemble/onboarding'
@@ -89,6 +91,12 @@ export default function Home() {
   if (onboardingStep === 'login') return <OnboardingLogin />
   if (onboardingStep === 'runs' && currentUser) return <OnboardingRuns />
   if (!currentUser) return <OnboardingWelcome />
+
+  // Recording WHICH policy version someone accepted only means something if a
+  // change reaches them. Sits after login and before the app: a fresh signup
+  // already carries the current version, so this is for people whose accepted
+  // version has gone stale (or predates version tracking entirely).
+  if (needsReconsent(currentUser.consentVersion)) return <ReconsentGate />
 
   const renderTab = () => {
     switch (activeTab) {
