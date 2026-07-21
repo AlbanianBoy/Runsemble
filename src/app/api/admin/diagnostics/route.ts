@@ -21,6 +21,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAdminUser } from '@/lib/admin'
+import { isBlobConfigured } from '@/lib/image-store'
 
 export const dynamic = 'force-dynamic'
 
@@ -117,8 +118,11 @@ export async function GET() {
     }
     if (database.pooled && !database.pgbouncerFlag) {
       warnings.push(
-        'Pooled host without ?pgbouncer=true — Prisma will keep using prepared statements, which ' +
-          'PgBouncer in transaction mode cannot support. Expect intermittent query errors.'
+        'Pooled host without ?pgbouncer=true. Prisma documents that flag for poolers in transaction ' +
+          'mode, where it stops Prisma using prepared statements. Neon’s pooler has supported ' +
+          'prepared statements since PgBouncer 1.22, so this may well be fine — the way to know is ' +
+          'Sentry: if there are no "prepared statement already exists" errors, leave it alone. Adding ' +
+          'the flag is the safe move if any appear.'
       )
     }
     if (database.sslmode !== 'require') {
@@ -151,7 +155,12 @@ export async function GET() {
       posthog: Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY),
       resend: Boolean(process.env.RESEND_API_KEY),
       fcm: Boolean(process.env.FCM_PRIVATE_KEY),
-      blob: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+      // Ask the module that actually decides, rather than re-deriving it here.
+      // This checked BLOB_READ_WRITE_TOKEN alone and reported false on a
+      // production instance where uploads work fine — the store is connected via
+      // BLOBB_STORE_ID and OIDC. A diagnostic that invents its own version of a
+      // rule will eventually disagree with the code, and be believed.
+      blob: isBlobConfigured(),
       cronSecret: Boolean(process.env.CRON_SECRET),
       adminEmails: Boolean(process.env.ADMIN_EMAILS),
       // Not an integration, but the same question: is it actually set on the
