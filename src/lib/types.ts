@@ -143,11 +143,14 @@ export interface NotificationsResponse {
 
 // ─── Leaderboard ────────────────────────────────────────────────────────────
 export type LeaderboardMetric = 'xp' | 'distance' | 'streak' | 'runs' | 'buddies'
+/** Rolling time window. `week`/`month` rank on runs inside the window; `all` on lifetime totals. */
+export type LeaderboardWindow = 'all' | 'week' | 'month'
 export interface LeaderboardEntry {
   id: string
   name: string
   avatar: string | null
   city: string
+  /** Lifetime totals — always present, and still what the rank/tier badge is read from. */
   xp: number
   streak: number
   totalRuns: number
@@ -155,9 +158,15 @@ export interface LeaderboardEntry {
   totalPeopleRunWith: number
   paceLevel: string
   position: number
+  /** Totals earned inside the window. Set on week/month boards only, absent on all-time. */
+  windowXp?: number
+  windowRuns?: number
+  windowDistanceKm?: number
 }
 export interface LeaderboardResponse {
+  /** The metric actually served — may differ from the request when a metric has no windowed board. */
   metric: LeaderboardMetric
+  window: LeaderboardWindow
   entries: LeaderboardEntry[]
   /** The viewer's own row + true rank when they fall outside the top list; null if in it. */
   viewer?: LeaderboardEntry | null
