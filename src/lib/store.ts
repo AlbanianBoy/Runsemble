@@ -44,6 +44,7 @@ export interface UserProfile {
   totalDurationSec: number
   isAvailable: boolean
   availableFrom?: string | null
+  availableUntil?: string | null
   privacyVisible: boolean
   analyticsConsent: boolean
   onboardingComplete: boolean

@@ -26,6 +26,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet'
 import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
 import { HotspotsTab } from './hotspots-tab'
+import { ReportSheet } from './report-sheet'
 
 // Leaflet must never render on the server — load the canvas client-side only.
 const MapCanvas = dynamic(() => import('./map-canvas'), {
@@ -53,6 +54,7 @@ export function MapTab() {
   const { currentUser, isAvailable, setAvailability, updateProfile, openRunTracker, openDm } = useRunsembleStore()
   const [selectedHotspot, setSelectedHotspot] = useState<ApiHotspot | null>(null)
   const [selectedRunner, setSelectedRunner] = useState<ApiUser | null>(null)
+  const [reportOpen, setReportOpen] = useState(false)
   const [view, setView] = useState<'map' | 'runs'>('map')
   const [paceFilter, setPaceFilter] = useState<PaceFilter>('any')
   const [radiusKm, setRadiusKm] = useState<number | null>(null)
@@ -567,27 +569,7 @@ export function MapTab() {
                 {'\u{1F512}'} Location shown approximately for privacy
               </p>
               <button
-                onClick={() => {
-                  const r = selectedRunner
-                  if (!currentUser?.id) return
-                  if (!confirm(`Report & block ${r.name}? You won't see each other or be able to message, and an operator will review the report.`)) return
-                  // Block hides them from you; the report is what an operator
-                  // actually sees. Fire both — the report failing must not stop
-                  // the block, which is the part that protects the user now.
-                  apiSend(`/api/reports`, 'POST', {
-                    subjectType: 'user',
-                    subjectId: r.id,
-                    reason: 'other',
-                    details: 'Reported & blocked from map profile',
-                  }).catch(() => {})
-                  apiSend(`/api/users/${r.id}/block`, 'POST', { blockerId: currentUser.id, reason: 'reported from profile' })
-                    .then(() => {
-                      toast.success(`${r.name} reported & blocked`)
-                      queryClient.invalidateQueries({ queryKey: ['users'] })
-                      setSelectedRunner(null)
-                    })
-                    .catch(() => toast.error('Could not block'))
-                }}
+                onClick={() => setReportOpen(true)}
                 className="text-[11px] text-muted-foreground/70 hover:text-destructive transition-colors"
               >
                 Report &amp; block
@@ -596,6 +578,28 @@ export function MapTab() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* Categorised report for the selected runner. Filing implies a block —
+          the block protects the user now, the reason tells an operator what to
+          look for. */}
+      <ReportSheet
+        open={reportOpen}
+        onOpenChange={setReportOpen}
+        subjectType="user"
+        subjectId={selectedRunner?.id ?? null}
+        subjectLabel={selectedRunner?.name}
+        onReported={() => {
+          const r = selectedRunner
+          if (!r || !currentUser?.id) return
+          apiSend(`/api/users/${r.id}/block`, 'POST', { blockerId: currentUser.id, reason: 'reported' })
+            .then(() => {
+              toast.success(`${r.name} blocked`)
+              queryClient.invalidateQueries({ queryKey: ['users'] })
+              setSelectedRunner(null)
+            })
+            .catch(() => toast.error('Reported, but could not block — try again from their profile'))
+        }}
+      />
 
       {/* When are you free? */}
       <Sheet open={availSheetOpen} onOpenChange={setAvailSheetOpen}>

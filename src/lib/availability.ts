@@ -12,11 +12,21 @@ export const SCHEDULED_WINDOW_MIN = 60
 export interface AvailabilityLike {
   isAvailable: boolean
   availableFrom?: string | null
+  availableUntil?: string | null
 }
 
 /** Live on the map right now — explicitly available, or a scheduled slot that has started. */
 export function isAvailableNow(u: AvailabilityLike, now: Date = new Date()): boolean {
-  if (u.isAvailable) return true
+  if (u.isAvailable) {
+    // "Available now" is time-boxed: the toggle stamps availableUntil = +45 min.
+    // Honouring it here — reader-side — is what makes a stale "free to run" pin
+    // disappear for everyone once the window passes, even though the server row
+    // still reads isAvailable:true (the 45-min client timer only clears local
+    // state). A row with no expiry (legacy / not yet re-toggled) stays available.
+    if (!u.availableUntil) return true
+    const until = new Date(u.availableUntil).getTime()
+    return Number.isNaN(until) ? true : now.getTime() < until
+  }
   if (!u.availableFrom) return false
   const from = new Date(u.availableFrom).getTime()
   if (Number.isNaN(from)) return false

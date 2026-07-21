@@ -7,6 +7,7 @@ import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRig
 import { toast } from 'sonner'
 import { useRunsembleStore, getRankFromXP, type PaceLevel } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
+import { AVAILABLE_NOW_MINUTES } from '@/lib/availability'
 import type { BadgesResponse } from '@/lib/types'
 import { Leaderboard } from './leaderboard'
 import { RunHistory } from './run-history'
@@ -83,9 +84,13 @@ export function ProfileTab() {
   // Availability callbacks (after mutation to avoid "used before declared")
   const startAvailability = useCallback(async () => {
     setAvailableMinutesLeft(45)
-    updateProfile({ isAvailable: true })
+    // Stamp the expiry the map already uses. Without it the server row has no
+    // end time, so to other people this "free to run now" pin never goes stale —
+    // the 45-min timer below only clears local state, not the server.
+    const availableUntil = new Date(Date.now() + AVAILABLE_NOW_MINUTES * 60_000).toISOString()
+    updateProfile({ isAvailable: true, availableUntil })
     if (currentUser?.id) {
-      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: true }).catch(() => {})
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: true, availableUntil }).catch(() => {})
     }
     if (availTimerRef.current) clearInterval(availTimerRef.current)
     availTimerRef.current = setInterval(() => {
@@ -103,9 +108,9 @@ export function ProfileTab() {
   const stopAvailability = useCallback(() => {
     if (availTimerRef.current) { clearInterval(availTimerRef.current); availTimerRef.current = null }
     setAvailableMinutesLeft(45)
-    updateProfile({ isAvailable: false })
+    updateProfile({ isAvailable: false, availableUntil: null })
     if (currentUser?.id) {
-      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: false }).catch(() => {})
+      apiSend(`/api/users/${currentUser.id}`, 'PUT', { isAvailable: false, availableUntil: null }).catch(() => {})
     }
   }, [updateProfile, currentUser])
 

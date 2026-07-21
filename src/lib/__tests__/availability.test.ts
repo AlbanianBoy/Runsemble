@@ -8,6 +8,12 @@ describe('isAvailableNow', () => {
   it('is true when explicitly available', () => {
     expect(isAvailableNow({ isAvailable: true }, NOW)).toBe(true)
   })
+  it('honours availableUntil: a live window is available', () => {
+    expect(isAvailableNow({ isAvailable: true, availableUntil: mins(30) }, NOW)).toBe(true)
+  })
+  it('honours availableUntil: an expired window is NOT available (stale pin clears reader-side)', () => {
+    expect(isAvailableNow({ isAvailable: true, availableUntil: mins(-1) }, NOW)).toBe(false)
+  })
   it('is false with no schedule and not available', () => {
     expect(isAvailableNow({ isAvailable: false }, NOW)).toBe(false)
   })

@@ -2,7 +2,8 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { Send, Loader2 } from 'lucide-react'
+import { Send, Loader2, Flag } from 'lucide-react'
+import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { ApiDirectMessage, DmThreadResponse } from '@/lib/types'
@@ -11,6 +12,7 @@ import { Input } from '@/components/ui/input'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getAvatarColor, getInitials } from './helpers'
+import { ReportSheet } from './report-sheet'
 
 // A 1:1 direct-message thread. Opened from anywhere via store.openDm(partner)
 // and mounted once globally. Polls while open so replies appear.
@@ -18,6 +20,7 @@ export function DmSheet() {
   const { currentUser, dmPartner, closeDm } = useRunsembleStore()
   const queryClient = useQueryClient()
   const [text, setText] = useState('')
+  const [reportOpen, setReportOpen] = useState(false)
   const me = currentUser?.id
   const partnerId = dmPartner?.id
 
@@ -48,6 +51,7 @@ export function DmSheet() {
   const submit = () => { if (text.trim() && me && partnerId && !send.isPending) send.mutate(text.trim()) }
 
   return (
+    <>
     <Sheet open={!!dmPartner} onOpenChange={(o) => { if (!o) closeDm() }}>
       <SheetContent side="bottom" className="rounded-t-3xl h-[80dvh] p-0 flex flex-col">
         <SheetHeader className="p-4 border-b flex-row items-center gap-3 space-y-0">
@@ -55,6 +59,13 @@ export function DmSheet() {
             <Avatar className="h-9 w-9"><AvatarFallback className={`text-xs text-white ${getAvatarColor(dmPartner.name)}`}>{getInitials(dmPartner.name)}</AvatarFallback></Avatar>
           )}
           <SheetTitle>{dmPartner?.name}</SheetTitle>
+          <button
+            onClick={() => setReportOpen(true)}
+            aria-label={`Report or block ${dmPartner?.name ?? 'this person'}`}
+            className="ml-auto text-muted-foreground/70 hover:text-destructive transition-colors p-1 -m-1"
+          >
+            <Flag className="h-4 w-4" />
+          </button>
         </SheetHeader>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-2">
@@ -83,5 +94,25 @@ export function DmSheet() {
         </div>
       </SheetContent>
     </Sheet>
+
+    {/* Report or block the person you're talking to — filing implies a block. */}
+    <ReportSheet
+      open={reportOpen}
+      onOpenChange={setReportOpen}
+      subjectType="user"
+      subjectId={partnerId ?? null}
+      subjectLabel={dmPartner?.name}
+      onReported={() => {
+        if (!partnerId || !me) return
+        apiSend(`/api/users/${partnerId}/block`, 'POST', { blockerId: me, reason: 'reported from chat' })
+          .then(() => {
+            toast.success(`${dmPartner?.name ?? 'This person'} blocked`)
+            queryClient.invalidateQueries({ queryKey: ['conversations', me] })
+            closeDm()
+          })
+          .catch(() => toast.error('Reported, but could not block — try again'))
+      }}
+    />
+    </>
   )
 }
