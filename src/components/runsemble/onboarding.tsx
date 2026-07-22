@@ -7,9 +7,10 @@ import { ArrowRight, MapPin, Loader2, Check, Shield } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore, type UserProfile, type PaceLevel, type ScheduleSlot } from '@/lib/store'
 import { PACE_LEVELS, SCHEDULE_PREFERENCES, canJoinAudience } from '@/lib/enums'
-import { apiGet, apiSend } from '@/lib/api'
+import { apiGet, apiSend, ApiError } from '@/lib/api'
 import { track } from '@/lib/analytics'
 import { MIN_AGE, isOldEnough } from '@/lib/consent'
+import { validatePassword } from '@/lib/password-policy'
 import type { HotspotsResponse, HotspotResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -241,6 +242,32 @@ const PACE_META: Record<PaceLevel, { label: string }> = {
 }
 const PACE_OPTIONS = PACE_LEVELS.map((id) => ({ id, ...PACE_META[id] }))
 
+// Password rules come from password-policy.ts — same module the server uses —
+// so the form and signup can't disagree. Hashing stays server-only in password.ts.
+
+// Deliberately loose. The only thing worth catching here is a slip like a
+// missing @; anything stricter starts turning away addresses that deliver fine,
+// and the verification code is the real proof the inbox exists.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/
+
+type AccountField = 'name' | 'email' | 'password' | 'birthdate'
+type FieldNote = { message: string; tone: 'hint' | 'error' }
+
+// The same sentence carries both jobs — only the colour changes. "Password must
+// be at least 8 characters" is an instruction while you're on character four and
+// a complaint once you've left the field, and it shouldn't look like a complaint
+// until then.
+function FieldMessage({ id, note }: { id: string; note: FieldNote }) {
+  return (
+    <p
+      id={id}
+      className={`mt-1.5 text-xs ${note.tone === 'error' ? 'text-destructive' : 'text-muted-foreground'}`}
+    >
+      {note.message}
+    </p>
+  )
+}
+
 export function OnboardingProfile() {
   const { setCurrentUser, updateProfile, setOnboardingStep } = useRunsembleStore()
 
@@ -270,15 +297,58 @@ export function OnboardingProfile() {
   const [loading, setLoading] = useState(false)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
-  // Age gate: the button won't submit under-age, and the server re-checks. The
-  // client check is just so the person isn't sent through a doomed request.
-  const canCreate =
-    !!name.trim() &&
-    !!email.trim() &&
-    password.length >= 8 &&
-    consent &&
-    isOldEnough(birthdate) &&
-    !loading
+  // Which account fields the person has finished with. An unmet requirement they
+  // haven't reached yet is guidance; the same requirement after they've left the
+  // field is an error. The form used to say nothing at all, but the cure for
+  // silence isn't going red at someone halfway through typing their email.
+  const [touched, setTouched] = useState<Record<AccountField, boolean>>({
+    name: false, email: false, password: false, birthdate: false,
+  })
+  const markTouched = (field: AccountField) =>
+    setTouched((prev) => ({ ...prev, [field]: true }))
+
+  // Every requirement in one place. These were three unrelated mechanisms — a
+  // boolean that greyed out the button and explained nothing, a lone red line
+  // under the date of birth, and the password policy arriving from the server as
+  // a toast — so you could satisfy one and still have no idea what was left.
+  // The server re-checks all of it; none of this is trusted, it's just faster.
+  const nameIssue = name.trim() ? null : 'Add your name'
+  const emailIssue = !email.trim()
+    ? 'Add your email address'
+    : EMAIL_PATTERN.test(email.trim())
+      ? null
+      : 'That doesn’t look like an email address'
+  const passwordIssue = validatePassword(password, email)
+  const birthdateIssue = !birthdate
+    ? 'Add your date of birth'
+    : isOldEnough(birthdate)
+      ? null
+      : `You must be at least ${MIN_AGE} to use Runsemble`
+
+  // A message appears once there's something to react to: the field has content,
+  // or they've already moved on from it. An empty field nobody has touched stays
+  // quiet — its label is already doing that job.
+  const noteFor = (field: AccountField, value: string, issue: string | null): FieldNote | null => {
+    if (!issue || (!value && !touched[field])) return null
+    return { message: issue, tone: touched[field] ? 'error' : 'hint' }
+  }
+  const nameNote = noteFor('name', name, nameIssue)
+  const emailNote = noteFor('email', email, emailIssue)
+  const passwordNote = noteFor('password', password, passwordIssue)
+  const birthdateNote = noteFor('birthdate', birthdate, birthdateIssue)
+
+  // What the disabled button is still waiting for, spelled out under it. Deriving
+  // canCreate from this same list is the point: the button can't be dead for a
+  // reason the list doesn't mention.
+  const outstanding = [
+    nameIssue && 'your name',
+    emailIssue && 'your email',
+    passwordIssue && 'a password',
+    birthdateIssue && 'your date of birth',
+    !consent && 'the data-processing agreement',
+  ].filter((item): item is string => typeof item === 'string')
+
+  const canCreate = outstanding.length === 0 && !loading
 
   const toggleSchedule = (slot: ScheduleSlot) => {
     setSchedule((prev) => (prev.includes(slot) ? prev.filter((s) => s !== slot) : [...prev, slot]))
@@ -390,22 +460,61 @@ export function OnboardingProfile() {
               <div className="space-y-5">
                 <div>
                   <Label htmlFor="name">Name</Label>
-                  <Input id="name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Your name" className="mt-1.5" />
+                  <Input
+                    id="name"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    onBlur={() => markTouched('name')}
+                    placeholder="Your name"
+                    className="mt-1.5"
+                    aria-invalid={nameNote?.tone === 'error'}
+                    aria-describedby={nameNote ? 'name-note' : undefined}
+                  />
+                  {nameNote && <FieldMessage id="name-note" note={nameNote} />}
                 </div>
                 <div>
                   <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" className="mt-1.5" />
+                  <Input
+                    id="email"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    onBlur={() => markTouched('email')}
+                    placeholder="you@email.com"
+                    className="mt-1.5"
+                    aria-invalid={emailNote?.tone === 'error'}
+                    aria-describedby={emailNote ? 'email-note' : undefined}
+                  />
+                  {emailNote && <FieldMessage id="email-note" note={emailNote} />}
                 </div>
                 <div>
                   <Label htmlFor="password">Password</Label>
-                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="At least 8 characters" className="mt-1.5" />
+                  <Input
+                    id="password"
+                    type="password"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    onBlur={() => markTouched('password')}
+                    placeholder="At least 8 characters"
+                    className="mt-1.5"
+                    aria-invalid={passwordNote?.tone === 'error'}
+                    aria-describedby={passwordNote ? 'password-note' : undefined}
+                  />
+                  {passwordNote && <FieldMessage id="password-note" note={passwordNote} />}
                 </div>
                 <div>
                   <Label htmlFor="birthdate">Date of birth</Label>
-                  <Input id="birthdate" type="date" value={birthdate} onChange={(e) => setBirthdate(e.target.value)} className="mt-1.5" />
-                  {birthdate && !isOldEnough(birthdate) && (
-                    <p className="mt-1 text-xs text-destructive">You must be at least {MIN_AGE} to use Runsemble.</p>
-                  )}
+                  <Input
+                    id="birthdate"
+                    type="date"
+                    value={birthdate}
+                    onChange={(e) => setBirthdate(e.target.value)}
+                    onBlur={() => markTouched('birthdate')}
+                    className="mt-1.5"
+                    aria-invalid={birthdateNote?.tone === 'error'}
+                    aria-describedby={birthdateNote ? 'birthdate-note' : undefined}
+                  />
+                  {birthdateNote && <FieldMessage id="birthdate-note" note={birthdateNote} />}
                 </div>
               </div>
 
@@ -429,11 +538,29 @@ export function OnboardingProfile() {
               {errorMsg && <p className="mt-3 text-sm text-destructive" role="alert">{errorMsg}</p>}
 
               <motion.div whileTap={{ scale: 0.98 }} className="mt-6">
-                <Button size="lg" className="w-full rounded-full font-semibold" onClick={handleCreateAccount} disabled={!canCreate}>
+                <Button
+                  size="lg"
+                  className="w-full rounded-full font-semibold"
+                  onClick={handleCreateAccount}
+                  disabled={!canCreate}
+                  aria-describedby={outstanding.length > 0 ? 'create-account-todo' : undefined}
+                >
                   {loading ? 'Creating account…' : 'Continue'}
                   {!loading && <ArrowRight className="h-4 w-4" />}
                 </Button>
               </motion.div>
+
+              {/* Rendered even when empty so the live region already exists when the
+                  list changes — a region that appears at the same moment as its text
+                  is announced by roughly nothing. A disabled button can't be focused,
+                  so this is the only way the remaining requirements get spoken. */}
+              <p
+                id="create-account-todo"
+                aria-live="polite"
+                className="mt-2 text-center text-xs text-muted-foreground"
+              >
+                {outstanding.length > 0 ? `Still needed: ${outstanding.join(' · ')}` : ''}
+              </p>
 
               <button
                 onClick={() => setOnboardingStep('login')}
@@ -571,7 +698,12 @@ export function OnboardingRuns() {
       }
     },
     onError: (e: Error, id) => {
-      if (e.message.toLowerCase().includes('already')) {
+      // Prefer the stable code (conflict) once the join route emits it; fall
+      // back to the old prose match so a partial deploy can't strand the UI.
+      const already =
+        (e instanceof ApiError && e.code === 'conflict') ||
+        e.message.toLowerCase().includes('already')
+      if (already) {
         setJoined((prev) => new Set(prev).add(id))
         return
       }
