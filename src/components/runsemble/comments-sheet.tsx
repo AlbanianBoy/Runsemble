@@ -6,6 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Send, MessageCircle, Loader2 } from 'lucide-react'
 import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
+import { showMutationError } from '@/lib/mutation-error'
 import { apiGet, apiSend } from '@/lib/api'
 import type { ApiComment, CommentsResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -52,6 +53,8 @@ export function CommentsSheet({
       queryClient.invalidateQueries({ queryKey: ['comments', postId] })
       queryClient.invalidateQueries({ queryKey: ['feed'] })
     },
+    // Had no error handler at all: a refused comment simply vanished.
+    onError: (e: Error) => showMutationError(e),
   })
 
   function submit() {

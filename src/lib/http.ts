@@ -47,6 +47,10 @@ export const ERROR_CODES = [
   // 403 — you are someone, just not someone who may: 'Cannot message this user',
   // 'Join the group to post in it', 'This run is for women only.'
   'forbidden',
+  // 403 — a specific, fixable kind of forbidden: the account exists but has not
+  // confirmed its address, and anything that reaches another person needs that.
+  // Its own code because the client's response is a resend button, not a toast.
+  'email_unverified',
   // 404 — 'User not found', 'Hotspot not found', 'That content no longer exists'.
   'not_found',
   // 409 — the state already moved: 'Already joined this hotspot', 'You already

@@ -7,6 +7,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Clock, MapPin, Users, Navigation, Loader2, Map as MapIcon, Flame, Play, MessageCircle, Search, ChevronRight } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore } from '@/lib/store'
+import { showMutationError } from '@/lib/mutation-error'
 import { apiGet, apiSend } from '@/lib/api'
 import { track } from '@/lib/analytics'
 import { ANTWERP_CENTER, haversineKm, distanceLabel, type LatLng } from '@/lib/geo'
@@ -113,7 +114,7 @@ export function MapTab() {
   const inviteMutation = useMutation({
     mutationFn: (recipientId: string) => apiSend('/api/invites', 'POST', { recipientId }),
     onSuccess: () => toast.success('Run invite sent 🏃'),
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showMutationError(e),
   })
   const answerInvite = useMutation({
     mutationFn: ({ id, action }: { id: string; action: 'accept' | 'decline' }) =>
@@ -123,7 +124,7 @@ export function MapTab() {
       queryClient.invalidateQueries({ queryKey: ['notifications'] })
       if (v.action === 'accept') toast.success('Accepted! Message them to plan it 🤝')
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showMutationError(e),
   })
 
   // ── Find people by name ──
@@ -218,7 +219,7 @@ export function MapTab() {
         toast(`${data.badgeEarned.icon} Badge unlocked: ${data.badgeEarned.title}`)
       }
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showMutationError(e),
   })
 
   // ── Availability: now, later today, or off ─────────────────────────────────

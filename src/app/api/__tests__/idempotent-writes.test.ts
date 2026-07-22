@@ -26,7 +26,10 @@ vi.mock('@/lib/auth', async (orig) => ({
 }))
 vi.mock('@/lib/notify', () => ({ notify: vi.fn(async () => {}) }))
 
-const ME = { id: 'u1', name: 'Arian', email: 'a@b.c' }
+// emailVerified matters now: anything that reaches another person requires a
+// confirmed address (see lib/capabilities). A fixture without it is not a
+// normal user, it is a fresh unverified signup.
+const ME = { id: 'u1', name: 'Arian', email: 'a@b.c', emailVerified: true }
 const THEM = { id: 'u2', name: 'Bart' }
 
 const post = (url: string, body: unknown) =>
@@ -138,5 +141,32 @@ describe('POST /api/messages idempotency', () => {
 
     expect(create).toHaveBeenCalledTimes(1)
     expect((await res.json()).duplicate).toBeUndefined()
+  })
+})
+
+describe('email verification gate', () => {
+  it('refuses a DM from an account that has not confirmed its address', async () => {
+    // The Sybil hole: signing up cost an email address and nothing else, because
+    // emailVerified was written by the verify flow and read by nothing.
+    getSessionUser.mockResolvedValue({ ...ME, emailVerified: false })
+    const create = vi.fn()
+    overrides['chatMessage.create'] = create
+
+    const { POST } = await import('@/app/api/messages/route')
+    const res = await POST(post('/api/messages', { recipientId: 'u2', content: 'hi' }))
+    const body = await res.json()
+
+    expect(res.status).toBe(403)
+    expect(body.code).toBe('email_unverified')
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('is not a 401 — the session is valid, the capability is missing', async () => {
+    // A 401 would bounce them to the login screen and lose their place, for an
+    // account that is perfectly signed in.
+    getSessionUser.mockResolvedValue({ ...ME, emailVerified: false })
+    const { POST } = await import('@/app/api/messages/route')
+    const res = await POST(post('/api/messages', { recipientId: 'u2', content: 'hi' }))
+    expect(res.status).not.toBe(401)
   })
 })

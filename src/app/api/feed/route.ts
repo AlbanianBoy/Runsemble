@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { checkRateLimit, userKey } from '@/lib/rate-limit'
+import { requireVerifiedEmail } from '@/lib/capabilities'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { storeImage, validateImageDataUrl } from '@/lib/image-store'
 import { POST_TYPES, isOneOf, validateEnumFields } from '@/lib/enums'
@@ -156,6 +157,11 @@ export async function POST(request: NextRequest) {
     if (!(await checkRateLimit(userKey('post', me.id), 30, 60 * 60_000))) {
       return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
     }
+
+    // Anything that lands in someone else's notifications needs a confirmed
+    // address behind it — see lib/capabilities.
+    const unverified = requireVerifiedEmail(me)
+    if (unverified) return unverified
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response

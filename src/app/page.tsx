@@ -18,6 +18,7 @@ import { BottomNav } from '@/components/runsemble/bottom-nav'
 import { RunTracker } from '@/components/runsemble/run-tracker'
 import { NotificationsSheet } from '@/components/runsemble/notifications-sheet'
 import { DmSheet } from '@/components/runsemble/dm-sheet'
+import { VerifyEmailGate } from '@/components/runsemble/verify-email-gate'
 import { getAvatarColor, getInitials } from '@/components/runsemble/helpers'
 
 const pageVariants = {
@@ -153,6 +154,7 @@ export default function Home() {
       {/* Global overlays */}
       <NotificationsSheet />
       <DmSheet />
+      <VerifyEmailGate />
       <AnimatePresence>
         {runTrackerOpen && <RunTracker />}
       </AnimatePresence>

@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { checkRateLimit, userKey } from '@/lib/rate-limit'
+import { requireVerifiedEmail } from '@/lib/capabilities'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 import { readClientId } from '@/lib/idempotency'
@@ -116,6 +117,11 @@ export async function POST(request: NextRequest) {
     if (!(await checkRateLimit(userKey('dm', me.id), 60, 60_000))) {
       return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
     }
+
+    // Anything that lands in someone else's notifications needs a confirmed
+    // address behind it — see lib/capabilities.
+    const unverified = requireVerifiedEmail(me)
+    if (unverified) return unverified
     const senderId = me.id
 
     const parsed = await readJson(request)

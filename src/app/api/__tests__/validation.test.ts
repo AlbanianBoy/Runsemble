@@ -22,7 +22,10 @@ vi.mock('@/lib/auth', async (orig) => ({
   getSessionUser,
 }))
 
-const ME = { id: 'u1', name: 'Arian', email: 'a@b.c' }
+// emailVerified matters now: anything that reaches another person requires a
+// confirmed address (see lib/capabilities). A fixture without it is not a
+// normal user, it is a fresh unverified signup.
+const ME = { id: 'u1', name: 'Arian', email: 'a@b.c', emailVerified: true }
 
 beforeEach(() => {
   getSessionUser.mockReset()

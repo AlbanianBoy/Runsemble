@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { checkRateLimit, userKey } from '@/lib/rate-limit'
+import { requireVerifiedEmail } from '@/lib/capabilities'
 import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
@@ -47,6 +48,11 @@ export async function POST(request: NextRequest) {
     if (!(await checkRateLimit(userKey('invite', me.id), 20, 60 * 60_000))) {
       return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
     }
+
+    // Anything that lands in someone else's notifications needs a confirmed
+    // address behind it — see lib/capabilities.
+    const unverified = requireVerifiedEmail(me)
+    if (unverified) return unverified
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response

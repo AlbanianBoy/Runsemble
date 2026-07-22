@@ -9,6 +9,7 @@ import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImageP
 import { toast } from 'sonner'
 import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
+import { showMutationError } from '@/lib/mutation-error'
 import { apiGet, apiSend } from '@/lib/api'
 import type {
   ApiFeedPost,
@@ -171,7 +172,7 @@ export function FeedTab() {
       setNewPostImage(null)
       draftPostId.current = newClientId()
     },
-    onError: (e: Error) => toast.error(e.message),
+    onError: (e: Error) => showMutationError(e),
   })
 
   // Downscale + compress the chosen photo in the browser before it ever

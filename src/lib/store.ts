@@ -111,6 +111,12 @@ interface RunsembleState {
   openDm: (partner: { id: string; name: string }) => void
   closeDm: () => void
 
+  // Opened when the server refuses an action with 'email_unverified'. Global
+  // rather than per-screen because every gated action can raise it, and each of
+  // them wants the same one answer.
+  verifyPromptOpen: boolean
+  setVerifyPromptOpen: (open: boolean) => void
+
   profileView: 'main' | 'edit' | 'achievements' | 'badges' | 'xp' | 'settings' | 'leaderboard' | 'runs' | 'challenges' | 'buddies'
   setProfileView: (view: 'main' | 'edit' | 'achievements' | 'badges' | 'xp' | 'settings' | 'leaderboard' | 'runs' | 'challenges' | 'buddies') => void
 
@@ -167,6 +173,9 @@ export const useRunsembleStore = create<RunsembleState>()(
       dmPartner: null,
       openDm: (partner) => set({ dmPartner: partner }),
       closeDm: () => set({ dmPartner: null }),
+
+      verifyPromptOpen: false,
+      setVerifyPromptOpen: (open) => set({ verifyPromptOpen: open }),
 
       profileView: 'main',
       setProfileView: (view) => set({ profileView: view }),

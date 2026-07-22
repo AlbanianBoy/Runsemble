@@ -7,6 +7,7 @@ import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
 import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
+import { showMutationError } from '@/lib/mutation-error'
 import { apiGet, apiSend } from '@/lib/api'
 import { useVisiblePoll } from '@/lib/use-visible-poll'
 import type { ApiDirectMessage, DmThreadResponse } from '@/lib/types'
@@ -54,7 +55,11 @@ export function DmSheet() {
       queryClient.invalidateQueries({ queryKey: ['dm', me, partnerId] })
       queryClient.invalidateQueries({ queryKey: ['conversations', me] })
     },
-    onError: (e: Error) => { /* surfaced inline; keep text */ void e },
+    // The old comment here said the error was "surfaced inline". Nothing
+    // rendered it, so a failed send was completely silent — the text stayed
+    // in the box and nothing said why. Keeping the text is right; saying
+    // nothing is not.
+    onError: (e: Error) => showMutationError(e),
   })
 
   // One id per composed message. Regenerated only once a send has succeeded and
