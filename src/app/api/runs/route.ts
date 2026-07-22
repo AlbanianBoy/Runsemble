@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { describeXpAward, grantBadge, computeStreak, BADGES, type BadgeSpec } from '@/lib/xp'
+import { describeXpAward, grantBadge, computeStreak, runXp, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { eligibleBuddyIds } from '@/lib/buddies'
 import { getSessionUser } from '@/lib/auth'
@@ -14,13 +14,6 @@ import { apiError, readJson } from '@/lib/http'
 // request. Generous enough that a real group run is never clipped.
 const MAX_COMPANIONS = 20
 const MAX_TAGGED_BUDDIES = 20
-// How many people a single run pays social XP for. Beyond this you can still tag
-// everyone you ran with — it just stops being worth farming.
-const XP_PAID_PEOPLE = 3
-// A pure backstop set ABOVE the legitimate maximum (a GPS-verified 200km run at
-// 10 XP/km plus 20 buddies and 20 companions tops out ~2920), so it never clips
-// a real ultra — it only trips if a future change reintroduces an unbounded term.
-const MAX_RUN_XP = 3200
 
 // List YOUR tracked runs (newest first). GPS traces are private — session only.
 export async function GET() {
@@ -181,19 +174,13 @@ export async function POST(request: NextRequest) {
 
     const companionCount = untaggedCompanions + taggedIds.length
 
-    // XP: showing up (20) + effort (10/km) + running with people.
-    //
-    // The social part is paid on the FIRST few people only, not linearly per
-    // head. Linear per-person XP made "collect as many people as possible" the
-    // optimal play — which is what turned buddy-tagging into something you do TO
-    // someone rather than with them. A group run still pays more than a solo one;
-    // tagging twenty strangers pays the same as running with three friends.
-    const paidBuddies = Math.min(newBuddyCount, XP_PAID_PEOPLE)
-    const paidCompanions = Math.min(untaggedCompanions, XP_PAID_PEOPLE)
-    const xpEarned = Math.min(
-      MAX_RUN_XP,
-      20 + Math.round(dist * 10) + paidBuddies * 30 + paidCompanions * 15
-    )
+    // The formula lives in lib/xp so the run tracker can show the same number
+    // climbing live without keeping a second copy of it.
+    const xpEarned = runXp({
+      distanceKm: dist,
+      newBuddies: newBuddyCount,
+      untaggedCompanions,
+    })
 
     // ── Streak ──
     const streakRes = computeStreak(user.lastActiveDate, user.streak, user.longestStreak)
@@ -342,18 +329,32 @@ export async function POST(request: NextRequest) {
           : companionCount > 0
           ? ` with ${companionCount} other${companionCount > 1 ? 's' : ''}`
           : ''
+      // Achievements reach the feed only on a run the person CHOSE to share,
+      // and only when they didn't write their own note — auto-publishing
+      // someone's rank-up because an algorithm judged it newsworthy is not
+      // social proof, it is posting on their behalf. Ranking up is rare and it
+      // is the thing other runners actually respond to, so when it does happen
+      // on a shared run, it should not be invisible.
+      const achievement = xp?.rankedUp
+        ? ` Just hit ${xp.rankAfter}!`
+        : streakRes.streak >= 7 && streakRes.incremented
+          ? ` ${streakRes.streak} run days and counting.`
+          : ''
+
       await db.feedPost.create({
         data: {
           authorId: userId,
           groupId: groupId ?? null,
           // Only a run that actually unlocked something is a milestone. Every
           // shared run used to carry the badge, which made it mean nothing —
-          // an ordinary Tuesday 5k is a moment, not an achievement.
-          postType: badgesEarned.length > 0 ? 'milestone' : 'moment',
+          // an ordinary Tuesday 5k is a moment, not an achievement. A rank-up
+          // counts too: it is rarer than a badge and was reaching nobody but the
+          // runner's own toast.
+          postType: badgesEarned.length > 0 || xp?.rankedUp ? 'milestone' : 'moment',
           runSessionId: session.id,
           content:
             note?.trim() ||
-            `Just tracked a ${dist.toFixed(2)} km run in ${mins} min${withPart}! 🏃`,
+            `Just tracked a ${dist.toFixed(2)} km run in ${mins} min${withPart}!${achievement} 🏃`,
         },
       })
     }

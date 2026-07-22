@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { computeStreak } from '@/lib/xp'
+import { runXp } from '@/lib/run-xp'
 
 // computeStreak drives the streak gamification — the rules people will argue
 // about if they're wrong. Day keys are Europe/Brussels days, "YYYY-MM-DD".
@@ -86,5 +87,53 @@ describe('computeStreak', () => {
     const r = computeStreak('2026-07-06', 3, 3, justAfterMidnight)
     expect(r.lastActiveDate).toBe('2026-07-07')
     expect(r.streak).toBe(4)
+  })
+})
+
+// ─── runXp ────────────────────────────────────────────────────────────────────
+// The tracker shows this climbing during a run and the server awards it at the
+// end. They must be the same number, which is why there is only one of it.
+
+describe('runXp', () => {
+  it('pays for showing up even with no distance', () => {
+    // A 200m walk to the start still counts as turning up.
+    expect(runXp({ distanceKm: 0 })).toBe(20)
+  })
+
+  it('adds 10 per kilometre', () => {
+    expect(runXp({ distanceKm: 5 })).toBe(70)
+    expect(runXp({ distanceKm: 10 })).toBe(120)
+  })
+
+  it('pays social XP on the first few people only', () => {
+    // Linear per-head XP made "collect as many people as possible" the optimal
+    // play, which is what turned tagging into something done TO someone.
+    const three = runXp({ distanceKm: 5, newBuddies: 3 })
+    expect(runXp({ distanceKm: 5, newBuddies: 20 })).toBe(three)
+    expect(three).toBe(70 + 3 * 30)
+  })
+
+  it('rates a new buddy above an untagged companion', () => {
+    expect(runXp({ distanceKm: 5, newBuddies: 1 })).toBeGreaterThan(
+      runXp({ distanceKm: 5, untaggedCompanions: 1 })
+    )
+  })
+
+  it('never clips a legitimate ultra', () => {
+    // The cap is a backstop above the real maximum, not a limit anyone can hit
+    // by running further. 200km with a full complement of people stays under it.
+    expect(runXp({ distanceKm: 200, newBuddies: 20, untaggedCompanions: 20 })).toBeLessThan(3200)
+  })
+
+  it('holds the cap against a nonsense distance', () => {
+    expect(runXp({ distanceKm: 10_000 })).toBe(3200)
+  })
+
+  it('treats junk input as zero rather than NaN', () => {
+    // It runs on the client against live GPS state, where a distance can be
+    // mid-update. NaN rendered as "+NaN XP" would be worse than a stale 20.
+    expect(runXp({ distanceKm: Number.NaN })).toBe(20)
+    expect(runXp({ distanceKm: -5 })).toBe(20)
+    expect(runXp({ distanceKm: 5, newBuddies: -3 })).toBe(70)
   })
 })

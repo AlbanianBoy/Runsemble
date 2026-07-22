@@ -263,3 +263,9 @@ export function computeStreak(
     usedGrace: continues && gap > 1,
   }
 }
+
+// The per-run XP formula lives in ./run-xp, which imports nothing. This module
+// imports the Prisma client, so anything the run tracker needs cannot live here
+// — a client importing it would pull the database client into the browser
+// bundle. Re-exported so server code has one import to reach for.
+export { runXp, XP_PAID_PEOPLE, MAX_RUN_XP, type RunXpInput } from './run-xp'

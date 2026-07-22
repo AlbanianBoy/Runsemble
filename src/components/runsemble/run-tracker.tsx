@@ -30,6 +30,7 @@ import { loadActiveRun, saveActiveRun, clearActiveRun, type PersistedRun } from 
 import { queuePendingRun } from '@/lib/run-sync'
 import { track } from '@/lib/analytics'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
+import { runXp } from '@/lib/run-xp'
 import { moveDistanceKm, computeElapsedSec, crossedKm, ACCURACY_GATE_M } from '@/lib/run-math'
 import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
 import { Button } from '@/components/ui/button'
@@ -782,7 +783,7 @@ export function RunTracker() {
                   <p className="rs-label-caps text-muted-foreground">Time</p>
                   <p className="text-5xl font-bold tabular leading-tight">{formatClock(elapsedSec)}</p>
                 </div>
-                <div className="mt-3 grid grid-cols-2 divide-x divide-border border-t pt-3">
+                <div className="mt-3 grid grid-cols-3 divide-x divide-border border-t pt-3">
                   <div className="text-center">
                     <p className="text-2xl font-bold tabular">{distanceKm.toFixed(2)}</p>
                     <p className="rs-label-caps text-muted-foreground mt-0.5">Distance (km)</p>
@@ -790,6 +791,20 @@ export function RunTracker() {
                   <div className="text-center">
                     <p className="text-2xl font-bold tabular">{formatPaceLabel(avgPace).replace(' /km', '')}</p>
                     <p className="rs-label-caps text-muted-foreground mt-0.5">Avg pace /km</p>
+                  </div>
+                  {/* XP was invisible until the run was already over, so the
+                      reward arrived as a surprise instead of as a reason to keep
+                      going — the audit's "anticipation is under-placed". Same
+                      function the server awards with (lib/run-xp), so the number
+                      climbing here is the number banked at the end, not an
+                      estimate that drifts. Social XP is left out: it depends on
+                      who gets tagged on the finish screen, and promising it
+                      before then would be the display lying again. */}
+                  <div className="text-center">
+                    <p className="text-2xl font-bold tabular text-primary">
+                      +{runXp({ distanceKm })}
+                    </p>
+                    <p className="rs-label-caps text-muted-foreground mt-0.5">XP so far</p>
                   </div>
                 </div>
                 {weakGps && phase === 'running' && (
