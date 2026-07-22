@@ -107,7 +107,10 @@ export type RunVerdict = { ok: true } | { ok: false; reason: string }
  * cannot corroborate distance (see the note above) and a stricter rule rejects
  * real runs. Any run that actually recorded GPS passes.
  */
-export function verifyRunDistance(claimedKm: number, path: Array<LatLng> | null | undefined): RunVerdict {
+// `path` is typed unknown because that is what it actually is: a field off an
+// untrusted request body. The filter below was already doing the narrowing —
+// the old signature just claimed a guarantee the caller could not make.
+export function verifyRunDistance(claimedKm: number, path: unknown): RunVerdict {
   const claim = Number(claimedKm) || 0
   if (claim <= RUN_UNVERIFIABLE_MAX_KM) return { ok: true }
 

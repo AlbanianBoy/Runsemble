@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { readJson } from '@/lib/http'
 
 async function membership(groupId: string, userId: string) {
   return db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } })
@@ -52,7 +53,9 @@ export async function PATCH(
     if (!mine || mine.role !== 'owner') {
       return NextResponse.json({ error: 'Only the owner can change roles' }, { status: 403 })
     }
-    const { role } = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const { role } = parsed.body
     if (role !== 'admin' && role !== 'member') {
       return NextResponse.json({ error: 'role must be admin or member' }, { status: 400 })
     }

@@ -4,8 +4,9 @@ import { describeXpAward, grantBadge, computeStreak, BADGES, type BadgeSpec } fr
 import { notify } from '@/lib/notify'
 import { eligibleBuddyIds } from '@/lib/buddies'
 import { getSessionUser } from '@/lib/auth'
-import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
+import { SPORT_TYPES, validateEnumFields, isOneOf } from '@/lib/enums'
 import { verifyRunDistance } from '@/lib/run-math'
+import { readJson } from '@/lib/http'
 
 // Anti-abuse caps on client-declared social inputs. A run's distance is already
 // verified against its GPS evidence; these bound the parts that aren't — how
@@ -60,26 +61,30 @@ export async function POST(request: NextRequest) {
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const userId = me.id
 
-    const body = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
 
     const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
     if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
 
-    const {
-      clientRunId = null,
-      distanceKm = 0,
-      durationSec = 0,
-      hotspotId = null,
-      groupId = null,
-      sportType = 'running',
-      companions = 0,
-      buddyIds = [],
-      path = null,
-      splits = null,
-      note = null,
-      shareToFeed = false,
-      rating = null,
-    } = body
+    // Narrowed here rather than trusted. These arrive from a device and every
+    // one of them lands in a database column with a type; passing them through
+    // as `any` meant the first check they met was Prisma's, which reports a bad
+    // string as a 500 rather than a 400.
+    const clientRunId = typeof body.clientRunId === 'string' ? body.clientRunId : null
+    const distanceKm = Number(body.distanceKm) || 0
+    const durationSec = Number(body.durationSec) || 0
+    const hotspotId = typeof body.hotspotId === 'string' ? body.hotspotId : null
+    const groupId = typeof body.groupId === 'string' ? body.groupId : null
+    const sportType = isOneOf(SPORT_TYPES, body.sportType) ? body.sportType : 'running'
+    const companions = Number(body.companions) || 0
+    const buddyIds = body.buddyIds
+    const path = body.path
+    const splits = body.splits
+    const note = typeof body.note === 'string' ? body.note : null
+    const shareToFeed = body.shareToFeed === true
+    const rating = Number(body.rating) || 0
 
     // Idempotency for offline sync: a run saved offline is re-POSTed when signal
     // returns, possibly more than once. If we've already recorded this exact run
@@ -293,9 +298,9 @@ export async function POST(request: NextRequest) {
     }
 
     // ── Rating (post-run, for hotspot runs) ──
-    if (hotspotId && rating && Number(rating) >= 1) {
+    if (hotspotId && rating >= 1) {
       await db.runRating.create({
-        data: { hotspotId, userId, rating: Math.min(5, Math.round(Number(rating))), comment: note ?? null },
+        data: { hotspotId, userId, rating: Math.min(5, Math.round(rating)), comment: note },
       }).catch(() => {}) // best-effort; upsert-style via @@unique constraint
     }
 

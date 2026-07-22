@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { readJson, parseNullableDate } from '@/lib/http'
 import {
   PACE_LEVELS,
   SCHEDULE_PREFERENCES,
@@ -99,7 +100,9 @@ export async function PATCH(
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
-    const body = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
     if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
       return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
     }
@@ -149,12 +152,15 @@ export async function PATCH(
       }
     }
 
-    // Handle availability timestamps as Dates (null clears them)
-    if (body.availableUntil !== undefined) {
-      updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
-    }
-    if (body.availableFrom !== undefined) {
-      updateData.availableFrom = body.availableFrom ? new Date(body.availableFrom) : null
+    // Availability timestamps: null clears them, a bad value is a 400 rather
+    // than an Invalid Date that Prisma rejects as a 500.
+    for (const field of ['availableUntil', 'availableFrom'] as const) {
+      if (body[field] === undefined) continue
+      const result = parseNullableDate(body[field])
+      if (!result.ok) {
+        return NextResponse.json({ error: `${field} must be a date or null` }, { status: 400 })
+      }
+      updateData[field] = result.date
     }
 
     const updatedUser = await db.user.update({
@@ -187,7 +193,9 @@ export async function PUT(
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
-    const body = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
     if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
       return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
     }
@@ -238,11 +246,13 @@ export async function PUT(
 
     // Availability timestamps as Dates (null clears them). Turning availability
     // off clears everything — unless the request is *setting* a future slot.
-    if (body.availableUntil !== undefined) {
-      updateData.availableUntil = body.availableUntil ? new Date(body.availableUntil) : null
-    }
-    if (body.availableFrom !== undefined) {
-      updateData.availableFrom = body.availableFrom ? new Date(body.availableFrom) : null
+    for (const field of ['availableUntil', 'availableFrom'] as const) {
+      if (body[field] === undefined) continue
+      const result = parseNullableDate(body[field])
+      if (!result.ok) {
+        return NextResponse.json({ error: `${field} must be a date or null` }, { status: 400 })
+      }
+      updateData[field] = result.date
     }
     if (body.isAvailable === false && body.availableFrom === undefined) {
       updateData.availableFrom = null

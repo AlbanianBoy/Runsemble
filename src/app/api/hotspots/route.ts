@@ -3,8 +3,8 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { sweepHotspotReminders } from '@/lib/hotspot-reminders'
-import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
-import { apiError } from '@/lib/http'
+import { SPORT_TYPES, validateEnumFields, isOneOf } from '@/lib/enums'
+import { apiError, readJson, boundedInt } from '@/lib/http'
 
 // One request must never be able to walk the whole table. A city's curated
 // spots plus everything genuinely upcoming fits far inside this; past the cap
@@ -220,30 +220,42 @@ export async function POST(request: NextRequest) {
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
 
-    const body = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
 
     const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
     if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
 
-    const {
-      name,
-      description,
-      location,
-      lat,
-      lng,
-      sportType,
-      distanceKm,
-      paceRange,
-      startTime,
-      recurringIntervalMin,
-      audience,
-    } = body
+    // Narrowed at the boundary rather than passed through as `any`. One of these
+    // was a live 500: `new Date(startTime)` on a non-date yields Invalid Date,
+    // which Prisma rejects at write time — so a client sending a malformed
+    // timestamp got "server error" for what is plainly a bad request.
+    const name = typeof body.name === 'string' ? body.name : ''
+    const description = typeof body.description === 'string' ? body.description : null
+    const location = typeof body.location === 'string' ? body.location : ''
+    const lat = Number(body.lat)
+    const lng = Number(body.lng)
+    const sportType = isOneOf(SPORT_TYPES, body.sportType) ? body.sportType : 'running'
+    const distanceKm = typeof body.distanceKm === 'number' && Number.isFinite(body.distanceKm)
+      ? body.distanceKm
+      : 5.0
+    const paceRange = typeof body.paceRange === 'string' ? body.paceRange : 'any'
+    const recurringIntervalMin = boundedInt(body.recurringIntervalMin, 5, 10_080, 30)
+    const audience = typeof body.audience === 'string' ? body.audience : 'all'
 
-    if (!name || !location || lat === undefined || lng === undefined || !startTime) {
+    if (!name.trim() || !location.trim() || !Number.isFinite(lat) || !Number.isFinite(lng)) {
       return NextResponse.json(
         { error: 'name, location, lat, lng, and startTime are required' },
         { status: 400 }
       )
+    }
+
+    const startTime = new Date(typeof body.startTime === 'string' || typeof body.startTime === 'number'
+      ? body.startTime
+      : NaN)
+    if (Number.isNaN(startTime.getTime())) {
+      return NextResponse.json({ error: 'startTime must be a valid date' }, { status: 400 })
     }
     if (overLimit(name, LIMITS.groupName) || overLimit(description, LIMITS.groupDesc) || overLimit(location, LIMITS.place)) {
       return NextResponse.json({ error: 'A field is too long' }, { status: 400 })
@@ -252,16 +264,16 @@ export async function POST(request: NextRequest) {
     const hotspot = await db.hotspot.create({
       data: {
         name,
-        description: description ?? null,
+        description,
         location,
-        lat: Number(lat),
-        lng: Number(lng),
-        sportType: sportType ?? 'running',
-        distanceKm: distanceKm ?? 5.0,
-        paceRange: paceRange ?? 'any',
-        startTime: new Date(startTime),
-        recurringIntervalMin: recurringIntervalMin ?? 30,
-        audience: audience ?? 'all',
+        lat,
+        lng,
+        sportType,
+        distanceKm,
+        paceRange,
+        startTime,
+        recurringIntervalMin,
+        audience,
         isActive: true,
         createdBy: me.id,
       },

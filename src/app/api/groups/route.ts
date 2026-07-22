@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { readJson } from '@/lib/http'
 
 // ─── Group discovery ─────────────────────────────────────────────────────────
 // Two lists, not one. Groups you're IN are always returned in full: one you
@@ -125,10 +126,16 @@ export async function POST(request: NextRequest) {
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const createdBy = me.id
 
-    const body = await request.json()
-    const { name, description, isPublic, coverImage, city } = body
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
+    const name = typeof body.name === 'string' ? body.name : ''
+    const description = typeof body.description === 'string' ? body.description : null
+    const isPublic = body.isPublic !== false // default true, as before
+    const coverImage = typeof body.coverImage === 'string' ? body.coverImage : null
+    const city = typeof body.city === 'string' ? body.city : 'Antwerp'
 
-    if (!name) {
+    if (!name.trim()) {
       return NextResponse.json(
         { error: 'Group name is required' },
         { status: 400 }
@@ -141,10 +148,10 @@ export async function POST(request: NextRequest) {
     const group = await db.runGroup.create({
       data: {
         name,
-        description: description ?? null,
-        isPublic: isPublic ?? true,
-        coverImage: coverImage ?? null,
-        city: city ?? 'Antwerp',
+        description,
+        isPublic,
+        coverImage,
+        city,
         createdBy,
         members: {
           create: {

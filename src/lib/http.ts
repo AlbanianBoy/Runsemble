@@ -145,6 +145,25 @@ export function boundedInt(value: unknown, min: number, max: number, fallback: n
 }
 
 /**
+ * A nullable timestamp from an untrusted source.
+ *
+ * `new Date(anything)` never throws — it returns Invalid Date, which sails
+ * through every check until Prisma refuses to write it and the handler's catch
+ * turns that into a 500. Three separate routes had this shape. Distinguishes
+ * "clear this field" (null) from "this is not a date" (not ok), because
+ * silently treating junk as a clear would wipe a value the caller never meant
+ * to touch.
+ */
+export function parseNullableDate(
+  value: unknown
+): { ok: true; date: Date | null } | { ok: false } {
+  if (value === null) return { ok: true, date: null }
+  if (typeof value !== 'string' && typeof value !== 'number') return { ok: false }
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? { ok: false } : { ok: true, date }
+}
+
+/**
  * A trimmed string within `max`, or null when there isn't one.
  *
  * Over-long input is rejected rather than sliced, which is the opposite of what

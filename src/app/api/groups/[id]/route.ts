@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { readJson } from '@/lib/http'
 
 // Shared: the requester's role in this group, or null if not a member.
 async function roleIn(groupId: string, userId: string): Promise<string | null> {
@@ -119,7 +120,9 @@ export async function PATCH(
       return NextResponse.json({ error: 'Only a group admin can edit it' }, { status: 403 })
     }
 
-    const body = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
     const data: Record<string, unknown> = {}
     if (typeof body.name === 'string') {
       if (!body.name.trim()) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 })

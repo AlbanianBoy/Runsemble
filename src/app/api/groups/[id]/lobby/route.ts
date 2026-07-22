@@ -4,6 +4,7 @@ import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
+import { readJson } from '@/lib/http'
 
 // ─── Group run lobby ──────────────────────────────────────────────────────────
 // Start-together for RunGroups, mirroring the hotspot lobby contract so the
@@ -87,7 +88,9 @@ export async function POST(
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
 
-    const { action } = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const { action } = parsed.body
     if (!action) return NextResponse.json({ error: 'action is required' }, { status: 400 })
 
     const group = await db.runGroup.findUnique({ where: { id } })

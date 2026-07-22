@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { readJson } from '@/lib/http'
 
 // Add another user to a group ("invite"). Any member can add people — this is
 // what makes a private group usable: create it, then add your running buddies.
@@ -15,7 +16,9 @@ export async function POST(
     const me = await getSessionUser()
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
 
-    const { userId } = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const { userId } = parsed.body
     if (!userId || typeof userId !== 'string') {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 })
     }

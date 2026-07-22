@@ -5,6 +5,7 @@ import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
+import { readJson } from '@/lib/http'
 
 // ─── Run lobby ────────────────────────────────────────────────────────────────
 // The pre-run gathering screen for a hotspot run. Participants check in
@@ -93,7 +94,9 @@ export async function POST(
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const userId = me.id
 
-    const { action, lat, lng } = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const { action, lat, lng } = parsed.body
     if (!action) {
       return NextResponse.json({ error: 'action is required' }, { status: 400 })
     }

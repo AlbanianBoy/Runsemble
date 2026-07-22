@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { readJson } from '@/lib/http'
 
 export async function GET(
   _request: NextRequest,
@@ -53,9 +54,10 @@ export async function POST(
     if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
     const senderId = me.id
 
-    const body = await request.json()
-    const { content } = body
-    if (!content) {
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const content = typeof parsed.body.content === 'string' ? parsed.body.content : ''
+    if (!content.trim()) {
       return NextResponse.json({ error: 'content is required' }, { status: 400 })
     }
     if (overLimit(content, LIMITS.message)) {
