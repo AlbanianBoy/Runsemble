@@ -7,6 +7,7 @@ import { storeImage, validateImageDataUrl } from '@/lib/image-store'
 import { POST_TYPES, isOneOf, validateEnumFields } from '@/lib/enums'
 import { toPublicPath } from '@/lib/run'
 import { apiError, boundedInt, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
+import { readClientId } from '@/lib/idempotency'
 
 export async function GET(request: NextRequest) {
   try {
@@ -204,6 +205,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Before storeImage, deliberately: a retry must not upload the same photo to
+    // blob storage a second time and pay for both copies.
+    const clientId = readClientId(body.clientId)
+    if (clientId) {
+      const already = await db.feedPost.findUnique({
+        where: { authorId_clientId: { authorId: me.id, clientId } },
+        include: {
+          author: { select: { id: true, name: true, avatar: true, paceLevel: true } },
+        },
+      })
+      if (already) return NextResponse.json({ post: already, duplicate: true }, { status: 200 })
+    }
+
     // Hand the photo to blob storage when it's configured, so the row holds a URL
     // instead of the whole image. Falls back to the inline data URL otherwise.
     const storedImageUrl = imageUrl ? await storeImage(imageUrl) : null
@@ -217,6 +231,7 @@ export async function POST(request: NextRequest) {
         // validateEnumFields above has already rejected anything that isn't a
         // POST_TYPES value, so this only picks the default for an absent one.
         postType: isOneOf(POST_TYPES, body.postType) ? body.postType : 'moment',
+        clientId,
       },
       include: {
         author: {

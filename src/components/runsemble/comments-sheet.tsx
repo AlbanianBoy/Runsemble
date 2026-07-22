@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { formatDistanceToNow } from 'date-fns'
 import { Send, MessageCircle, Loader2 } from 'lucide-react'
+import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type { ApiComment, CommentsResponse } from '@/lib/types'
@@ -35,11 +36,19 @@ export function CommentsSheet({
 
   const comments: ApiComment[] = data?.comments ?? []
 
+  // One id per comment being written; replaced only once it has landed.
+  const draftId = useRef(newClientId())
+
   const addComment = useMutation({
     mutationFn: (content: string) =>
-      apiSend(`/api/feed/${postId}/comments`, 'POST', { authorId: currentUser?.id, content }),
+      apiSend(`/api/feed/${postId}/comments`, 'POST', {
+        authorId: currentUser?.id,
+        content,
+        clientId: draftId.current,
+      }),
     onSuccess: () => {
       setText('')
+      draftId.current = newClientId()
       queryClient.invalidateQueries({ queryKey: ['comments', postId] })
       queryClient.invalidateQueries({ queryKey: ['feed'] })
     },

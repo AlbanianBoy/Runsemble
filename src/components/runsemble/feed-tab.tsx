@@ -7,6 +7,7 @@ import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route, WifiOff } from 'lucide-react'
 import { toast } from 'sonner'
+import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import type {
@@ -150,18 +151,25 @@ export function FeedTab() {
     onSettled: () => queryClient.invalidateQueries({ queryKey: feedKey }),
   })
 
+  // One id per post being composed; a new one only after the last succeeded.
+  // A retry of the same post therefore carries the same id and cannot produce a
+  // duplicate — nor re-upload its photo. See lib/idempotency.ts.
+  const draftPostId = useRef(newClientId())
+
   const postMutation = useMutation({
     mutationFn: (content: string) =>
       apiSend('/api/feed', 'POST', {
         content,
         postType: 'moment',
         imageUrl: newPostImage ?? undefined,
+        clientId: draftPostId.current,
       }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: feedKey })
       setPostDialogOpen(false)
       setNewPostContent('')
       setNewPostImage(null)
+      draftPostId.current = newClientId()
     },
     onError: (e: Error) => toast.error(e.message),
   })

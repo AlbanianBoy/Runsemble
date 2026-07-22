@@ -334,6 +334,12 @@ model FeedPost {
   imageUrl    String?
   postType    PostType @default(moment)
   runSessionId String? // set when the post shares a tracked run (route card)
+  // Client-generated id for the thing the user composed, so a retry after a
+  // timeout collapses onto the same row instead of posting twice. Same
+  // pattern as RunSession.clientRunId. Nullable: rows written before this
+  // existed, and any server-side write, simply have none — Postgres does not
+  // treat NULLs as colliding, so the unique below still permits them.
+  clientId    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -348,6 +354,7 @@ model FeedPost {
   @@index([createdAt, id])
   @@index([authorId])
   @@index([groupId])
+  @@unique([authorId, clientId])
 }
 
 model PostLike {
@@ -368,12 +375,19 @@ model PostComment {
   postId    String
   authorId  String
   content   String
+  // Client-generated id for the thing the user composed, so a retry after a
+  // timeout collapses onto the same row instead of posting twice. Same
+  // pattern as RunSession.clientRunId. Nullable: rows written before this
+  // existed, and any server-side write, simply have none — Postgres does not
+  // treat NULLs as colliding, so the unique below still permits them.
+  clientId  String?
   createdAt DateTime @default(now())
 
   post      FeedPost @relation(fields: [postId], references: [id], onDelete: Cascade)
   author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
 
   @@index([postId])
+  @@unique([authorId, clientId])
 }
 
 model Notification {
@@ -447,6 +461,12 @@ model ChatMessage {
   groupId     String?  // set for group chat
   content     String
   read        Boolean  @default(false) // only meaningful for DMs
+  // Client-generated id for the thing the user composed, so a retry after a
+  // timeout collapses onto the same row instead of posting twice. Same
+  // pattern as RunSession.clientRunId. Nullable: rows written before this
+  // existed, and any server-side write, simply have none — Postgres does not
+  // treat NULLs as colliding, so the unique below still permits them.
+  clientId    String?
   createdAt   DateTime @default(now())
 
   sender      User      @relation("SentMessages", fields: [senderId], references: [id], onDelete: Cascade)
@@ -458,6 +478,7 @@ model ChatMessage {
   // The DM inbox and unread badge query by recipient; this backs those without a
   // scan as message volume grows.
   @@index([recipientId, read])
+  @@unique([senderId, clientId])
 }
 
 model RunInvite {

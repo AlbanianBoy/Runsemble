@@ -5,6 +5,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { Send, Loader2, Flag, CheckCheck } from 'lucide-react'
 import { toast } from 'sonner'
 import { format, isToday, isYesterday } from 'date-fns'
+import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { useVisiblePoll } from '@/lib/use-visible-poll'
@@ -42,16 +43,28 @@ export function DmSheet() {
   }, [messages])
 
   const send = useMutation({
-    mutationFn: (content: string) => apiSend('/api/messages', 'POST', { senderId: me, recipientId: partnerId, content }),
+    // The id belongs to the message the person wrote, not to this attempt —
+    // mint it in the caller and reuse it on retry, or idempotency achieves
+    // nothing. See lib/idempotency.ts.
+    mutationFn: ({ content, clientId }: { content: string; clientId: string }) =>
+      apiSend('/api/messages', 'POST', { senderId: me, recipientId: partnerId, content, clientId }),
     onSuccess: () => {
       setText('')
+      draftId.current = newClientId()
       queryClient.invalidateQueries({ queryKey: ['dm', me, partnerId] })
       queryClient.invalidateQueries({ queryKey: ['conversations', me] })
     },
     onError: (e: Error) => { /* surfaced inline; keep text */ void e },
   })
 
-  const submit = () => { if (text.trim() && me && partnerId && !send.isPending) send.mutate(text.trim()) }
+  // One id per composed message. Regenerated only once a send has succeeded and
+  // the box is cleared, so every retry of the SAME text carries the same id and
+  // collapses onto one row server-side.
+  const draftId = useRef(newClientId())
+  const submit = () => {
+    if (!text.trim() || !me || !partnerId || send.isPending) return
+    send.mutate({ content: text.trim(), clientId: draftId.current })
+  }
 
   // L23 — find the last outgoing message that the recipient has read, so we
   // can render a "Seen" receipt beneath it. Only the most-recent read message

@@ -5,6 +5,7 @@ import { getSessionUser } from '@/lib/auth'
 import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
+import { readClientId } from '@/lib/idempotency'
 
 // 1:1 direct messages. Private — identity always comes from the session.
 //   GET ?withId=  → the conversation with that person (marks read)
@@ -143,8 +144,20 @@ export async function POST(request: NextRequest) {
     })
     if (blocked) return apiError(403, 'forbidden', 'Cannot message this user')
 
+    // A send that reached the server but whose response was lost gets retried by
+    // the person tapping send again. Same clientId, same row — see lib/idempotency.
+    const clientId = readClientId(parsed.body.clientId)
+    if (clientId) {
+      const already = await db.chatMessage.findUnique({
+        where: { senderId_clientId: { senderId, clientId } },
+      })
+      // Return the message, not an error: from the sender's side this attempt
+      // succeeded, and it did — the first time.
+      if (already) return NextResponse.json({ message: already, duplicate: true })
+    }
+
     const message = await db.chatMessage.create({
-      data: { senderId, recipientId, content: content.trim() },
+      data: { senderId, recipientId, content: content.trim(), clientId },
     })
 
     const sender = await db.user.findUnique({ where: { id: senderId }, select: { name: true } })

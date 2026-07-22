@@ -6,6 +6,7 @@ import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { canViewPost } from '@/lib/feed-access'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, readJson } from '@/lib/http'
+import { readClientId } from '@/lib/idempotency'
 
 // List comments for a post, oldest first.
 export async function GET(
@@ -68,8 +69,20 @@ export async function POST(
       return apiError(403, 'forbidden', 'This post is in a private group')
     }
 
+    const clientId = readClientId(parsed.body.clientId)
+    if (clientId) {
+      const already = await db.postComment.findUnique({
+        where: { authorId_clientId: { authorId, clientId } },
+        include: { author: { select: { id: true, name: true, avatar: true } } },
+      })
+      if (already) {
+        const total = await db.postComment.count({ where: { postId: id } })
+        return NextResponse.json({ comment: already, commentCount: total, duplicate: true })
+      }
+    }
+
     const comment = await db.postComment.create({
-      data: { postId: id, authorId, content: content.trim() },
+      data: { postId: id, authorId, content: content.trim(), clientId },
       include: { author: { select: { id: true, name: true, avatar: true } } },
     })
 
