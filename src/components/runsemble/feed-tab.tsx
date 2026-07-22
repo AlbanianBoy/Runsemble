@@ -647,7 +647,7 @@ function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex-1 px-2">
       <p className="text-sm font-bold tabular leading-tight">{value}</p>
-      <p className="text-[10px] uppercase tracking-wide text-muted-foreground mt-0.5">{label}</p>
+      <p className="rs-label-caps text-muted-foreground mt-0.5">{label}</p>
     </div>
   )
 }

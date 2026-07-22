@@ -217,6 +217,35 @@
   font-family: var(--font-geist-mono), ui-monospace, "SFMono-Regular", monospace;
 }
 
+/* Micro-labels — the small caption under a stat, a badge description, the word
+   beneath a number.
+
+   These had drifted to 9px and 10px across the app, some of them uppercase with
+   wide letter-spacing, which is the hardest combination there is to read: small,
+   spaced out, and all one height with no word shapes to recognise. On a phone
+   held at arm's length in daylight it stops being text and becomes texture.
+
+   11px is the floor, matching the platform guidance both iOS and Android give
+   for the smallest legible label. Contrast was NOT the problem — muted-foreground
+   measures 5.77:1 on the light background and 6.14:1 on the dark, both past the
+   4.5:1 AA bar — so this changes size and spacing only, and leaves the palette be.
+
+   Avatar initials are deliberately not migrated to this: a two-letter glyph
+   inside a 20px circle is a token, not something anyone reads, and enlarging it
+   would just overflow the circle. */
+.rs-label {
+  font-size: 0.6875rem; /* 11px */
+  line-height: 1rem;
+}
+.rs-label-caps {
+  font-size: 0.6875rem;
+  line-height: 1rem;
+  text-transform: uppercase;
+  /* Wide tracking is what made these unreadable at size; enough to read as a
+     label, not so much that the word falls apart. */
+  letter-spacing: 0.06em;
+}
+
 /* Pulse animation for hotspot pins */
 @keyframes hotspot-pulse {
   0%, 100% { opacity: 1; transform: scale(1); }

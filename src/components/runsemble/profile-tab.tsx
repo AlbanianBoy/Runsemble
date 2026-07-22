@@ -326,22 +326,22 @@ export function ProfileTab() {
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Trophy className="h-4 w-4" /></div>
           <p className="font-bold text-base tabular">{currentUser.totalRuns}</p>
-          <p className="text-[9px] text-muted-foreground">Runs</p>
+          <p className="rs-label text-muted-foreground">Runs</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><MapPin className="h-4 w-4" /></div>
           <p className="font-bold text-base tabular">{(currentUser.totalDistanceKm ?? 0).toFixed(0)}</p>
-          <p className="text-[9px] text-muted-foreground">km</p>
+          <p className="rs-label text-muted-foreground">km</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Users className="h-4 w-4" /></div>
           <p className="font-bold text-base tabular">{currentUser.totalPeopleRunWith}</p>
-          <p className="text-[9px] text-muted-foreground">Buddies</p>
+          <p className="rs-label text-muted-foreground">Buddies</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Flame className="h-4 w-4" /></div>
           <p className="font-bold text-base tabular">{currentUser.longestStreak}</p>
-          <p className="text-[9px] text-muted-foreground">Best</p>
+          <p className="rs-label text-muted-foreground">Best</p>
         </CardContent></Card>
       </motion.div>
 
@@ -424,7 +424,7 @@ export function ProfileTab() {
                 <CardContent className="p-0">
                   <p className="text-2xl mb-1">{b.icon}</p>
                   <p className="text-[10px] font-semibold leading-tight">{b.title}</p>
-                  <p className="text-[9px] text-muted-foreground mt-0.5 line-clamp-2">{b.description}</p>
+                  <p className="rs-label text-muted-foreground mt-0.5 line-clamp-2">{b.description}</p>
                 </CardContent>
               </Card>
             ))}

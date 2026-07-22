@@ -779,17 +779,17 @@ export function RunTracker() {
             ) : (
               <>
                 <div className="text-center">
-                  <p className="text-[10px] uppercase tracking-[0.25em] text-muted-foreground">Time</p>
+                  <p className="rs-label-caps text-muted-foreground">Time</p>
                   <p className="text-5xl font-bold tabular leading-tight">{formatClock(elapsedSec)}</p>
                 </div>
                 <div className="mt-3 grid grid-cols-2 divide-x divide-border border-t pt-3">
                   <div className="text-center">
                     <p className="text-2xl font-bold tabular">{distanceKm.toFixed(2)}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">Distance (km)</p>
+                    <p className="rs-label-caps text-muted-foreground mt-0.5">Distance (km)</p>
                   </div>
                   <div className="text-center">
                     <p className="text-2xl font-bold tabular">{formatPaceLabel(avgPace).replace(' /km', '')}</p>
-                    <p className="text-[10px] uppercase tracking-wider text-muted-foreground mt-0.5">Avg pace /km</p>
+                    <p className="rs-label-caps text-muted-foreground mt-0.5">Avg pace /km</p>
                   </div>
                 </div>
                 {weakGps && phase === 'running' && (
