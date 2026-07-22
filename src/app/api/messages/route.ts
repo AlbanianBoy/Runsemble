@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 
 // 1:1 direct messages. Private — identity always comes from the session.
 //   GET ?withId=  → the conversation with that person (marks read)
@@ -11,10 +12,13 @@ import { LIMITS, overLimit } from '@/lib/limits'
 export async function GET(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
     const { searchParams } = new URL(request.url)
-    const withId = searchParams.get('withId')
+    // Bounded because it goes straight into the query below. Something too long
+    // to be one of our ids matches nobody anyway, so it reads as "no partner
+    // asked for" and you get the conversation list.
+    const withId = boundedString(searchParams.get('withId'), MAX_ID_LENGTH)
 
     if (withId) {
       const messages = await db.chatMessage.findMany({
@@ -96,22 +100,29 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ conversations, totalUnread })
   } catch (error) {
     console.error('Error fetching messages:', error)
-    return NextResponse.json({ error: 'Failed to fetch messages' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch messages')
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const senderId = me.id
 
-    const { recipientId, content } = await request.json()
-    if (!recipientId || !content?.trim()) {
-      return NextResponse.json({ error: 'recipientId and content are required' }, { status: 400 })
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+
+    const recipientId = boundedString(parsed.body.recipientId, MAX_ID_LENGTH)
+    // A non-string content used to reach `content?.trim()`, throw, and come back
+    // as a 500 saying the message failed to send. It's the same missing-field
+    // case as an empty one, and it gets the same answer.
+    const content = typeof parsed.body.content === 'string' ? parsed.body.content : ''
+    if (!recipientId || !content.trim()) {
+      return apiError(400, 'missing_field', 'recipientId and content are required')
     }
     if (overLimit(content, LIMITS.message)) {
-      return NextResponse.json({ error: 'Message is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Message is too long')
     }
 
     // Respect blocks in either direction.
@@ -123,7 +134,7 @@ export async function POST(request: NextRequest) {
         ],
       },
     })
-    if (blocked) return NextResponse.json({ error: 'Cannot message this user' }, { status: 403 })
+    if (blocked) return apiError(403, 'forbidden', 'Cannot message this user')
 
     const message = await db.chatMessage.create({
       data: { senderId, recipientId, content: content.trim() },
@@ -144,6 +155,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ message }, { status: 201 })
   } catch (error) {
     console.error('Error sending message:', error)
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to send message')
   }
 }

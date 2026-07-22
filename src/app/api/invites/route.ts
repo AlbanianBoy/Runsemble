@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 
 // Run invites — the app's "add people" mechanic. Instead of a friend request,
 // you invite someone to run. Identity always from the session.
@@ -11,7 +12,7 @@ import { LIMITS, overLimit } from '@/lib/limits'
 export async function GET() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const [received, sent] = await Promise.all([
       db.runInvite.findMany({
@@ -30,7 +31,7 @@ export async function GET() {
     return NextResponse.json({ received, sent })
   } catch (error) {
     console.error('Error fetching invites:', error)
-    return NextResponse.json({ error: 'Failed to fetch invites' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch invites')
   }
 }
 
@@ -38,21 +39,25 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
-    const { recipientId, message } = await request.json()
-    if (!recipientId || typeof recipientId !== 'string') {
-      return NextResponse.json({ error: 'recipientId is required' }, { status: 400 })
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+
+    const { message } = parsed.body
+    const recipientId = boundedString(parsed.body.recipientId, MAX_ID_LENGTH)
+    if (!recipientId) {
+      return apiError(400, 'missing_field', 'recipientId is required')
     }
     if (recipientId === me.id) {
-      return NextResponse.json({ error: "You can't invite yourself" }, { status: 400 })
+      return apiError(400, 'invalid_value', "You can't invite yourself")
     }
     if (overLimit(message, LIMITS.message)) {
-      return NextResponse.json({ error: 'Message is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Message is too long')
     }
 
     const recipient = await db.user.findUnique({ where: { id: recipientId }, select: { id: true } })
-    if (!recipient) return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    if (!recipient) return apiError(404, 'not_found', 'User not found')
 
     // Respect blocks in either direction.
     const blocked = await db.block.findFirst({
@@ -63,14 +68,16 @@ export async function POST(request: NextRequest) {
         ],
       },
     })
-    if (blocked) return NextResponse.json({ error: 'Cannot invite this user' }, { status: 403 })
+    if (blocked) return apiError(403, 'forbidden', 'Cannot invite this user')
 
     // One pending invite per direction, so you can't spam someone.
     const existing = await db.runInvite.findFirst({
       where: { senderId: me.id, recipientId, status: 'pending' },
     })
     if (existing) {
-      return NextResponse.json({ error: 'You already have a pending invite to this person' }, { status: 409 })
+      // 'conflict' is the code the invite button should be reading, instead of
+      // matching 'already' in this sentence the way the hotspot join does.
+      return apiError(409, 'conflict', 'You already have a pending invite to this person')
     }
 
     const trimmed = typeof message === 'string' ? message.trim() : null
@@ -91,6 +98,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ invite }, { status: 201 })
   } catch (error) {
     console.error('Error sending invite:', error)
-    return NextResponse.json({ error: 'Failed to send invite' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to send invite')
   }
 }

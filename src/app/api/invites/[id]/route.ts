@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { apiError, readJson } from '@/lib/http'
 
 // Accept or decline a run invite. Recipient only.
 export async function PATCH(
@@ -11,20 +12,23 @@ export async function PATCH(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
-    const { action } = await request.json()
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const action = parsed.body.action
+
     if (action !== 'accept' && action !== 'decline') {
-      return NextResponse.json({ error: 'action must be accept or decline' }, { status: 400 })
+      return apiError(400, 'invalid_value', 'action must be accept or decline')
     }
 
     const invite = await db.runInvite.findUnique({ where: { id } })
-    if (!invite) return NextResponse.json({ error: 'Invite not found' }, { status: 404 })
+    if (!invite) return apiError(404, 'not_found', 'Invite not found')
     if (invite.recipientId !== me.id) {
-      return NextResponse.json({ error: 'This invite is not yours to answer' }, { status: 403 })
+      return apiError(403, 'forbidden', 'This invite is not yours to answer')
     }
     if (invite.status !== 'pending') {
-      return NextResponse.json({ error: 'This invite was already answered' }, { status: 409 })
+      return apiError(409, 'conflict', 'This invite was already answered')
     }
 
     const status = action === 'accept' ? 'accepted' : 'declined'
@@ -46,6 +50,6 @@ export async function PATCH(
     return NextResponse.json({ ok: true, status })
   } catch (error) {
     console.error('Error answering invite:', error)
-    return NextResponse.json({ error: 'Failed to answer invite' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to answer invite')
   }
 }

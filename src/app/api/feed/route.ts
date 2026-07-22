@@ -3,8 +3,9 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { storeImage, validateImageDataUrl } from '@/lib/image-store'
-import { POST_TYPES, validateEnumFields } from '@/lib/enums'
+import { POST_TYPES, isOneOf, validateEnumFields } from '@/lib/enums'
 import { toPublicPath } from '@/lib/run'
+import { apiError, boundedInt, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 
 export async function GET(request: NextRequest) {
   try {
@@ -17,8 +18,11 @@ export async function GET(request: NextRequest) {
     // Keyset pagination. `cursor` is the id of the last post of the previous
     // page; absent, you get the first one. The default page stays at 100 so a
     // caller that knows nothing about any of this behaves exactly as before.
-    const cursor = searchParams.get('cursor')
-    const limit = Math.min(Math.max(Number(searchParams.get('limit')) || 100, 1), 100)
+    // A cursor past MAX_ID_LENGTH can't be one of our ids, so it reads as no
+    // cursor and you get page one — rather than carrying arbitrary length into
+    // the query for Prisma to reject as a 500.
+    const cursor = boundedString(searchParams.get('cursor'), MAX_ID_LENGTH)
+    const limit = boundedInt(searchParams.get('limit'), 1, 100, 100)
 
     // Compose the filter as ANDed clauses (block + visibility + scope).
     const and: import('@prisma/client').Prisma.FeedPostWhereInput[] = []
@@ -136,10 +140,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ posts: shaped, nextCursor })
   } catch (error) {
     console.error('Error fetching feed posts:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch feed posts' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch feed posts')
   }
 }
 
@@ -147,23 +148,30 @@ export async function POST(request: NextRequest) {
   try {
     // Identity comes from the session — the client cannot post as someone else.
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
-    const body = await request.json()
-    const { groupId, content, imageUrl, postType } = body
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const body = parsed.body
 
+    // A groupId that isn't a string is a broken client, and it must not fall
+    // through as "no group": the post would leave the private group it was
+    // written for and land on the public feed. Refused, not defaulted.
+    const groupId = boundedString(body.groupId, MAX_ID_LENGTH)
+    if (body.groupId !== undefined && body.groupId !== null && groupId === null) {
+      return apiError(400, 'invalid_value', 'Invalid group')
+    }
+
+    const content = typeof body.content === 'string' ? body.content : null
     if (!content) {
-      return NextResponse.json(
-        { error: 'content is required' },
-        { status: 400 }
-      )
+      return apiError(400, 'missing_field', 'content is required')
     }
     if (overLimit(content, LIMITS.post)) {
-      return NextResponse.json({ error: 'Post is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Post is too long')
     }
 
     const invalidEnum = validateEnumFields(body, { postType: POST_TYPES })
-    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
+    if (invalidEnum) return apiError(400, 'invalid_value', invalidEnum)
 
     // Posting into a group requires membership — otherwise a non-member could
     // drop posts into any group (including private ones) by passing its id.
@@ -171,7 +179,7 @@ export async function POST(request: NextRequest) {
       const member = await db.groupMember.findUnique({
         where: { groupId_userId: { groupId, userId: me.id } },
       })
-      if (!member) return NextResponse.json({ error: 'Join the group to post in it' }, { status: 403 })
+      if (!member) return apiError(403, 'forbidden', 'Join the group to post in it')
     }
 
     // Photos arrive as client-compressed data URLs. The prefix is a claim, not
@@ -179,13 +187,14 @@ export async function POST(request: NextRequest) {
     // rejects SVG (a script-carrying document format) and anything that isn't a
     // real JPEG/PNG/WebP, and caps the DECODED size rather than the base64
     // string. The client's canvas re-encode is a nicety; this is the control.
-    if (imageUrl !== undefined && imageUrl !== null) {
-      if (typeof imageUrl !== 'string') {
-        return NextResponse.json({ error: 'Invalid image' }, { status: 400 })
+    const imageUrl = typeof body.imageUrl === 'string' ? body.imageUrl : null
+    if (body.imageUrl !== undefined && body.imageUrl !== null) {
+      if (imageUrl === null) {
+        return apiError(400, 'invalid_value', 'Invalid image')
       }
       const check = validateImageDataUrl(imageUrl)
       if (!check.ok) {
-        return NextResponse.json({ error: check.error }, { status: 400 })
+        return apiError(400, 'invalid_value', check.error)
       }
     }
 
@@ -199,7 +208,9 @@ export async function POST(request: NextRequest) {
         groupId: groupId ?? null,
         content,
         imageUrl: storedImageUrl,
-        postType: postType ?? 'moment',
+        // validateEnumFields above has already rejected anything that isn't a
+        // POST_TYPES value, so this only picks the default for an absent one.
+        postType: isOneOf(POST_TYPES, body.postType) ? body.postType : 'moment',
       },
       include: {
         author: {
@@ -231,9 +242,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ post }, { status: 201 })
   } catch (error) {
     console.error('Error creating feed post:', error)
-    return NextResponse.json(
-      { error: 'Failed to create feed post' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to create feed post')
   }
 }

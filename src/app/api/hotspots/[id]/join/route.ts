@@ -4,6 +4,7 @@ import { awardXp, grantBadge, BADGES } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { canJoinAudience } from '@/lib/enums'
+import { apiError } from '@/lib/http'
 
 export async function POST(
   request: NextRequest,
@@ -12,26 +13,20 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     // Check hotspot exists
     const hotspot = await db.hotspot.findUnique({ where: { id } })
     if (!hotspot) {
-      return NextResponse.json(
-        { error: 'Hotspot not found' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Hotspot not found')
     }
 
     // Enforce a restricted audience server-side. The women-only badge was
     // advertised but never checked — anyone could join. Now the join is refused
     // unless the runner is eligible.
     if (!canJoinAudience(me.gender, hotspot.audience)) {
-      return NextResponse.json(
-        { error: 'This run is for women only.' },
-        { status: 403 }
-      )
+      return apiError(403, 'forbidden', 'This run is for women only.')
     }
 
     // Check if already a participant
@@ -42,10 +37,9 @@ export async function POST(
     })
 
     if (existing) {
-      return NextResponse.json(
-        { error: 'Already joined this hotspot' },
-        { status: 409 }
-      )
+      // 'conflict' is what onboarding (and join buttons) should branch on —
+      // not string-matching "already" in the human sentence.
+      return apiError(409, 'conflict', 'Already joined this hotspot')
     }
 
     await db.hotspotParticipant.create({
@@ -141,10 +135,7 @@ export async function POST(
     })
 
     if (!updatedHotspot) {
-      return NextResponse.json(
-        { error: 'Failed to load updated hotspot' },
-        { status: 500 }
-      )
+      return apiError(500, 'internal', 'Failed to load updated hotspot')
     }
 
     const now = new Date()
@@ -163,10 +154,7 @@ export async function POST(
     })
   } catch (error) {
     console.error('Error joining hotspot:', error)
-    return NextResponse.json(
-      { error: 'Failed to join hotspot' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to join hotspot')
   }
 }
 
@@ -177,7 +165,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const participant = await db.hotspotParticipant.findUnique({
@@ -187,10 +175,7 @@ export async function DELETE(
     })
 
     if (!participant) {
-      return NextResponse.json(
-        { error: 'Not a participant of this hotspot' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Not a participant of this hotspot')
     }
 
     await db.hotspotParticipant.delete({
@@ -219,10 +204,7 @@ export async function DELETE(
     })
 
     if (!updatedHotspot) {
-      return NextResponse.json(
-        { error: 'Failed to load updated hotspot' },
-        { status: 500 }
-      )
+      return apiError(500, 'internal', 'Failed to load updated hotspot')
     }
 
     const now = new Date()
@@ -239,9 +221,6 @@ export async function DELETE(
     })
   } catch (error) {
     console.error('Error leaving hotspot:', error)
-    return NextResponse.json(
-      { error: 'Failed to leave hotspot' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to leave hotspot')
   }
 }

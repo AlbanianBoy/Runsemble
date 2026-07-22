@@ -4,6 +4,7 @@ import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { canViewPost } from '@/lib/feed-access'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { apiError, readJson } from '@/lib/http'
 
 // List comments for a post, oldest first.
 export async function GET(
@@ -13,10 +14,10 @@ export async function GET(
   try {
     const { id } = await params
     const post = await db.feedPost.findUnique({ where: { id }, select: { groupId: true } })
-    if (!post) return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+    if (!post) return apiError(404, 'not_found', 'Post not found')
     const me = await getSessionUser()
     if (!(await canViewPost(post.groupId, me?.id ?? null))) {
-      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
+      return apiError(403, 'forbidden', 'This post is in a private group')
     }
     const comments = await db.postComment.findMany({
       where: { postId: id },
@@ -26,7 +27,7 @@ export async function GET(
     return NextResponse.json({ comments })
   } catch (error) {
     console.error('Error fetching comments:', error)
-    return NextResponse.json({ error: 'Failed to fetch comments' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch comments')
   }
 }
 
@@ -39,24 +40,26 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const authorId = me.id
 
-    const body = await request.json()
-    const { content } = body
-    if (!content?.trim()) {
-      return NextResponse.json({ error: 'content is required' }, { status: 400 })
+    const parsed = await readJson(request)
+    if (!parsed.ok) return parsed.response
+    const content = typeof parsed.body.content === 'string' ? parsed.body.content : ''
+
+    if (!content.trim()) {
+      return apiError(400, 'missing_field', 'content is required')
     }
     if (overLimit(content, LIMITS.comment)) {
-      return NextResponse.json({ error: 'Comment is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Comment is too long')
     }
 
     const post = await db.feedPost.findUnique({ where: { id } })
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'Post not found')
     }
     if (!(await canViewPost(post.groupId, authorId))) {
-      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
+      return apiError(403, 'forbidden', 'This post is in a private group')
     }
 
     const comment = await db.postComment.create({
@@ -81,6 +84,6 @@ export async function POST(
     return NextResponse.json({ comment, comments: count }, { status: 201 })
   } catch (error) {
     console.error('Error creating comment:', error)
-    return NextResponse.json({ error: 'Failed to create comment' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to create comment')
   }
 }

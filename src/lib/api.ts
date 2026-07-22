@@ -1,21 +1,60 @@
 // ─── Typed fetch helpers ──────────────────────────────────────────────────────
 // Thin wrappers around fetch that return typed JSON and throw a useful error
-// (the server's { error } message when present) instead of silently resolving
+// (the server's { error, code } when present) instead of silently resolving
 // to a 500 body.
+//
+// `code` is the stable half of the error envelope (see src/lib/http.ts). Clients
+// that need to branch — "already joined", session gone vs bad password — should
+// read `ApiError.code`, not match prose in `message`. The human sentence stays
+// on `message` for toasts and form alerts.
+//
+// Deliberately typed as string, not ErrorCode: importing http.ts here would pull
+// next/server into every client bundle that uses apiGet/apiSend.
 
-async function extractError(res: Response): Promise<string | null> {
-  try {
-    const data = (await res.clone().json()) as { error?: string }
-    return data?.error ?? null
-  } catch {
-    return null
+export class ApiError extends Error {
+  readonly status: number
+  /** Machine-readable code when the route has migrated to apiError(); null otherwise. */
+  readonly code: string | null
+
+  constructor(message: string, status: number, code: string | null = null) {
+    super(message)
+    this.name = 'ApiError'
+    this.status = status
+    this.code = code
   }
+}
+
+async function extractError(
+  res: Response
+): Promise<{ message: string | null; code: string | null }> {
+  try {
+    const data = (await res.clone().json()) as { error?: string; code?: string }
+    return {
+      message: typeof data?.error === 'string' ? data.error : null,
+      code: typeof data?.code === 'string' ? data.code : null,
+    }
+  } catch {
+    return { message: null, code: null }
+  }
+}
+
+function throwApiError(res: Response, extracted: { message: string | null; code: string | null }): never {
+  throw new ApiError(
+    extracted.message ?? `Request failed (${res.status})`,
+    res.status,
+    extracted.code
+  )
 }
 
 // A 401 means the login session is gone (expired, revoked, or a pre-auth local
 // profile). Reset to the login screen once instead of failing silently forever.
 // Only triggered for primary/critical API calls — NOT background polling queries
 // like the conversations list (which would cause an infinite reload loop).
+//
+// invalid_credentials is also 401 but is a login-form failure, not a missing
+// session — those routes go through raw fetch in onboarding, not apiSend, so
+// handleUnauthorized is not on that path today. If a future call uses api*
+// against login, gate this on code !== 'invalid_credentials'.
 let handling401 = false
 function handleUnauthorized() {
   if (typeof window === 'undefined' || handling401) return
@@ -49,7 +88,7 @@ export async function apiGet<T>(url: string): Promise<T> {
   const res = await fetchWithTimeout(url)
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized()
-    throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
+    throwApiError(res, await extractError(res))
   }
   return (await res.json()) as T
 }
@@ -62,7 +101,7 @@ export async function apiGet<T>(url: string): Promise<T> {
 export async function apiGetSilent<T>(url: string): Promise<T> {
   const res = await fetchWithTimeout(url)
   if (!res.ok) {
-    throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
+    throwApiError(res, await extractError(res))
   }
   return (await res.json()) as T
 }
@@ -79,7 +118,7 @@ export async function apiSend<T>(
   })
   if (!res.ok) {
     if (res.status === 401) handleUnauthorized()
-    throw new Error((await extractError(res)) ?? `Request failed (${res.status})`)
+    throwApiError(res, await extractError(res))
   }
   return (await res.json()) as T
 }
