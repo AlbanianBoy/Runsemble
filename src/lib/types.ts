@@ -366,3 +366,24 @@ export interface GroupResponse {
 export interface GroupMessagesResponse {
   messages: ApiGroupMessage[]
 }
+
+/** A stranger who messaged you and is waiting to be let in — see lib/message-access. */
+export interface ApiMessageRequest {
+  id: string
+  createdAt: string
+  sentAt: string
+  /** The first thing they said, so the decision can be made on the message not the name. */
+  preview: string
+  sender: {
+    id: string
+    name: string
+    avatar: string | null
+    city: string
+    paceLevel: string
+    verified: boolean
+  }
+}
+export interface MessageRequestsResponse {
+  requests: ApiMessageRequest[]
+  count: number
+}

@@ -7,9 +7,10 @@ import { Users, Lock, Globe, Send, ArrowLeft, Plus, MessageCircle, ChevronRight,
 import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
+import { showMutationError } from '@/lib/mutation-error'
 import { apiGet, apiGetSilent, apiSend } from '@/lib/api'
 import { useIdleBackoffPoll, useVisiblePoll } from '@/lib/use-visible-poll'
-import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse } from '@/lib/types'
+import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse, MessageRequestsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -76,6 +77,31 @@ export function GroupsTab() {
   })
 
   const conversations = convData?.conversations ?? []
+
+  // Requests are people you have no connection to who wrote anyway. They are
+  // deliberately NOT in `conversations` — the inbox is the thing they have not
+  // been let into — so they need their own list or the message is invisible.
+  const { data: requestData } = useQuery({
+    queryKey: ['message-requests', currentUser?.id],
+    queryFn: () => apiGetSilent<MessageRequestsResponse>('/api/messages/requests'),
+    enabled: !!currentUser?.id,
+    retry: false,
+    throwOnError: false,
+  })
+  const messageRequests = requestData?.requests ?? []
+
+  const answerRequest = useMutation({
+    mutationFn: ({ senderId, action }: { senderId: string; action: 'accept' | 'decline' }) =>
+      apiSend('/api/messages/requests', 'PATCH', { senderId, action }),
+    onSuccess: (_r, { action }) => {
+      queryClient.invalidateQueries({ queryKey: ['message-requests'] })
+      queryClient.invalidateQueries({ queryKey: ['conversations'] })
+      // Nothing is said to the other person either way. Accepting shows up when
+      // they get a reply; declining is meant to be invisible.
+      if (action === 'accept') toast.success('Message accepted')
+    },
+    onError: (e: Error) => showMutationError(e),
+  })
 
   const lastUnreadTotal = useRef<number>(-1)
   useEffect(() => {
@@ -476,6 +502,58 @@ export function GroupsTab() {
 
   return (
     <div className="space-y-5 pb-4">
+      {messageRequests.length > 0 && (
+        <div>
+          <h3 className="text-sm font-semibold text-muted-foreground mb-2">
+            Message requests
+            <span className="ml-1.5 text-muted-foreground/70 tabular">{messageRequests.length}</span>
+          </h3>
+          <div className="space-y-2">
+            {messageRequests.map((r) => (
+              <Card key={r.id}>
+                <CardContent className="p-3">
+                  <div className="flex items-start gap-3">
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarFallback className={`text-sm text-white ${getAvatarColor(r.sender.name)}`}>
+                        {getInitials(r.sender.name)}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate">{r.sender.name}</p>
+                      <p className="text-xs text-muted-foreground capitalize">
+                        {r.sender.city} · {r.sender.paceLevel}
+                      </p>
+                      {/* The message itself, not just who sent it — being asked
+                          to accept before seeing what was said is not a choice. */}
+                      <p className="text-sm mt-1.5 line-clamp-3">{r.preview}</p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2 mt-3">
+                    <Button
+                      size="sm"
+                      className="flex-1 rounded-full min-h-11"
+                      onClick={() => answerRequest.mutate({ senderId: r.sender.id, action: 'accept' })}
+                      disabled={answerRequest.isPending}
+                    >
+                      Accept
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="flex-1 rounded-full min-h-11"
+                      onClick={() => answerRequest.mutate({ senderId: r.sender.id, action: 'decline' })}
+                      disabled={answerRequest.isPending}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
       {conversations.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">Messages</h3>

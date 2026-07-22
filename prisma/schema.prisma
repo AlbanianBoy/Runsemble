@@ -68,6 +68,12 @@ enum InviteStatus {
   declined
 }
 
+enum MessageRequestStatus {
+  pending
+  accepted
+  declined
+}
+
 // What a report is about. Kept polymorphic (a plain subjectId, no FK) so one
 // table covers people, posts and messages, and so a report survives the subject
 // being deleted — the evidence snapshot is the record.
@@ -158,6 +164,8 @@ model User {
   sentMessages      ChatMessage[] @relation("SentMessages")
   receivedMessages  ChatMessage[] @relation("ReceivedMessages")
   sentInvites       RunInvite[] @relation("SentInvites")
+  messageRequestsSent     MessageRequest[] @relation("RequestsSent")
+  messageRequestsReceived MessageRequest[] @relation("RequestsReceived")
   receivedInvites   RunInvite[] @relation("ReceivedInvites")
   earnedBadges      UserBadge[]
   runRatings        RunRating[]
@@ -519,6 +527,38 @@ model RunRating {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([hotspotId, userId])
+}
+
+// ─── Message requests ─────────────────────────────────────────────────────────
+// A stranger's first message is a request, not a delivery.
+//
+// Anyone could DM anyone, and every message fired a push. On an app whose whole
+// premise is meeting people you don't know yet, that makes the inbox — and the
+// lock screen — reachable by any account that can find you on the map. Blocking
+// works, but only after the message has already arrived and buzzed.
+//
+// So a first message from someone you have no connection with lands here
+// instead: stored, visible when you go looking, and silent. Accepting opens the
+// conversation and lets pushes through. Declining closes it without telling
+// them, which is the point — a decline that notifies is a decline people are
+// afraid to use.
+//
+// Directional: A requesting B is not B requesting A. If B ever messages A, that
+// is acceptance by conduct and the request is settled without a tap.
+model MessageRequest {
+  id          String   @id @default(cuid())
+  senderId    String
+  recipientId String
+  status      MessageRequestStatus @default(pending)
+  createdAt   DateTime @default(now())
+  respondedAt DateTime?
+
+  sender      User     @relation("RequestsSent", fields: [senderId], references: [id], onDelete: Cascade)
+  recipient   User     @relation("RequestsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
+
+  @@unique([senderId, recipientId])
+  // The recipient's "who is waiting on me" list, newest first.
+  @@index([recipientId, status, createdAt])
 }
 
 model Buddy {

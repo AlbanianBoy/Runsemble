@@ -7,6 +7,7 @@ import { requireVerifiedEmail } from '@/lib/capabilities'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 import { readClientId } from '@/lib/idempotency'
+import { decideDelivery, openMessageRequest } from '@/lib/message-access'
 
 // 1:1 direct messages. Private — identity always comes from the session.
 //   GET ?withId=  → the conversation with that person (marks read)
@@ -79,6 +80,16 @@ export async function GET(request: NextRequest) {
     `
     const unreadByPartner = new Map(unreadRows.map((r) => [r.partner, r.unread]))
 
+    // Anyone whose request is still pending is kept OUT of this list. Their
+    // message exists and is stored, but the inbox is the thing they have not
+    // been let into yet — leaving them here would make the request a formality
+    // and put the stranger's message on the same screen as everyone else's.
+    const pending = await db.messageRequest.findMany({
+      where: { recipientId: userId, status: 'pending' },
+      select: { senderId: true },
+    })
+    const pendingSenders = new Set(pending.map((r) => r.senderId))
+
     const partners = await db.user.findMany({
       where: { id: { in: latest.map((r) => r.partner) } },
       select: { id: true, name: true, avatar: true },
@@ -90,6 +101,7 @@ export async function GET(request: NextRequest) {
       .map((r) => {
         const partner = partnerMap.get(r.partner)
         if (!partner) return null
+        if (pendingSenders.has(r.partner)) return null
         return {
           partner,
           lastMessage: r.content,
@@ -162,9 +174,24 @@ export async function POST(request: NextRequest) {
       if (already) return NextResponse.json({ message: already, duplicate: true })
     }
 
+    // A first message from someone you have no connection to is a request, not
+    // a delivery — see lib/message-access for what counts as a connection.
+    const decision = await decideDelivery(senderId, recipientId)
+    if (decision.kind === 'refuse') {
+      return apiError(403, 'forbidden', decision.reason)
+    }
+
     const message = await db.chatMessage.create({
       data: { senderId, recipientId, content: content.trim(), clientId },
     })
+
+    if (decision.kind === 'request') {
+      await openMessageRequest(senderId, recipientId)
+      // No notify(). The silence IS the feature: a request that pushes is a
+      // message with extra steps, and the push is the part that reaches someone
+      // who has not agreed to hear from you. It waits in their requests list.
+      return NextResponse.json({ message, pending: true }, { status: 201 })
+    }
 
     const sender = await db.user.findUnique({ where: { id: senderId }, select: { name: true } })
     await notify({
