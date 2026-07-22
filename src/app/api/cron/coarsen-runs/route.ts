@@ -14,6 +14,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { toPublicPath } from '@/lib/run'
+import { apiError } from '@/lib/http'
 
 export const dynamic = 'force-dynamic'
 
@@ -26,7 +27,7 @@ const BATCH = 200
 export async function GET(request: NextRequest) {
   const secret = process.env.CRON_SECRET
   if (!secret || request.headers.get('authorization') !== `Bearer ${secret}`) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    return apiError(401, 'unauthenticated', 'Unauthorized')
   }
 
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 86_400_000)

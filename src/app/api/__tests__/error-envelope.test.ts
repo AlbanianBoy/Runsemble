@@ -37,6 +37,32 @@ describe('request boundary', () => {
     expect(files.length).toBeGreaterThan(40)
   })
 
+  it('gives every error response a machine-readable code', () => {
+    // `NextResponse.json({ error }, { status })` emits a sentence and nothing a
+    // client can branch on. apiError() emits both. The prose belongs to the
+    // person reading it; the code is the part a client may depend on.
+    const offenders: { file: string; count: number }[] = []
+    for (const file of files) {
+      const src = readFileSync(file, 'utf8')
+      // Multiline, because the long ones wrap across several lines.
+      const bare = src.match(/NextResponse\.json\(\s*\{\s*error:/g)?.length ?? 0
+      if (bare > 0) offenders.push({ file: rel(file), count: bare })
+    }
+
+    const total = offenders.reduce((n, o) => n + o.count, 0)
+    expect(
+      offenders,
+      [
+        `${total} error responses carry no code. Replace with apiError() from @/lib/http:`,
+        `  return apiError(404, 'not_found', 'Group not found')`,
+        `Keep the status and the human sentence EXACTLY as they are — this adds a`,
+        `field, it does not redesign the API.`,
+        '',
+        ...offenders.map((o) => `  ${o.file} (${o.count})`),
+      ].join('\n')
+    ).toEqual([])
+  })
+
   it('never lets a malformed body become a 500', () => {
     // Either readJson(), or an explicit .catch() that turns the parse failure
     // into a handled value. A bare `await request.json()` is the bug.

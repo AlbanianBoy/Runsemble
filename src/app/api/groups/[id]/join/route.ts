@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 export async function POST(
   _request: NextRequest,
@@ -9,24 +10,18 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const group = await db.runGroup.findUnique({ where: { id } })
     if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Group not found')
     }
 
     // Private groups are invite-only — a member adds you via /members. Anyone
     // with the id could otherwise self-join a private group.
     if (!group.isPublic) {
-      return NextResponse.json(
-        { error: 'This group is private — a member needs to add you' },
-        { status: 403 }
-      )
+      return apiError(403, 'forbidden', 'This group is private — a member needs to add you')
     }
 
     const existing = await db.groupMember.findUnique({
@@ -36,10 +31,7 @@ export async function POST(
     })
 
     if (existing) {
-      return NextResponse.json(
-        { error: 'Already a member of this group' },
-        { status: 409 }
-      )
+      return apiError(409, 'conflict', 'Already a member of this group')
     }
 
     await db.groupMember.create({
@@ -70,10 +62,7 @@ export async function POST(
     return NextResponse.json({ group: updatedGroup })
   } catch (error) {
     console.error('Error joining group:', error)
-    return NextResponse.json(
-      { error: 'Failed to join group' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to join group')
   }
 }
 
@@ -84,7 +73,7 @@ export async function DELETE(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const member = await db.groupMember.findUnique({
@@ -94,18 +83,12 @@ export async function DELETE(
     })
 
     if (!member) {
-      return NextResponse.json(
-        { error: 'Not a member of this group' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Not a member of this group')
     }
 
     // Prevent owners from leaving (they should transfer ownership first)
     if (member.role === 'owner') {
-      return NextResponse.json(
-        { error: 'Owner cannot leave. Transfer ownership first.' },
-        { status: 400 }
-      )
+      return apiError(400, 'precondition_failed', 'Owner cannot leave. Transfer ownership first.')
     }
 
     await db.groupMember.delete({
@@ -134,9 +117,6 @@ export async function DELETE(
     return NextResponse.json({ group: updatedGroup })
   } catch (error) {
     console.error('Error leaving group:', error)
-    return NextResponse.json(
-      { error: 'Failed to leave group' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to leave group')
   }
 }

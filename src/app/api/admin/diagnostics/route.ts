@@ -24,6 +24,7 @@ import { getAdminUser } from '@/lib/admin'
 import { isBlobConfigured } from '@/lib/image-store'
 import { rateLimitBackend } from '@/lib/rate-limit'
 import { processorErasureConfigured } from '@/lib/processor-erasure'
+import { apiError } from '@/lib/http'
 
 export const dynamic = 'force-dynamic'
 
@@ -88,7 +89,7 @@ function describeDatabaseUrl(raw: string | undefined): DbTopology {
 
 export async function GET() {
   const admin = await getAdminUser()
-  if (!admin) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+  if (!admin) return apiError(403, 'forbidden', 'Not authorized')
 
   const database = describeDatabaseUrl(process.env.DATABASE_URL)
 

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // Join / leave a challenge. Identity from the session.
 export async function POST(
@@ -10,7 +11,7 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     await db.challengeParticipant.upsert({
@@ -21,7 +22,7 @@ export async function POST(
     return NextResponse.json({ ok: true, joined: true })
   } catch (error) {
     console.error('Error joining challenge:', error)
-    return NextResponse.json({ error: 'Failed to join challenge' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to join challenge')
   }
 }
 
@@ -32,12 +33,12 @@ export async function DELETE(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     await db.challengeParticipant.deleteMany({ where: { challengeId: id, userId: me.id } })
     return NextResponse.json({ ok: true, joined: false })
   } catch (error) {
     console.error('Error leaving challenge:', error)
-    return NextResponse.json({ error: 'Failed to leave challenge' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to leave challenge')
   }
 }

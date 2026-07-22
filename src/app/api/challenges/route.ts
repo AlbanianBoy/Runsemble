@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // Community challenges. Progress is computed on read from RunSessions/Buddies in
 // the challenge window, so there is never a counter to keep in sync.
@@ -66,6 +67,6 @@ export async function GET() {
     return NextResponse.json({ challenges: shaped })
   } catch (error) {
     console.error('Error fetching challenges:', error)
-    return NextResponse.json({ error: 'Failed to fetch challenges' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch challenges')
   }
 }

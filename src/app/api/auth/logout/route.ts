@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { destroySession } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 export async function POST() {
   try {
@@ -7,6 +8,6 @@ export async function POST() {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error logging out:', error)
-    return NextResponse.json({ error: 'Failed to log out' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to log out')
   }
 }

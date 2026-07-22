@@ -5,7 +5,7 @@ import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
-import { readJson } from '@/lib/http'
+import { apiError, readJson } from '@/lib/http'
 
 // ─── Run lobby ────────────────────────────────────────────────────────────────
 // The pre-run gathering screen for a hotspot run. Participants check in
@@ -76,11 +76,11 @@ export async function GET(
   try {
     const { id } = await params
     const lobby = await loadLobby(id, (await getSessionUser())?.id ?? null)
-    if (!lobby) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    if (!lobby) return apiError(404, 'not_found', 'Run not found')
     return NextResponse.json(lobby)
   } catch (error) {
     console.error('Error loading lobby:', error)
-    return NextResponse.json({ error: 'Failed to load lobby' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to load lobby')
   }
 }
 
@@ -91,18 +91,18 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const { action, lat, lng } = parsed.body
     if (!action) {
-      return NextResponse.json({ error: 'action is required' }, { status: 400 })
+      return apiError(400, 'missing_field', 'action is required')
     }
 
     const hotspot = await db.hotspot.findUnique({ where: { id } })
-    if (!hotspot) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    if (!hotspot) return apiError(404, 'not_found', 'Run not found')
 
     let xp: Awaited<ReturnType<typeof awardXpAmount>> = null
 
@@ -113,9 +113,10 @@ export async function POST(
         const distKm = haversineKm({ lat, lng }, { lat: hotspot.lat, lng: hotspot.lng })
         if (distKm > GEOFENCE_KM) {
           const m = Math.round(distKm * 1000)
-          return NextResponse.json(
-            { error: `You're ~${m} m from the start point — head there and check in again` },
-            { status: 400 }
+          return apiError(
+            400,
+            'invalid_value',
+            `You're ~${m} m from the start point — head there and check in again`
           )
         }
       }
@@ -143,7 +144,7 @@ export async function POST(
         where: { hotspotId_userId: { hotspotId: id, userId } },
       })
       if (!participant || participant.status !== 'here') {
-        return NextResponse.json({ error: 'Check in first, then start the run' }, { status: 400 })
+        return apiError(400, 'precondition_failed', 'Check in first, then start the run')
       }
 
       // "Start" pushes a notification to everyone in the lobby, so it needs an
@@ -154,9 +155,10 @@ export async function POST(
       const dueAt = hotspot.startTime.getTime() - START_GRACE_MS
       const isHost = !hotspot.createdBy || hotspot.createdBy === userId
       if (!isHost && Date.now() < dueAt) {
-        return NextResponse.json(
-          { error: 'Only the person who created this run can start it before its start time' },
-          { status: 403 }
+        return apiError(
+          403,
+          'forbidden',
+          'Only the person who created this run can start it before its start time'
         )
       }
 
@@ -190,13 +192,13 @@ export async function POST(
         })
       }
     } else {
-      return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+      return apiError(400, 'invalid_value', 'Unknown action')
     }
 
     const lobby = await loadLobby(id, userId)
     return NextResponse.json({ lobby, xp })
   } catch (error) {
     console.error('Error updating lobby:', error)
-    return NextResponse.json({ error: 'Failed to update lobby' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to update lobby')
   }
 }

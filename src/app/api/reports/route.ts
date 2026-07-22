@@ -10,17 +10,18 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { REPORT_SUBJECT_TYPES, REPORT_REASONS, isOneOf } from '@/lib/enums'
+import { apiError } from '@/lib/http'
 
 const MAX_DETAILS = 1000
 
 export async function POST(request: NextRequest) {
   const me = await getSessionUser()
-  if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+  if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
   // Filing a report is cheap to abuse — a stream of them is a way to harass a
   // moderator, or to bury a real report. Bound it per account.
   if (!(await checkRateLimit(`report:${me.id}:${clientIp(request)}`, 20, 60 * 60_000))) {
-    return NextResponse.json({ error: 'Too many reports — please slow down' }, { status: 429 })
+    return apiError(429, 'rate_limited', 'Too many reports — please slow down')
   }
 
   const body = await request.json().catch(() => null)
@@ -30,16 +31,16 @@ export async function POST(request: NextRequest) {
   const details = typeof body?.details === 'string' ? body.details.slice(0, MAX_DETAILS) : null
 
   if (!isOneOf(REPORT_SUBJECT_TYPES, subjectType)) {
-    return NextResponse.json({ error: 'subjectType must be one of: ' + REPORT_SUBJECT_TYPES.join(', ') }, { status: 400 })
+    return apiError(400, 'invalid_value', 'subjectType must be one of: ' + REPORT_SUBJECT_TYPES.join(', '))
   }
   if (typeof subjectId !== 'string' || !subjectId) {
-    return NextResponse.json({ error: 'subjectId is required' }, { status: 400 })
+    return apiError(400, 'missing_field', 'subjectId is required')
   }
   if (!isOneOf(REPORT_REASONS, reason)) {
-    return NextResponse.json({ error: 'reason must be one of: ' + REPORT_REASONS.join(', ') }, { status: 400 })
+    return apiError(400, 'invalid_value', 'reason must be one of: ' + REPORT_REASONS.join(', '))
   }
   if (subjectType === 'user' && subjectId === me.id) {
-    return NextResponse.json({ error: 'You cannot report yourself' }, { status: 400 })
+    return apiError(400, 'invalid_value', 'You cannot report yourself')
   }
 
   // Confirm the subject exists AND snapshot it, in one lookup. A report on a
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
   // still reviewable.
   const evidence = await snapshotSubject(subjectType, subjectId)
   if (evidence === null) {
-    return NextResponse.json({ error: 'That content no longer exists' }, { status: 404 })
+    return apiError(404, 'not_found', 'That content no longer exists')
   }
 
   // One report per person per subject: re-filing updates it rather than stacking,

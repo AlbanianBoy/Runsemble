@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // List YOUR notifications (newest first) plus the unread count. Session only.
 export async function GET() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const [notifications, unread] = await Promise.all([
@@ -22,7 +23,7 @@ export async function GET() {
     return NextResponse.json({ notifications, unread })
   } catch (error) {
     console.error('Error fetching notifications:', error)
-    return NextResponse.json({ error: 'Failed to fetch notifications' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch notifications')
   }
 }
 
@@ -30,7 +31,7 @@ export async function GET() {
 export async function PATCH(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const body = await request.json().catch(() => ({}))
     const { ids } = body
@@ -51,6 +52,6 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error updating notifications:', error)
-    return NextResponse.json({ error: 'Failed to update notifications' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to update notifications')
   }
 }

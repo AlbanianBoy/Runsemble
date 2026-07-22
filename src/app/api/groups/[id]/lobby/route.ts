@@ -4,7 +4,7 @@ import { awardXpAmount } from '@/lib/xp'
 import { notify } from '@/lib/notify'
 import { blockedUserIds } from '@/lib/blocks'
 import { getSessionUser } from '@/lib/auth'
-import { readJson } from '@/lib/http'
+import { apiError, readJson } from '@/lib/http'
 
 // ─── Group run lobby ──────────────────────────────────────────────────────────
 // Start-together for RunGroups, mirroring the hotspot lobby contract so the
@@ -61,21 +61,21 @@ export async function GET(
 
     // Private groups are visible to members only.
     const group = await db.runGroup.findUnique({ where: { id }, select: { isPublic: true } })
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+    if (!group) return apiError(404, 'not_found', 'Group not found')
     if (!group.isPublic) {
       const me = await getSessionUser()
       const member = me
         ? await db.groupMember.findUnique({ where: { groupId_userId: { groupId: id, userId: me.id } } })
         : null
-      if (!member) return NextResponse.json({ error: 'This group is private' }, { status: 403 })
+      if (!member) return apiError(403, 'forbidden', 'This group is private')
     }
 
     const lobby = await loadLobby(id, (await getSessionUser())?.id ?? null)
-    if (!lobby) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+    if (!lobby) return apiError(404, 'not_found', 'Group not found')
     return NextResponse.json(lobby)
   } catch (error) {
     console.error('Error loading group lobby:', error)
-    return NextResponse.json({ error: 'Failed to load lobby' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to load lobby')
   }
 }
 
@@ -86,20 +86,20 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const { action } = parsed.body
-    if (!action) return NextResponse.json({ error: 'action is required' }, { status: 400 })
+    if (!action) return apiError(400, 'missing_field', 'action is required')
 
     const group = await db.runGroup.findUnique({ where: { id } })
-    if (!group) return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+    if (!group) return apiError(404, 'not_found', 'Group not found')
 
     const member = await db.groupMember.findUnique({
       where: { groupId_userId: { groupId: id, userId: me.id } },
     })
-    if (!member) return NextResponse.json({ error: 'Join the group first' }, { status: 403 })
+    if (!member) return apiError(403, 'forbidden', 'Join the group first')
 
     let xp: Awaited<ReturnType<typeof awardXpAmount>> = null
 
@@ -114,7 +114,7 @@ export async function POST(
       }
     } else if (action === 'start') {
       if (!isFresh(member.checkedInAt)) {
-        return NextResponse.json({ error: 'Check in first, then start the run' }, { status: 400 })
+        return apiError(400, 'precondition_failed', 'Check in first, then start the run')
       }
       const stale = !group.lobbyStartedAt || !isFresh(group.lobbyStartedAt)
       if (stale) {
@@ -140,13 +140,13 @@ export async function POST(
         })
       }
     } else {
-      return NextResponse.json({ error: 'Unknown action' }, { status: 400 })
+      return apiError(400, 'invalid_value', 'Unknown action')
     }
 
     const lobby = await loadLobby(id, me.id)
     return NextResponse.json({ lobby, xp })
   } catch (error) {
     console.error('Error updating group lobby:', error)
-    return NextResponse.json({ error: 'Failed to update lobby' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to update lobby')
   }
 }

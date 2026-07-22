@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { readJson, parseNullableDate } from '@/lib/http'
+import { readJson, parseNullableDate, apiError } from '@/lib/http'
 import {
   PACE_LEVELS,
   SCHEDULE_PREFERENCES,
@@ -43,7 +43,7 @@ export async function GET(
     // anyone walk a list of scraped user ids and collect a stranger's habits.
     const me = await getSessionUser()
     if (!me) {
-      return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+      return apiError(401, 'unauthenticated', 'Please log in')
     }
     const isSelf = me.id === id
 
@@ -73,7 +73,7 @@ export async function GET(
     })
 
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'User not found')
     }
 
     // Own profile: everything except the hash. Anyone else: public fields only,
@@ -84,10 +84,7 @@ export async function GET(
     return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch user' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch user')
   }
 }
 
@@ -98,23 +95,23 @@ export async function PATCH(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
-    if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+    if (me.id !== id) return apiError(403, 'forbidden', 'You can only edit your own profile')
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const body = parsed.body
     if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
-      return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Name or bio is too long')
     }
 
     const user = await db.user.findUnique({ where: { id } })
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'User not found')
     }
 
     const invalid =
       validateEnumFields(body, ENUM_FIELDS) ?? validateCsvEnumFields(body, CSV_ENUM_FIELDS)
-    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+    if (invalid) return apiError(400, 'invalid_value', invalid)
 
     // Build update data from provided fields
     const updateData: Record<string, unknown> = {}
@@ -158,7 +155,7 @@ export async function PATCH(
       if (body[field] === undefined) continue
       const result = parseNullableDate(body[field])
       if (!result.ok) {
-        return NextResponse.json({ error: `${field} must be a date or null` }, { status: 400 })
+        return apiError(400, 'invalid_value', `${field} must be a date or null`)
       }
       updateData[field] = result.date
     }
@@ -177,10 +174,7 @@ export async function PATCH(
     return NextResponse.json({ user: toSafeUser(updatedUser) })
   } catch (error) {
     console.error('Error updating user:', error)
-    return NextResponse.json(
-      { error: 'Failed to update user' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to update user')
   }
 }
 
@@ -191,23 +185,23 @@ export async function PUT(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
-    if (me.id !== id) return NextResponse.json({ error: 'You can only edit your own profile' }, { status: 403 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+    if (me.id !== id) return apiError(403, 'forbidden', 'You can only edit your own profile')
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const body = parsed.body
     if (overLimit(body.name, LIMITS.name) || overLimit(body.bio, LIMITS.bio)) {
-      return NextResponse.json({ error: 'Name or bio is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Name or bio is too long')
     }
 
     const user = await db.user.findUnique({ where: { id } })
     if (!user) {
-      return NextResponse.json({ error: 'User not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'User not found')
     }
 
     const invalid =
       validateEnumFields(body, ENUM_FIELDS) ?? validateCsvEnumFields(body, CSV_ENUM_FIELDS)
-    if (invalid) return NextResponse.json({ error: invalid }, { status: 400 })
+    if (invalid) return apiError(400, 'invalid_value', invalid)
 
     const updateData: Record<string, unknown> = {}
     const allowedFields = [
@@ -250,7 +244,7 @@ export async function PUT(
       if (body[field] === undefined) continue
       const result = parseNullableDate(body[field])
       if (!result.ok) {
-        return NextResponse.json({ error: `${field} must be a date or null` }, { status: 400 })
+        return apiError(400, 'invalid_value', `${field} must be a date or null`)
       }
       updateData[field] = result.date
     }
@@ -273,9 +267,6 @@ export async function PUT(
     return NextResponse.json({ user: toSafeUser(updatedUser) })
   } catch (error) {
     console.error('Error updating user:', error)
-    return NextResponse.json(
-      { error: 'Failed to update user' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to update user')
   }
 }

@@ -5,19 +5,20 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAdminUser } from '@/lib/admin'
 import { REPORT_STATUSES, isOneOf } from '@/lib/enums'
+import { apiError } from '@/lib/http'
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminUser()
-  if (!admin) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+  if (!admin) return apiError(403, 'forbidden', 'Not authorized')
 
   const { id } = await params
   const body = await request.json().catch(() => null)
   const status = body?.status
   if (!isOneOf(REPORT_STATUSES, status)) {
-    return NextResponse.json({ error: 'status must be one of: ' + REPORT_STATUSES.join(', ') }, { status: 400 })
+    return apiError(400, 'invalid_value', 'status must be one of: ' + REPORT_STATUSES.join(', '))
   }
 
   // Record WHO closed it and when — the start of an audit trail. resolved and
@@ -32,7 +33,7 @@ export async function PATCH(
     },
   })
   if (updated.count === 0) {
-    return NextResponse.json({ error: 'Report not found' }, { status: 404 })
+    return apiError(404, 'not_found', 'Report not found')
   }
 
   return NextResponse.json({ ok: true })

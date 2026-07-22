@@ -1,13 +1,14 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // GDPR data portability: everything we hold about you, as one JSON document.
 // Session only — your data is only ever handed to *you*.
 export async function GET() {
   try {
     const user = await getSessionUser()
-    if (!user) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!user) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = user.id
 
     const [runs, posts, comments, likes, badges, buddies, notifications, messages, participations, memberships, ratings, challenges, groupChats, invites, safeZones, blocks, devices, reports] =
@@ -68,6 +69,6 @@ export async function GET() {
     )
   } catch (error) {
     console.error('Error exporting data:', error)
-    return NextResponse.json({ error: 'Failed to export data' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to export data')
   }
 }

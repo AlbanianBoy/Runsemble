@@ -6,7 +6,7 @@ import { eligibleBuddyIds } from '@/lib/buddies'
 import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields, isOneOf } from '@/lib/enums'
 import { verifyRunDistance } from '@/lib/run-math'
-import { readJson } from '@/lib/http'
+import { apiError, readJson } from '@/lib/http'
 
 // Anti-abuse caps on client-declared social inputs. A run's distance is already
 // verified against its GPS evidence; these bound the parts that aren't — how
@@ -26,7 +26,7 @@ const MAX_RUN_XP = 3200
 export async function GET() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const runs = await db.runSession.findMany({
@@ -41,7 +41,7 @@ export async function GET() {
     return NextResponse.json({ runs })
   } catch (error) {
     console.error('Error fetching runs:', error)
-    return NextResponse.json({ error: 'Failed to fetch runs' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch runs')
   }
 }
 
@@ -58,7 +58,7 @@ export async function GET() {
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const parsed = await readJson(request)
@@ -66,7 +66,7 @@ export async function POST(request: NextRequest) {
     const body = parsed.body
 
     const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
-    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
+    if (invalidEnum) return apiError(400, 'invalid_value', invalidEnum)
 
     // Narrowed here rather than trusted. These arrive from a device and every
     // one of them lands in a database column with a type; passing them through
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     if (dist > 0 && dur > 0) {
       const paceSecPerKm = dur / dist
       if (paceSecPerKm < 120 || paceSecPerKm > 1800) {
-        return NextResponse.json({ error: 'Invalid run data: pace out of realistic range' }, { status: 422 })
+        return apiError(422, 'unprocessable', 'Invalid run data: pace out of realistic range')
       }
     }
 
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
     // design (the client thins the path 3:1, so it under-counts) — see run-math.
     const verdict = verifyRunDistance(dist, path)
     if (!verdict.ok) {
-      return NextResponse.json({ error: verdict.reason }, { status: 422 })
+      return apiError(422, 'unprocessable', verdict.reason)
     }
 
     const avgPaceSecPerKm = dist > 0 ? Math.round(dur / dist) : 0
@@ -364,6 +364,6 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error saving run:', error)
-    return NextResponse.json({ error: 'Failed to save run' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to save run')
   }
 }

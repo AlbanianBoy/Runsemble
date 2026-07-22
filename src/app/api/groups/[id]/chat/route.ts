@@ -3,7 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { readJson } from '@/lib/http'
+import { apiError, readJson } from '@/lib/http'
 
 export async function GET(
   _request: NextRequest,
@@ -12,18 +12,18 @@ export async function GET(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const group = await db.runGroup.findUnique({ where: { id } })
     if (!group) {
-      return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'Group not found')
     }
 
     const membership = await db.groupMember.findUnique({
       where: { groupId_userId: { groupId: id, userId: me.id } },
     })
     if (!membership) {
-      return NextResponse.json({ error: 'Must be a group member to view chat' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Must be a group member to view chat')
     }
 
     const messages = await db.chatMessage.findMany({
@@ -40,7 +40,7 @@ export async function GET(
     return NextResponse.json({ messages: messages.reverse() })
   } catch (error) {
     console.error('Error fetching chat messages:', error)
-    return NextResponse.json({ error: 'Failed to fetch chat messages' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch chat messages')
   }
 }
 
@@ -51,29 +51,29 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const senderId = me.id
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const content = typeof parsed.body.content === 'string' ? parsed.body.content : ''
     if (!content.trim()) {
-      return NextResponse.json({ error: 'content is required' }, { status: 400 })
+      return apiError(400, 'missing_field', 'content is required')
     }
     if (overLimit(content, LIMITS.message)) {
-      return NextResponse.json({ error: 'Message is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Message is too long')
     }
 
     const group = await db.runGroup.findUnique({ where: { id } })
     if (!group) {
-      return NextResponse.json({ error: 'Group not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'Group not found')
     }
 
     const membership = await db.groupMember.findUnique({
       where: { groupId_userId: { groupId: id, userId: senderId } },
     })
     if (!membership) {
-      return NextResponse.json({ error: 'Must be a group member to send messages' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Must be a group member to send messages')
     }
 
     const message = await db.chatMessage.create({
@@ -112,6 +112,6 @@ export async function POST(
     return NextResponse.json({ message }, { status: 201 })
   } catch (error) {
     console.error('Error sending chat message:', error)
-    return NextResponse.json({ error: 'Failed to send message' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to send message')
   }
 }

@@ -94,9 +94,10 @@ export async function GET(request?: NextRequest) {
         Number.isFinite(radiusKm) &&
         radiusKm > 0
       if (!usable) {
-        return NextResponse.json(
-          { error: 'lat and lng must both be valid coordinates, and radiusKm positive' },
-          { status: 400 }
+        return apiError(
+          400,
+          'invalid_value',
+          'lat and lng must both be valid coordinates, and radiusKm positive'
         )
       }
 
@@ -208,24 +209,21 @@ export async function GET(request?: NextRequest) {
     return NextResponse.json({ hotspots: hotspotsWithMeta })
   } catch (error) {
     console.error('Error fetching hotspots:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch hotspots' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch hotspots')
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const body = parsed.body
 
     const invalidEnum = validateEnumFields(body, { sportType: SPORT_TYPES })
-    if (invalidEnum) return NextResponse.json({ error: invalidEnum }, { status: 400 })
+    if (invalidEnum) return apiError(400, 'invalid_value', invalidEnum)
 
     // Narrowed at the boundary rather than passed through as `any`. One of these
     // was a live 500: `new Date(startTime)` on a non-date yields Invalid Date,
@@ -245,20 +243,17 @@ export async function POST(request: NextRequest) {
     const audience = typeof body.audience === 'string' ? body.audience : 'all'
 
     if (!name.trim() || !location.trim() || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-      return NextResponse.json(
-        { error: 'name, location, lat, lng, and startTime are required' },
-        { status: 400 }
-      )
+      return apiError(400, 'missing_field', 'name, location, lat, lng, and startTime are required')
     }
 
     const startTime = new Date(typeof body.startTime === 'string' || typeof body.startTime === 'number'
       ? body.startTime
       : NaN)
     if (Number.isNaN(startTime.getTime())) {
-      return NextResponse.json({ error: 'startTime must be a valid date' }, { status: 400 })
+      return apiError(400, 'invalid_value', 'startTime must be a valid date')
     }
     if (overLimit(name, LIMITS.groupName) || overLimit(description, LIMITS.groupDesc) || overLimit(location, LIMITS.place)) {
-      return NextResponse.json({ error: 'A field is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'A field is too long')
     }
 
     const hotspot = await db.hotspot.create({
@@ -310,9 +305,6 @@ export async function POST(request: NextRequest) {
     )
   } catch (error) {
     console.error('Error creating hotspot:', error)
-    return NextResponse.json(
-      { error: 'Failed to create hotspot' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to create hotspot')
   }
 }

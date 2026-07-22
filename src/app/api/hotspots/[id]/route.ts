@@ -2,6 +2,7 @@ import { NextRequest, NextResponse, after } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
+import { apiError } from '@/lib/http'
 
 export async function GET(
   _request: NextRequest,
@@ -10,7 +11,7 @@ export async function GET(
   try {
     // Same reasoning as the board: this hands back who is going, where, and when.
     if (!(await getSessionUser())) {
-      return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+      return apiError(401, 'unauthenticated', 'Please log in')
     }
 
     const { id } = await params
@@ -51,10 +52,7 @@ export async function GET(
     })
 
     if (!hotspot) {
-      return NextResponse.json(
-        { error: 'Hotspot not found' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Hotspot not found')
     }
 
     const now = new Date()
@@ -84,10 +82,7 @@ export async function GET(
     return NextResponse.json({ hotspot: result })
   } catch (error) {
     console.error('Error fetching hotspot:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch hotspot' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch hotspot')
   }
 }
 
@@ -105,18 +100,15 @@ export async function DELETE(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const hotspot = await db.hotspot.findUnique({ where: { id } })
-    if (!hotspot) return NextResponse.json({ error: 'Run not found' }, { status: 404 })
+    if (!hotspot) return apiError(404, 'not_found', 'Run not found')
 
     // Official/recurring runs have no individual owner and aren't one person's
     // to call off.
     if (!hotspot.createdBy || hotspot.createdBy !== me.id) {
-      return NextResponse.json(
-        { error: 'Only the person who created this run can cancel it' },
-        { status: 403 }
-      )
+      return apiError(403, 'forbidden', 'Only the person who created this run can cancel it')
     }
 
     await db.hotspot.update({ where: { id }, data: { isActive: false } })
@@ -144,6 +136,6 @@ export async function DELETE(
     return NextResponse.json({ ok: true, cancelled: true })
   } catch (error) {
     console.error('Error cancelling hotspot:', error)
-    return NextResponse.json({ error: 'Failed to cancel the run' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to cancel the run')
   }
 }

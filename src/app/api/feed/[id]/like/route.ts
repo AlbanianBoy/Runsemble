@@ -4,6 +4,7 @@ import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
 import { canViewPost } from '@/lib/feed-access'
+import { apiError } from '@/lib/http'
 
 // Toggle a like for a post on behalf of a user. The PostLike rows are the only
 // source of truth — the count is derived, so there is no second copy to drift
@@ -15,15 +16,15 @@ export async function POST(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const post = await db.feedPost.findUnique({ where: { id } })
     if (!post) {
-      return NextResponse.json({ error: 'Post not found' }, { status: 404 })
+      return apiError(404, 'not_found', 'Post not found')
     }
     if (!(await canViewPost(post.groupId, userId))) {
-      return NextResponse.json({ error: 'This post is in a private group' }, { status: 403 })
+      return apiError(403, 'forbidden', 'This post is in a private group')
     }
 
     // Toggle without reading first. Checking for the row and then acting on it
@@ -63,6 +64,6 @@ export async function POST(
     return NextResponse.json({ liked, likes })
   } catch (error) {
     console.error('Error toggling like:', error)
-    return NextResponse.json({ error: 'Failed to like post' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to like post')
   }
 }

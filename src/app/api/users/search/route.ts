@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
+import { apiError } from '@/lib/http'
 
 // Find people by name. Public projection (no PII, fuzzed coords), block-aware,
 // and hidden users (privacyVisible=false) stay out of search — consistent with
@@ -38,6 +39,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error searching users:', error)
-    return NextResponse.json({ error: 'Failed to search' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to search')
   }
 }

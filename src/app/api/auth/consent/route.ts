@@ -11,11 +11,12 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { CURRENT_POLICY_VERSION } from '@/lib/consent'
+import { apiError } from '@/lib/http'
 
 export async function POST() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     await db.user.update({
       where: { id: me.id },
@@ -27,6 +28,6 @@ export async function POST() {
     return NextResponse.json({ ok: true, consentVersion: CURRENT_POLICY_VERSION })
   } catch (error) {
     console.error('Error recording consent:', error)
-    return NextResponse.json({ error: 'Failed to record consent' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to record consent')
   }
 }

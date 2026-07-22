@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { readJson } from '@/lib/http'
+import { apiError, readJson } from '@/lib/http'
 
 // ─── Group discovery ─────────────────────────────────────────────────────────
 // Two lists, not one. Groups you're IN are always returned in full: one you
@@ -113,17 +113,14 @@ export async function GET(request: NextRequest) {
     })
   } catch (error) {
     console.error('Error fetching groups:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch groups' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch groups')
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const createdBy = me.id
 
     const parsed = await readJson(request)
@@ -136,13 +133,10 @@ export async function POST(request: NextRequest) {
     const city = typeof body.city === 'string' ? body.city : 'Antwerp'
 
     if (!name.trim()) {
-      return NextResponse.json(
-        { error: 'Group name is required' },
-        { status: 400 }
-      )
+      return apiError(400, 'missing_field', 'Group name is required')
     }
     if (overLimit(name, LIMITS.groupName) || overLimit(description, LIMITS.groupDesc)) {
-      return NextResponse.json({ error: 'Group name or description is too long' }, { status: 400 })
+      return apiError(400, 'too_long', 'Group name or description is too long')
     }
 
     const group = await db.runGroup.create({
@@ -178,9 +172,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ group }, { status: 201 })
   } catch (error) {
     console.error('Error creating group:', error)
-    return NextResponse.json(
-      { error: 'Failed to create group' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to create group')
   }
 }

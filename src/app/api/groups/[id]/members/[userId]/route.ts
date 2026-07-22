@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { notify } from '@/lib/notify'
-import { readJson } from '@/lib/http'
+import { readJson, apiError } from '@/lib/http'
 
 async function membership(groupId: string, userId: string) {
   return db.groupMember.findUnique({ where: { groupId_userId: { groupId, userId } } })
@@ -17,25 +17,25 @@ export async function DELETE(
   try {
     const { id, userId } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
-    if (userId === me.id) return NextResponse.json({ error: 'Use "leave group" to remove yourself' }, { status: 400 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+    if (userId === me.id) return apiError(400, 'invalid_value', 'Use "leave group" to remove yourself')
 
     const mine = await membership(id, me.id)
     if (!mine || (mine.role !== 'owner' && mine.role !== 'admin')) {
-      return NextResponse.json({ error: 'Only a group admin can remove members' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Only a group admin can remove members')
     }
     const target = await membership(id, userId)
-    if (!target) return NextResponse.json({ error: 'Not a member of this group' }, { status: 404 })
-    if (target.role === 'owner') return NextResponse.json({ error: "You can't remove the owner" }, { status: 403 })
+    if (!target) return apiError(404, 'not_found', 'Not a member of this group')
+    if (target.role === 'owner') return apiError(403, 'forbidden', "You can't remove the owner")
     if (mine.role === 'admin' && target.role === 'admin') {
-      return NextResponse.json({ error: "Admins can't remove other admins" }, { status: 403 })
+      return apiError(403, 'forbidden', "Admins can't remove other admins")
     }
 
     await db.groupMember.delete({ where: { groupId_userId: { groupId: id, userId } } })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error removing member:', error)
-    return NextResponse.json({ error: 'Failed to remove member' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to remove member')
   }
 }
 
@@ -47,21 +47,21 @@ export async function PATCH(
   try {
     const { id, userId } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const mine = await membership(id, me.id)
     if (!mine || mine.role !== 'owner') {
-      return NextResponse.json({ error: 'Only the owner can change roles' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Only the owner can change roles')
     }
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response
     const { role } = parsed.body
     if (role !== 'admin' && role !== 'member') {
-      return NextResponse.json({ error: 'role must be admin or member' }, { status: 400 })
+      return apiError(400, 'invalid_value', 'role must be admin or member')
     }
     const target = await membership(id, userId)
-    if (!target) return NextResponse.json({ error: 'Not a member of this group' }, { status: 404 })
-    if (target.role === 'owner') return NextResponse.json({ error: "You can't change the owner's role" }, { status: 403 })
+    if (!target) return apiError(404, 'not_found', 'Not a member of this group')
+    if (target.role === 'owner') return apiError(403, 'forbidden', "You can't change the owner's role")
 
     await db.groupMember.update({ where: { groupId_userId: { groupId: id, userId } }, data: { role } })
 
@@ -77,6 +77,6 @@ export async function PATCH(
     return NextResponse.json({ ok: true, role })
   } catch (error) {
     console.error('Error changing member role:', error)
-    return NextResponse.json({ error: 'Failed to change role' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to change role')
   }
 }

@@ -12,12 +12,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSessionUser } from '@/lib/auth'
 import { db } from '@/lib/db'
+import { apiError } from '@/lib/http'
 
 const PLATFORMS = new Set(['android', 'ios', 'web', 'unknown'])
 
 export async function POST(req: NextRequest) {
   const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return apiError(401, 'unauthenticated', 'Unauthorized')
 
   const body = await req.json().catch(() => null)
   const token: unknown = body?.token
@@ -30,7 +31,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
   if (typeof token !== 'string' || token.length < 10 || token.length > 4096) {
-    return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+    return apiError(400, 'invalid_value', 'Invalid token')
   }
 
   // Keyed on the token: re-registering the same device refreshes it, and a
@@ -48,12 +49,12 @@ export async function POST(req: NextRequest) {
 // DELETE /api/push-token — unregister a single device, e.g. on sign-out here.
 export async function DELETE(req: NextRequest) {
   const user = await getSessionUser()
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  if (!user) return apiError(401, 'unauthenticated', 'Unauthorized')
 
   const body = await req.json().catch(() => null)
   const token: unknown = body?.token
   if (typeof token !== 'string' || !token) {
-    return NextResponse.json({ error: 'Invalid token' }, { status: 400 })
+    return apiError(400, 'invalid_value', 'Invalid token')
   }
 
   // Scoped to the caller, so one account can't unregister another's device.

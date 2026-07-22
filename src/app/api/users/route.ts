@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { toPublicUser } from '@/lib/public-user'
+import { apiError } from '@/lib/http'
 
 // A single request must never be able to walk the whole table, so the result
 // stays capped. What changed is the ORDER: ordering by createdAt meant that once
@@ -51,7 +52,7 @@ export async function GET(request?: NextRequest) {
     const me = await getSessionUser()
     const viewerId = me?.id
     if (!viewerId) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+      return apiError(401, 'unauthenticated', 'Unauthorized')
     }
 
     // Next always supplies the request; the parameter is optional so the handler
@@ -81,9 +82,10 @@ export async function GET(request?: NextRequest) {
         Number.isFinite(radiusKm) &&
         radiusKm > 0
       if (!usable) {
-        return NextResponse.json(
-          { error: 'lat and lng must both be valid coordinates, and radiusKm positive' },
-          { status: 400 }
+        return apiError(
+          400,
+          'invalid_value',
+          'lat and lng must both be valid coordinates, and radiusKm positive'
         )
       }
 
@@ -131,18 +133,12 @@ export async function GET(request?: NextRequest) {
     return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error fetching users:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch users' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch users')
   }
 }
 
 // Account creation moved to /api/auth/signup (password + consent + session).
 // This unauthenticated path stays closed so it can't be used to mint profiles.
 export async function POST(_request: NextRequest) {
-  return NextResponse.json(
-    { error: 'Account creation moved to /api/auth/signup' },
-    { status: 410 }
-  )
+  return apiError(410, 'gone', 'Account creation moved to /api/auth/signup')
 }

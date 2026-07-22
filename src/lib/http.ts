@@ -53,6 +53,18 @@ export const ERROR_CODES = [
   'email_unverified',
   // 404 — 'User not found', 'Hotspot not found', 'That content no longer exists'.
   'not_found',
+  // 400 — well-formed, you're allowed in principle, but the current state does
+  // not permit it YET: 'Check in first, then start the run', 'Owner cannot
+  // leave. Transfer ownership first.', 'You can have up to N safe zones'.
+  //
+  // Added because three separate call sites had no honest code. Each had been
+  // given something misleading: 'forbidden' (which reads as "not you, ever",
+  // when transferring ownership fixes it) or 'invalid_value' (when nothing
+  // about the value is invalid — the timing is). Distinct from 'conflict',
+  // which is the state having moved PAST what you asked for; this is the state
+  // not having arrived, or a quota being full. A client can usefully retry
+  // after doing the thing the message names.
+  'precondition_failed',
   // 409 — the state already moved: 'Already joined this hotspot', 'You already
   // have a pending invite to this person', 'An account with this email already
   // exists — try logging in'. This is the code onboarding.tsx should be reading.

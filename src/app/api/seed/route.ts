@@ -1,4 +1,5 @@
 import { db } from '@/lib/db'
+import { apiError } from '@/lib/http'
 import { NextResponse } from 'next/server'
 import { addHours, subHours, subDays } from 'date-fns'
 
@@ -661,7 +662,7 @@ async function seed() {
 // Wiping and reseeding the database is a dev tool — never available in production.
 function guardProduction() {
   if (process.env.NODE_ENV === 'production') {
-    return NextResponse.json({ error: 'Seeding is disabled in production' }, { status: 403 })
+    return apiError(403, 'forbidden', 'Seeding is disabled in production')
   }
   return null
 }

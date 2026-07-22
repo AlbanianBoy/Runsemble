@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // Block (or report+block) a user. `id` is the person being blocked.
 // A reason turns it into a report; the effect (hide + prevent contact) is the same.
@@ -11,10 +12,10 @@ export async function POST(
   try {
     const { id: blockedId } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const blockerId = me.id
     const { reason = null } = await request.json().catch(() => ({}))
-    if (blockerId === blockedId) return NextResponse.json({ error: 'Cannot block yourself' }, { status: 400 })
+    if (blockerId === blockedId) return apiError(400, 'invalid_value', 'Cannot block yourself')
 
     await db.block.upsert({
       where: { blockerId_blockedId: { blockerId, blockedId } },
@@ -25,7 +26,7 @@ export async function POST(
     return NextResponse.json({ ok: true, reported: !!reason })
   } catch (error) {
     console.error('Error blocking user:', error)
-    return NextResponse.json({ error: 'Failed to block user' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to block user')
   }
 }
 
@@ -36,12 +37,12 @@ export async function DELETE(
   try {
     const { id: blockedId } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     await db.block.deleteMany({ where: { blockerId: me.id, blockedId } })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error unblocking user:', error)
-    return NextResponse.json({ error: 'Failed to unblock user' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to unblock user')
   }
 }

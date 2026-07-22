@@ -3,6 +3,7 @@ import { db } from '@/lib/db'
 import { getSessionUser, destroySession } from '@/lib/auth'
 import { deleteStoredImages } from '@/lib/image-store'
 import { eraseFromProcessors } from '@/lib/processor-erasure'
+import { apiError } from '@/lib/http'
 
 // GDPR right to erasure: delete the account and everything attached to it.
 // Every user relation cascades in the schema, so one delete wipes the rows —
@@ -12,7 +13,7 @@ import { eraseFromProcessors } from '@/lib/processor-erasure'
 export async function DELETE() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const posts = await db.feedPost.findMany({
       where: { authorId: me.id, imageUrl: { not: null } },
@@ -35,6 +36,6 @@ export async function DELETE() {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error deleting account:', error)
-    return NextResponse.json({ error: 'Failed to delete account' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to delete account')
   }
 }

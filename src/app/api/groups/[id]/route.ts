@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
-import { readJson } from '@/lib/http'
+import { readJson, apiError } from '@/lib/http'
 
 // Shared: the requester's role in this group, or null if not a member.
 async function roleIn(groupId: string, userId: string): Promise<string | null> {
@@ -60,10 +60,7 @@ export async function GET(
     })
 
     if (!group) {
-      return NextResponse.json(
-        { error: 'Group not found' },
-        { status: 404 }
-      )
+      return apiError(404, 'not_found', 'Group not found')
     }
 
     // Private groups are visible to members only — otherwise their member list
@@ -73,7 +70,7 @@ export async function GET(
       const member = me
         ? await db.groupMember.findUnique({ where: { groupId_userId: { groupId: id, userId: me.id } } })
         : null
-      if (!member) return NextResponse.json({ error: 'This group is private' }, { status: 403 })
+      if (!member) return apiError(403, 'forbidden', 'This group is private')
     }
 
     // Same honest weekly-km computation as the list endpoint.
@@ -98,10 +95,7 @@ export async function GET(
     })
   } catch (error) {
     console.error('Error fetching group:', error)
-    return NextResponse.json(
-      { error: 'Failed to fetch group' },
-      { status: 500 }
-    )
+    return apiError(500, 'internal', 'Failed to fetch group')
   }
 }
 
@@ -113,11 +107,11 @@ export async function PATCH(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const role = await roleIn(id, me.id)
     if (role !== 'owner' && role !== 'admin') {
-      return NextResponse.json({ error: 'Only a group admin can edit it' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Only a group admin can edit it')
     }
 
     const parsed = await readJson(request)
@@ -125,24 +119,24 @@ export async function PATCH(
     const body = parsed.body
     const data: Record<string, unknown> = {}
     if (typeof body.name === 'string') {
-      if (!body.name.trim()) return NextResponse.json({ error: 'Name cannot be empty' }, { status: 400 })
-      if (overLimit(body.name, LIMITS.groupName)) return NextResponse.json({ error: 'Name is too long' }, { status: 400 })
+      if (!body.name.trim()) return apiError(400, 'missing_field', 'Name cannot be empty')
+      if (overLimit(body.name, LIMITS.groupName)) return apiError(400, 'too_long', 'Name is too long')
       data.name = body.name.trim()
     }
     if (body.description !== undefined) {
-      if (overLimit(body.description, LIMITS.groupDesc)) return NextResponse.json({ error: 'Description is too long' }, { status: 400 })
+      if (overLimit(body.description, LIMITS.groupDesc)) return apiError(400, 'too_long', 'Description is too long')
       data.description = typeof body.description === 'string' && body.description.trim() ? body.description.trim() : null
     }
     if (typeof body.isPublic === 'boolean') data.isPublic = body.isPublic
     if (Object.keys(data).length === 0) {
-      return NextResponse.json({ error: 'Nothing to update' }, { status: 400 })
+      return apiError(400, 'missing_field', 'Nothing to update')
     }
 
     const group = await db.runGroup.update({ where: { id }, data })
     return NextResponse.json({ group })
   } catch (error) {
     console.error('Error editing group:', error)
-    return NextResponse.json({ error: 'Failed to edit group' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to edit group')
   }
 }
 
@@ -155,17 +149,17 @@ export async function DELETE(
   try {
     const { id } = await params
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const role = await roleIn(id, me.id)
     if (role !== 'owner') {
-      return NextResponse.json({ error: 'Only the owner can delete the group' }, { status: 403 })
+      return apiError(403, 'forbidden', 'Only the owner can delete the group')
     }
 
     await db.runGroup.delete({ where: { id } })
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error deleting group:', error)
-    return NextResponse.json({ error: 'Failed to delete group' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to delete group')
   }
 }

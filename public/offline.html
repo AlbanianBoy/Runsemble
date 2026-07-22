@@ -2,13 +2,34 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Runsemble</title>
+  <!--
+    Shown by the native shell (capacitor.config.ts errorPath) when runsemble.net
+    cannot be loaded. Bundled into the app, so it works with no network at all.
+
+    It used to say "You're offline" in every case. That is only sometimes true:
+    this page appears whenever the site is unreachable, which includes the site
+    being down while the phone's connection is perfectly fine. Telling someone to
+    check a connection that is working sends them to fix the wrong thing, and
+    hides an outage from the person best placed to report it. navigator.onLine
+    tells the two apart — checked at open AND on the 'online' event, because the
+    common case is a runner in a dead spot who walks twenty metres and would
+    otherwise have to know to press the button.
+
+    On the wider point (audit M2): loading the live site means a cold launch with
+    no signal cannot start a run at all. Once the app IS loaded a run records and
+    syncs offline — see run-persist.ts and run-sync.ts — so the gap is only the
+    cold start. Closing it properly means shipping a bundled app shell, which is
+    an architectural decision this page cannot paper over. So it says what is
+    true instead of implying the run is recoverable.
+  -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
       background: #faf8f6;
+      color: #1a1a1a;
       display: flex;
       flex-direction: column;
       align-items: center;
@@ -17,22 +38,14 @@
       padding: 2rem;
       text-align: center;
     }
-    .logo {
-      font-size: 3rem;
-      margin-bottom: 1.5rem;
+    @media (prefers-color-scheme: dark) {
+      body { background: #1a1614; color: #f5f2f0; }
+      p { color: #a8a29e; }
+      .note { border-top-color: #3a3330; }
     }
-    h1 {
-      font-size: 1.4rem;
-      font-weight: 700;
-      color: #1a1a1a;
-      margin-bottom: 0.75rem;
-    }
-    p {
-      font-size: 1rem;
-      color: #666;
-      margin-bottom: 2rem;
-      line-height: 1.5;
-    }
+    .logo { font-size: 3rem; margin-bottom: 1.5rem; }
+    h1 { font-size: 1.4rem; font-weight: 700; margin-bottom: 0.75rem; }
+    p { font-size: 0.95rem; line-height: 1.5; color: #57534e; max-width: 320px; }
     button {
       background: #e8671a;
       color: white;
@@ -44,14 +57,56 @@
       cursor: pointer;
       width: 100%;
       max-width: 280px;
+      min-height: 48px;
+      margin-top: 1.75rem;
     }
     button:active { opacity: 0.85; }
+    .note {
+      margin-top: 1.5rem;
+      padding-top: 1.25rem;
+      border-top: 1px solid #e7e5e4;
+      font-size: 0.8rem;
+      max-width: 320px;
+    }
   </style>
 </head>
 <body>
   <div class="logo">🏃</div>
-  <h1>You’re offline</h1>
-  <p>Check your internet connection and try again.</p>
+  <h1 id="title">Can’t reach Runsemble</h1>
+  <p id="detail">Checking…</p>
   <button onclick="window.location.reload()">Try again</button>
+  <p class="note" id="note"></p>
+
+  <script>
+    (function () {
+      var title = document.getElementById('title')
+      var detail = document.getElementById('detail')
+      var note = document.getElementById('note')
+
+      function render() {
+        if (navigator.onLine === false) {
+          title.textContent = 'You’re offline'
+          detail.textContent =
+            'Your phone has no connection right now. This screen clears itself the moment it comes back.'
+          note.textContent =
+            'A run already in progress keeps recording and uploads when you’re back online. Starting a new one needs a connection.'
+        } else {
+          // The phone is connected, so the problem is at our end. Say so, rather
+          // than sending someone off to restart a router that is working fine.
+          title.textContent = 'Runsemble isn’t responding'
+          detail.textContent =
+            'Your connection looks fine, so this one is on our side. It’s usually brief — try again in a moment.'
+          note.textContent = 'If it keeps happening, that’s worth telling us about.'
+        }
+      }
+
+      render()
+      // Reload rather than re-render: the reason this page is up is that the app
+      // failed to load, so regaining a connection should retry that — not tidy
+      // up the wording of an error the runner no longer has.
+      window.addEventListener('online', function () { window.location.reload() })
+      window.addEventListener('offline', render)
+    })()
+  </script>
 </body>
 </html>

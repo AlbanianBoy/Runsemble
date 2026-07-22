@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { Prisma } from '@prisma/client'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // Leaderboard, rankable by different metrics. Participation-first by design —
 // the default board is XP (which rewards showing up), not raw speed.
@@ -96,7 +97,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ metric, window: timeWindow, ...board })
   } catch (error) {
     console.error('Error building leaderboard:', error)
-    return NextResponse.json({ error: 'Failed to build leaderboard' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to build leaderboard')
   }
 }
 

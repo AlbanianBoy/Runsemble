@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { apiError } from '@/lib/http'
 
 // YOUR run buddies — people you've actually run with. Session only.
 export async function GET() {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const userId = me.id
 
     const rows = await db.buddy.findMany({
@@ -31,7 +32,7 @@ export async function GET() {
     return NextResponse.json({ buddies: rows.map((r) => r.buddy) })
   } catch (error) {
     console.error('Error fetching buddies:', error)
-    return NextResponse.json({ error: 'Failed to fetch buddies' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to fetch buddies')
   }
 }
 
@@ -49,12 +50,12 @@ export async function GET() {
 export async function DELETE(request: Request) {
   try {
     const me = await getSessionUser()
-    if (!me) return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    if (!me) return apiError(401, 'unauthenticated', 'Please log in')
 
     const body = await request.json().catch(() => null)
     const buddyId: unknown = body?.buddyId
     if (typeof buddyId !== 'string' || !buddyId) {
-      return NextResponse.json({ error: 'buddyId is required' }, { status: 400 })
+      return apiError(400, 'missing_field', 'buddyId is required')
     }
 
     // Scoped to the caller in both directions, so this can only ever unpick a
@@ -71,6 +72,6 @@ export async function DELETE(request: Request) {
     return NextResponse.json({ ok: true })
   } catch (error) {
     console.error('Error removing buddy:', error)
-    return NextResponse.json({ error: 'Failed to remove buddy' }, { status: 500 })
+    return apiError(500, 'internal', 'Failed to remove buddy')
   }
 }

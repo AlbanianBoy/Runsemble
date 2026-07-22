@@ -8,24 +8,25 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAdminUser } from '@/lib/admin'
 import { LIMITS, overLimit } from '@/lib/limits'
+import { apiError } from '@/lib/http'
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const admin = await getAdminUser()
-  if (!admin) return NextResponse.json({ error: 'Not authorized' }, { status: 403 })
+  if (!admin) return apiError(403, 'forbidden', 'Not authorized')
 
   const { id } = await params
   if (id === admin.id) {
-    return NextResponse.json({ error: "You can't suspend your own account" }, { status: 400 })
+    return apiError(400, 'invalid_value', "You can't suspend your own account")
   }
 
   const body = await request.json().catch(() => null)
   const suspend = body?.suspend !== false // default to suspending
   const reason = typeof body?.reason === 'string' ? body.reason.trim() : ''
   if (overLimit(reason, LIMITS.bio)) {
-    return NextResponse.json({ error: 'Reason is too long' }, { status: 400 })
+    return apiError(400, 'too_long', 'Reason is too long')
   }
 
   const updated = await db.user.updateMany({
@@ -36,7 +37,7 @@ export async function POST(
     },
   })
   if (updated.count === 0) {
-    return NextResponse.json({ error: 'User not found' }, { status: 404 })
+    return apiError(404, 'not_found', 'User not found')
   }
 
   // Kick them now — end every active session so the suspension bites immediately
