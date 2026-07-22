@@ -448,12 +448,21 @@ export function MapTab() {
         <div className="absolute top-3 left-3 right-3 z-[500]">
           <div className="glass rounded-full px-3 py-1.5 text-[11px] font-medium shadow-sm border border-border/50 inline-flex items-center gap-1.5 max-w-full">
             <Clock className="h-3 w-3 text-primary shrink-0" />
+            {/* The soonest one in full, then a count. This used to join everyone
+                into one string and truncate it, which on a phone cut after
+                roughly the first entry — so three people showed as one name and
+                an ellipsis, and you learned neither who nor how many. The list
+                is sorted by time, so the first is the one that matters next, and
+                a number carries the rest without ever being cut off. */}
             <span className="truncate">
-              Coming up:{' '}
-              {comingUp
-                .map((u) => `${u.name.split(' ')[0]} ${availableFromLabel(u.availableFrom!)}`)
-                .join(' · ')}
+              Coming up: {comingUp[0]!.name.split(' ')[0]}{' '}
+              {availableFromLabel(comingUp[0]!.availableFrom!)}
             </span>
+            {comingUp.length > 1 && (
+              <span className="shrink-0 text-muted-foreground tabular">
+                +{comingUp.length - 1}
+              </span>
+            )}
           </div>
         </div>
       )}

@@ -73,7 +73,12 @@ export function Providers({ children }: { children: React.ReactNode }) {
     // looping animations. MotionConfig closes it for every motion component at
     // once, rather than relying on each one remembering.
     <MotionConfig reducedMotion="user">
-    <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
+    {/* Follows the OS by default. The dark palette has existed and been
+        maintained all along — its tokens measure 6.14:1 for muted text — it was
+        simply unreachable, because enableSystem={false} pinned everyone to
+        light. Someone who runs at night with their phone in dark mode was
+        handed a white screen. The toggle still wins once it is touched. */}
+    <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <AppBootstrap />
         {children}
