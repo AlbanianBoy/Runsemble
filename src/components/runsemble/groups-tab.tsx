@@ -8,7 +8,7 @@ import { toast } from 'sonner'
 import { formatDistanceToNow } from 'date-fns'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiGetSilent, apiSend } from '@/lib/api'
-import { useVisiblePoll } from '@/lib/use-visible-poll'
+import { useIdleBackoffPoll, useVisiblePoll } from '@/lib/use-visible-poll'
 import type { ApiGroup, ApiGroupMessage, GroupsResponse, GroupResponse, GroupMessagesResponse, BuddiesResponse, ConversationsResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
@@ -70,7 +70,7 @@ export function GroupsTab() {
     queryKey: ['conversations', currentUser?.id],
     queryFn: () => apiGetSilent<ConversationsResponse>('/api/messages'),
     enabled: !!currentUser?.id,
-    refetchInterval: useVisiblePoll(15_000),
+    refetchInterval: useIdleBackoffPoll(15_000),
     retry: false,
     throwOnError: false,
   })

@@ -6,7 +6,7 @@ import { formatDistanceToNow } from 'date-fns'
 import { Bell, CheckCheck } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
-import { useVisiblePoll } from '@/lib/use-visible-poll'
+import { useIdleBackoffPoll } from '@/lib/use-visible-poll'
 import { tabForPush, isDmPush, queryKeysForPush } from '@/lib/push-routing'
 import type { ApiNotification, NotificationsResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
@@ -30,7 +30,9 @@ export function NotificationsSheet() {
     queryKey: ['notifications', userId],
     queryFn: () => apiGet<NotificationsResponse>(`/api/notifications?userId=${userId}`),
     enabled: !!userId,
-    refetchInterval: useVisiblePoll(20_000),
+    // Runs on every screen, unlike every other poll here, so it dominates the
+    // steady-state request rate. Backs off while the bell stays quiet.
+    refetchInterval: useIdleBackoffPoll(20_000),
   })
 
   const notifications = data?.notifications ?? []
