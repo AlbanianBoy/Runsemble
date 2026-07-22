@@ -84,20 +84,43 @@ const fadeUp = {
   transition: { duration: 0.4, ease: [0.25, 0.46, 0.45, 0.94] as [number, number, number, number] },
 }
 
-/** Step indicator dots used across the onboarding screens */
-function StepDots({ current }: { current: number }) {
-  const steps = 3
+// The forward path through signup, in the order a person walks it. Logging in is
+// a side branch, not a step, so it isn't counted.
+const ONBOARDING_STEPS = ['welcome', 'account', 'profile', 'verify', 'runs'] as const
+
+/**
+ * Step indicator for onboarding.
+ *
+ * Two things were wrong with it. It hardcoded three dots for a five-screen flow
+ * and skipped the verify screen entirely, so the count was a guess and it
+ * vanished at exactly the point people are most likely to abandon. And the
+ * colours were hardcoded white — right on the brand-coloured welcome screen,
+ * invisible on the three that sit on bg-background, which is most of them.
+ *
+ * `tone` picks the palette rather than assuming one, and the label is announced,
+ * because otherwise this is decoration a screen reader can't use.
+ */
+function StepDots({ current, tone = 'default' }: { current: number; tone?: 'brand' | 'default' }) {
+  const total = ONBOARDING_STEPS.length
   return (
-    <div className="flex items-center justify-center gap-2">
-      {Array.from({ length: steps }).map((_, i) => (
+    <div
+      className="flex items-center justify-center gap-2"
+      role="progressbar"
+      aria-valuemin={1}
+      aria-valuemax={total}
+      aria-valuenow={current + 1}
+      aria-label={`Step ${current + 1} of ${total}`}
+    >
+      {Array.from({ length: total }).map((_, i) => (
         <motion.div
           key={i}
-          animate={{
-            width: i === current ? 20 : 6,
-            backgroundColor: i === current ? 'rgba(255,255,255,0.95)' : 'rgba(255,255,255,0.35)',
-          }}
+          animate={{ width: i === current ? 20 : 6 }}
           transition={{ type: 'spring', stiffness: 300, damping: 24 }}
-          className="h-1.5 rounded-full"
+          className={`h-1.5 rounded-full ${
+            tone === 'brand'
+              ? i === current ? 'bg-white/95' : 'bg-white/35'
+              : i === current ? 'bg-primary' : 'bg-muted-foreground/25'
+          }`}
         />
       ))}
     </div>
@@ -130,7 +153,7 @@ export function OnboardingWelcome() {
         </motion.div>
 
         <div className="mt-6 mb-8">
-          <StepDots current={0} />
+          <StepDots current={0} tone="brand" />
         </div>
 
         <AnimatePresence mode="wait">
@@ -204,13 +227,11 @@ export function OnboardingWelcome() {
                   onClick={() => setOnboardingStep('profile')}
                 >
                   Let&apos;s go{' '}
-                  <motion.span
-                    animate={{ x: [0, 4, 0] }}
-                    transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                    className="ml-1 inline-flex"
-                  >
-                    <ArrowRight className="h-4 w-4" />
-                  </motion.span>
+                  {/* Static. This arrow slid back and forth forever on the first
+                      screen anyone sees — the exact "obviously AI-made" tell the
+                      design direction rules out, and it outranked the words next
+                      to it for attention while saying nothing they didn't. */}
+                  <ArrowRight className="ml-1 h-4 w-4 inline-flex" />
                 </Button>
               </motion.div>
             </motion.div>
@@ -439,6 +460,7 @@ export function OnboardingProfile() {
   // actually advances. Previously hardcoded to 1 regardless of `step`.
   //   'account' → dot 1  (create your account form)
   //   'about'   → dot 2  (running profile details)
+  // 'account' is step 2 of the five; the details panel after it is step 3.
   const dotIndex = step === 'account' ? 1 : 2
 
   return (
@@ -715,7 +737,7 @@ export function OnboardingRuns() {
     <div className="min-h-screen flex flex-col p-6 bg-background">
       <motion.div {...fadeUp} className="flex-1 max-w-md mx-auto w-full flex flex-col">
         <div className="mb-6">
-          <StepDots current={2} />
+          <StepDots current={4} />
         </div>
 
         <h2 className="text-2xl font-bold mb-1">Your first runs are waiting</h2>
@@ -827,6 +849,14 @@ export function OnboardingVerifyEmail() {
   return (
     <div className="min-h-screen flex flex-col justify-center p-6 bg-background">
       <motion.div {...fadeUp} className="max-w-md mx-auto w-full">
+        {/* This screen had no step indicator at all, which is where it was needed
+            most: it is the one place the flow leaves the app to wait on an email,
+            and the point people are likeliest to give up. Showing how far along
+            they are, and that there is one step left, is the cheap part of not
+            losing them. */}
+        <div className="mb-6">
+          <StepDots current={3} />
+        </div>
         <h2 className="text-2xl font-bold mb-1">Confirm your email</h2>
         <p className="text-muted-foreground mb-6">
           We sent a 6-digit code to{' '}
@@ -841,7 +871,7 @@ export function OnboardingVerifyEmail() {
           value={code}
           onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
           placeholder="123456"
-          className="mt-1.5 text-center text-2xl tracking-[0.4em] font-semibold"
+          className="mt-1.5 text-center text-2xl tracking-[0.4em] font-semibold tabular"
           onKeyDown={(e) => e.key === 'Enter' && verify()}
         />
         {errorMsg && (

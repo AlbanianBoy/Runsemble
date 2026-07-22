@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ThemeProvider } from 'next-themes'
+import { MotionConfig } from 'framer-motion'
 import { Toaster as SonnerToaster } from '@/components/ui/sonner'
 import { useCallback } from 'react'
 import { useRunsembleStore } from '@/lib/store'
@@ -65,6 +66,13 @@ export function Providers({ children }: { children: React.ReactNode }) {
   )
 
   return (
+    // globals.css has a prefers-reduced-motion block, but it only reaches CSS
+    // animations — a framer-motion `repeat: Infinity` is a JS loop and sails
+    // straight past `animation-iteration-count: 1`. That gap is how an infinite
+    // arrow survived on the first screen of onboarding despite the rule against
+    // looping animations. MotionConfig closes it for every motion component at
+    // once, rather than relying on each one remembering.
+    <MotionConfig reducedMotion="user">
     <ThemeProvider attribute="class" defaultTheme="light" enableSystem={false} disableTransitionOnChange>
       <QueryClientProvider client={queryClient}>
         <AppBootstrap />
@@ -72,5 +80,6 @@ export function Providers({ children }: { children: React.ReactNode }) {
         <SonnerToaster position="top-center" richColors />
       </QueryClientProvider>
     </ThemeProvider>
+    </MotionConfig>
   )
 }

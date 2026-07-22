@@ -476,7 +476,10 @@ export function MapTab() {
               }`}
               onClick={() => (isAvailable ? stopAvailability() : setAvailSheetOpen(true))}
             >
-              <Navigation className={`h-4 w-4 mr-1.5 ${isAvailable ? 'animate-pulse' : ''}`} />
+              {/* No pulse. The button already turns green and relabels itself
+                  to "Available" — the animation repeated that in a way that
+                  never stops, for a state that can last 45 minutes. */}
+              <Navigation className="h-4 w-4 mr-1.5" />
               {isAvailable ? 'Available' : myScheduled ? 'Free later' : "I'm free"}
             </Button>
           </div>
