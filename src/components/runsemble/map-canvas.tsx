@@ -11,20 +11,32 @@
 // it flies the map in by 2 zoom levels so the individual markers separate.
 // Only when a runner marker is alone does tapping open the profile sheet.
 //
+// Hotspots cluster the same way but measured in screen pixels — see
+// buildHotspotClusters for why the two use different yardsticks.
+//
 // Loaded via next/dynamic with { ssr: false } from map-tab.
 
 import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
-import { Fragment, useCallback, useEffect, useRef } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { LocateFixed } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { ANTWERP_CENTER, type LatLng } from '@/lib/geo'
+import { type LatLng } from '@/lib/geo'
 import type { ApiHotspot, ApiUser } from '@/lib/types'
 import { getAvatarHex } from './helpers'
 
 // How close two fuzzed coordinates must be (in degrees) to be treated as the
 // same cluster. 0.002° ≈ 200 m, matching the fuzz grid cell size.
 const CLUSTER_THRESHOLD = 0.002
+
+// The hotspot pin's teal, pulled out so the hotspot cluster marker can borrow it
+// — a stack of runs should still read as runs, not as a stack of runners.
+const HOTSPOT_COLOR = '#14b8a6'
+
+// How close two hotspot pins may sit, in screen pixels, before they're stacked
+// into one marker. The pin itself is 30px but the tap target is the 44px
+// minimum, so pins that look merely close still steal each other's taps.
+const HOTSPOT_CLUSTER_PX = 44
 
 // Pin colour comes from the shared avatar palette (no violet/pink, and the same
 // hash) so a runner's map pin matches their avatar everywhere else in the app.
@@ -34,7 +46,34 @@ function initials(name: string): string {
   return name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2)
 }
 
+// react-leaflet compares the `icon` prop by reference and calls marker.setIcon()
+// whenever it differs, and Leaflet's setIcon tears down and rebuilds the
+// marker's DOM element. Built inline in JSX these factories hand back a fresh
+// object on every render, which was free while nothing re-rendered them — but
+// the hotspot layer now re-renders on zoom, so every surviving pin was being
+// rebuilt and its `rs-pulse` restarted from frame zero, all of them in unison.
+// A synchronised flicker on every pinch that nobody asked for.
+//
+// Both factories are pure functions of their arguments, and a Leaflet icon is
+// stateless config designed to be shared between markers, so caching on the
+// arguments makes the identity stable without changing what's drawn.
+const iconCache = new Map<string, L.DivIcon>()
+function cachedIcon(key: string, build: () => L.DivIcon): L.DivIcon {
+  const hit = iconCache.get(key)
+  if (hit) return hit
+  const icon = build()
+  iconCache.set(key, icon)
+  return icon
+}
+
 function hotspotIcon(count: number): L.DivIcon {
+  return cachedIcon(`hotspot:${count}`, () => buildHotspotIcon(count))
+}
+function clusterIcon(count: number, color: string): L.DivIcon {
+  return cachedIcon(`cluster:${count}:${color}`, () => buildClusterIcon(count, color))
+}
+
+function buildHotspotIcon(count: number): L.DivIcon {
   const badge =
     count > 0
       ? `<span style="position:absolute;top:-6px;right:-6px;background:#ea580c;color:#fff;font-size:10px;font-weight:700;min-width:16px;height:16px;line-height:16px;text-align:center;border-radius:999px;padding:0 3px;border:1.5px solid #fff;">${count}</span>`
@@ -44,7 +83,7 @@ function hotspotIcon(count: number): L.DivIcon {
     html: `
       <div style="position:relative;width:30px;height:30px;">
         <span class="rs-pulse" style="position:absolute;inset:-9px;border-radius:999px;background:rgba(249,115,22,.25);"></span>
-        <div style="position:relative;width:30px;height:30px;border-radius:999px;background:#14b8a6;border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;">
+        <div style="position:relative;width:30px;height:30px;border-radius:999px;background:${HOTSPOT_COLOR};border:2.5px solid #fff;box-shadow:0 2px 6px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
         </div>
         ${badge}
@@ -67,7 +106,7 @@ function avatarIcon(name: string, size = 34, ring = '#fff'): L.DivIcon {
   })
 }
 
-function clusterIcon(count: number, color: string): L.DivIcon {
+function buildClusterIcon(count: number, color: string): L.DivIcon {
   return L.divIcon({
     className: 'rs-divicon',
     html: `
@@ -190,6 +229,126 @@ function RunnerMarkers({
   )
 }
 
+// ─── Hotspot clusters ───────────────────────────────────────────────────────────────────────
+interface HotspotCluster {
+  key: string
+  lat: number
+  lng: number
+  hotspots: ApiHotspot[]
+}
+
+// Runners are grouped by degrees because their coordinates are already snapped to
+// a 200m fuzz grid; hotspots sit at true coordinates, so the same trick would be
+// wrong. Two pins 100m apart are one blob at city zoom and comfortably separate
+// at street zoom — the thing that decides whether they overlap is pixels, not
+// metres. project() is used rather than latLngToLayerPoint because it takes the
+// zoom as an argument, which keeps the grouping a pure function of the zoom we
+// re-render on instead of leaning on whatever the pane's current origin is.
+function buildHotspotClusters(
+  hotspots: ApiHotspot[],
+  leafletMap: L.Map,
+  zoom: number
+): HotspotCluster[] {
+  const groups: { seed: L.Point; members: ApiHotspot[] }[] = []
+
+  for (const h of hotspots) {
+    const pt = leafletMap.project([h.lat, h.lng], zoom)
+    const hit = groups.find((g) => g.seed.distanceTo(pt) < HOTSPOT_CLUSTER_PX)
+    if (hit) hit.members.push(h)
+    else groups.push({ seed: pt, members: [h] })
+  }
+
+  return groups.map(({ members }) => ({
+    // The seed's id: every hotspot seeds at most one group, so this is unique,
+    // and it survives a pan (which regroups nothing) without remounting markers.
+    key: members[0].id,
+    lat: members.reduce((sum, h) => sum + h.lat, 0) / members.length,
+    lng: members.reduce((sum, h) => sum + h.lng, 0) / members.length,
+    hotspots: members,
+  }))
+}
+
+function HotspotMarkers({
+  hotspots,
+  onSelectHotspot,
+}: {
+  hotspots: ApiHotspot[]
+  onSelectHotspot: (h: ApiHotspot) => void
+}) {
+  const leafletMap = useMap()
+  const [zoom, setZoom] = useState(() => leafletMap.getZoom())
+  // Which member a stuck cluster should hand out next — see handleClusterClick.
+  const cycleRef = useRef<Record<string, number>>({})
+
+  // Pixel grouping only holds for the scale it was measured at, so it has to be
+  // redone when the scale changes. zoomend is the event that matters — a pan
+  // moves both pins by the same amount and can never regroup them — but moveend
+  // is a cheap belt-and-braces subscription, since an unchanged zoom means React
+  // bails out of the re-render and panning costs nothing. Leaflet's listeners
+  // live outside React and are removed by hand: the map tab unmounts on every
+  // tab switch, and a handler left attached keeps a dead component alive.
+  useEffect(() => {
+    const syncZoom = () => setZoom(leafletMap.getZoom())
+    leafletMap.on('zoomend', syncZoom)
+    leafletMap.on('moveend', syncZoom)
+    return () => {
+      leafletMap.off('zoomend', syncZoom)
+      leafletMap.off('moveend', syncZoom)
+    }
+  }, [leafletMap])
+
+  const clusters = useMemo(
+    () => buildHotspotClusters(hotspots, leafletMap, zoom),
+    [hotspots, leafletMap, zoom]
+  )
+
+  const handleClusterClick = useCallback(
+    (cluster: HotspotCluster) => {
+      if (cluster.hotspots.length === 1) {
+        onSelectHotspot(cluster.hotspots[0])
+        return
+      }
+
+      const currentZoom = leafletMap.getZoom()
+      const maxZoom = leafletMap.getMaxZoom()
+      if (currentZoom < maxZoom) {
+        // Same gesture as a runner cluster: two levels in, and the pins split.
+        leafletMap.flyTo([cluster.lat, cluster.lng], Math.min(currentZoom + 2, maxZoom), {
+          duration: 0.5,
+        })
+        return
+      }
+
+      // Two Wednesday runs both entered as "Park Spoor Noord" end up on the exact
+      // same coordinate, and no amount of zoom will ever pull those apart. Rather
+      // than leave a pin that eats taps and only ever shows the top run, hand out
+      // the next one down each time it's tapped, so the ones underneath are still
+      // reachable.
+      const idx = (cycleRef.current[cluster.key] ?? 0) % cluster.hotspots.length
+      cycleRef.current[cluster.key] = idx + 1
+      onSelectHotspot(cluster.hotspots[idx])
+    },
+    [leafletMap, onSelectHotspot]
+  )
+
+  return (
+    <>
+      {clusters.map((cluster) => (
+        <Marker
+          key={cluster.key}
+          position={[cluster.lat, cluster.lng]}
+          icon={
+            cluster.hotspots.length > 1
+              ? clusterIcon(cluster.hotspots.length, HOTSPOT_COLOR)
+              : hotspotIcon(cluster.hotspots[0].participantCount)
+          }
+          eventHandlers={{ click: () => handleClusterClick(cluster) }}
+        />
+      ))}
+    </>
+  )
+}
+
 // ─── Recentre ────────────────────────────────────────────────────────────────
 // One tap back to where you are. Panning away had no way back short of
 // switching tabs and returning, which is a strange thing to have to discover on
@@ -255,15 +414,8 @@ export default function MapCanvas({
         maxZoom={19}
       />
 
-      {/* Hotspots — true coordinates */}
-      {hotspots.map((h) => (
-        <Marker
-          key={h.id}
-          position={[h.lat, h.lng]}
-          icon={hotspotIcon(h.participantCount)}
-          eventHandlers={{ click: () => onSelectHotspot(h) }}
-        />
-      ))}
+      {/* Hotspots — true coordinates, stacked while they overlap on screen */}
+      <HotspotMarkers hotspots={hotspots} onSelectHotspot={onSelectHotspot} />
 
       {/* Runners with cluster-zoom behaviour */}
       <RunnerMarkers clusters={clusters} onSelectRunner={onSelectRunner} />
