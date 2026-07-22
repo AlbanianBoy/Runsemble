@@ -23,6 +23,7 @@ import { db } from '@/lib/db'
 import { getAdminUser } from '@/lib/admin'
 import { isBlobConfigured } from '@/lib/image-store'
 import { rateLimitBackend } from '@/lib/rate-limit'
+import { processorErasureConfigured } from '@/lib/processor-erasure'
 
 export const dynamic = 'force-dynamic'
 
@@ -144,6 +145,13 @@ export async function GET() {
         'pair) and redeploy — no code change needed.'
     )
   }
+  if (!processorErasureConfigured()) {
+    warnings.push(
+      'Account deletion does not reach PostHog. The database and blob storage are wiped, but the ' +
+        'analytics Person profile and its events survive, which leaves Art. 17(2) unmet. Set ' +
+        'POSTHOG_PERSONAL_API_KEY and POSTHOG_PROJECT_ID, or delete those by hand on each request.'
+    )
+  }
   if (!process.env.LOCATION_SALT) {
     warnings.push(
       'LOCATION_SALT is not set, so each map cell is offset by an amount derived from a public ' +
@@ -178,6 +186,7 @@ export async function GET() {
       // instance that's serving? Without it the per-user location grid falls
       // back to an offset derived from public user ids.
       locationSalt: Boolean(process.env.LOCATION_SALT),
+      processorErasure: processorErasureConfigured(),
     },
     warnings,
   })

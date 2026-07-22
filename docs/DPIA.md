@@ -134,7 +134,15 @@ The build already embodies substantial minimisation, which materially lowers ris
 - **Right of access & portability (Art. 15/20):** `/api/auth/export` returns a machine-readable bundle of the user's profile, runs, posts, comments, likes, badges, buddies, notifications, messages, hotspot/group/challenge participation, and invites.
 - **Right to erasure (Art. 17):** `/api/auth/account` DELETE removes the account; all relations cascade in the schema, and stored images are deleted from Blob first. Session-scoped, so only the account holder can trigger it.
 - **Rectification:** profile is user-editable.
-- **Gaps:** no documented **response process/SLA** for rights requests that arrive by email rather than in-app; erasure does not yet **notify third parties** who received data (Art. 17(2)) or address content the user placed in *others'* conversations. → **Action A5.**
+- **Art. 17(2) — erasure reaching processors:** deletion now calls `eraseFromProcessors()` (`src/lib/processor-erasure.ts`) after the account row is removed. Each recipient in §2.4 was checked rather than assumed:
+  - **PostHog** — holds a Person profile keyed to our user id (`posthog.identify`). Deleted via the API, with `delete_events=true`: removing the profile while leaving the events would leave the behavioural record intact under a detached distinct id, which is not erasure. **Requires `POSTHOG_PERSONAL_API_KEY` + `POSTHOG_PROJECT_ID`** — until those are set the call reports `not-configured`, logs an error, and `/api/admin/diagnostics` warns. **In that state Art. 17(2) is NOT met and each deletion needs a manual erasure in the PostHog UI.**
+  - **Sentry** — nothing calls `Sentry.setUser`, so no app user id reaches it. No erasure target. (It still receives IP addresses by default; that is a retention question, not an erasure one.)
+  - **Resend** — transactional delivery logs against the address, not a profile keyed to our id.
+  - **Vercel Blob** — already handled: post images are collected and deleted before the rows holding their URLs disappear.
+
+  It runs after the response and never throws: the account is already gone, so failing the request because a third party was unreachable would tell the user their deletion failed when it did not. Every failure is logged with the user id — **that log is the record that a manual erasure is owed.**
+
+- **Remaining gaps:** no documented **response process/SLA** for rights requests arriving by email rather than in-app; erasure still does not address content the user placed in *others'* conversations. → **Action A5.**
 
 ---
 
