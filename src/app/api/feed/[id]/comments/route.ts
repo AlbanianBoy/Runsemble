@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { canViewPost } from '@/lib/feed-access'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, readJson } from '@/lib/http'
@@ -42,6 +43,11 @@ export async function POST(
     const me = await getSessionUser()
     if (!me) return apiError(401, 'unauthenticated', 'Please log in')
     const authorId = me.id
+
+    // Comments notify the post's author, so a burst is a burst at one person.
+    if (!(await checkRateLimit(userKey('comment', me.id), 60, 60 * 60_000))) {
+      return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
+    }
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { createVerificationCode } from '@/lib/verification'
 import { sendPasswordResetEmail } from '@/lib/email'
-import { rateLimit, clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { apiError, readJson } from '@/lib/http'
 
 // Start a password reset: if the email belongs to a real account, email a code.
@@ -10,7 +10,7 @@ import { apiError, readJson } from '@/lib/http'
 // emails have accounts.
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`forgot:${clientIp(request)}`, 5, 60_000)) {
+    if (!(await checkRateLimit(`forgot:${clientIp(request)}`, 5, 60_000))) {
       return apiError(429, 'rate_limited', 'Too many attempts — wait a minute and try again')
     }
 

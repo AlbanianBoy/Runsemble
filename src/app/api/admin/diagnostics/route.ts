@@ -22,6 +22,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getAdminUser } from '@/lib/admin'
 import { isBlobConfigured } from '@/lib/image-store'
+import { rateLimitBackend } from '@/lib/rate-limit'
 
 export const dynamic = 'force-dynamic'
 
@@ -136,6 +137,13 @@ export async function GET() {
     }
   }
   if (!reachable) warnings.push('The database did not answer a SELECT 1.')
+  if (rateLimitBackend() === 'in-memory') {
+    warnings.push(
+      'Rate limiting is in-memory, so each serverless instance counts separately and the limits are ' +
+        'not enforceable. Set UPSTASH_REDIS_REST_URL + UPSTASH_REDIS_REST_TOKEN (or the KV_REST_API_* ' +
+        'pair) and redeploy — no code change needed.'
+    )
+  }
   if (!process.env.LOCATION_SALT) {
     warnings.push(
       'LOCATION_SALT is not set, so each map cell is offset by an amount derived from a public ' +
@@ -148,6 +156,9 @@ export async function GET() {
     environment: process.env.VERCEL_ENV ?? 'development',
     commit: process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? null,
     database: { ...database, reachable, latencyMs },
+    // 'in-memory' means the limiter is per-instance and effectively decorative
+    // on serverless — see the warning below.
+    rateLimit: rateLimitBackend(),
     // Which third parties this instance believes it can reach. Booleans only —
     // a key's presence is the useful fact, its value never is.
     integrations: {

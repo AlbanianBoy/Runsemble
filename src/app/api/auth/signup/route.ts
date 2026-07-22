@@ -6,13 +6,13 @@ import { GENDERS, PACE_LEVELS, SCHEDULE_PREFERENCES, isOneOf } from '@/lib/enums
 import { createSession, toSafeUser } from '@/lib/auth'
 import { createVerificationCode } from '@/lib/verification'
 import { sendVerificationEmail } from '@/lib/email'
-import { rateLimit, clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { apiError, readJson } from '@/lib/http'
 
 // Create an account with a real password and start a session.
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`signup:${clientIp(request)}`, 5, 60_000)) {
+    if (!(await checkRateLimit(`signup:${clientIp(request)}`, 5, 60_000))) {
       return apiError(429, 'rate_limited', 'Too many attempts — wait a minute and try again')
     }
 

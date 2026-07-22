@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { notify } from '@/lib/notify'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
@@ -40,6 +41,12 @@ export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
     if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+
+    // An invite notifies a stranger you picked off the map. Hourly, because
+    // twenty invites in an hour is already more than anyone runs.
+    if (!(await checkRateLimit(userKey('invite', me.id), 20, 60 * 60_000))) {
+      return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
+    }
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response

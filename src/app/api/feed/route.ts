@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
+import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { storeImage, validateImageDataUrl } from '@/lib/image-store'
 import { POST_TYPES, isOneOf, validateEnumFields } from '@/lib/enums'
@@ -149,6 +150,11 @@ export async function POST(request: NextRequest) {
     // Identity comes from the session — the client cannot post as someone else.
     const me = await getSessionUser()
     if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+
+    // Posting is cheap for the author and loud for everyone else's feed.
+    if (!(await checkRateLimit(userKey('post', me.id), 30, 60 * 60_000))) {
+      return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
+    }
 
     const parsed = await readJson(request)
     if (!parsed.ok) return parsed.response

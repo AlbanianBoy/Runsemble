@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
 import { getSessionUser } from '@/lib/auth'
+import { checkRateLimit, userKey } from '@/lib/rate-limit'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { apiError, boundedString, readJson, MAX_ID_LENGTH } from '@/lib/http'
 
@@ -108,6 +109,12 @@ export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()
     if (!me) return apiError(401, 'unauthenticated', 'Please log in')
+
+    // Every DM fires a push, so an unthrottled sender owns someone's lock
+    // screen. 60/min is far above a fast conversation and far below a flood.
+    if (!(await checkRateLimit(userKey('dm', me.id), 60, 60_000))) {
+      return apiError(429, 'rate_limited', "You're doing that a lot — take a breather and try again")
+    }
     const senderId = me.id
 
     const parsed = await readJson(request)

@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { verifyPassword } from '@/lib/password'
 import { createSession, toSafeUser } from '@/lib/auth'
-import { rateLimit, clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { apiError, readJson } from '@/lib/http'
 
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`login:${clientIp(request)}`, 10, 60_000)) {
+    if (!(await checkRateLimit(`login:${clientIp(request)}`, 10, 60_000))) {
       return apiError(429, 'rate_limited', 'Too many attempts — wait a minute and try again')
     }
 

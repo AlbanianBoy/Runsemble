@@ -8,7 +8,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser } from '@/lib/auth'
-import { rateLimit, clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { REPORT_SUBJECT_TYPES, REPORT_REASONS, isOneOf } from '@/lib/enums'
 
 const MAX_DETAILS = 1000
@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
 
   // Filing a report is cheap to abuse — a stream of them is a way to harass a
   // moderator, or to bury a real report. Bound it per account.
-  if (!rateLimit(`report:${me.id}:${clientIp(request)}`, 20, 60 * 60_000)) {
+  if (!(await checkRateLimit(`report:${me.id}:${clientIp(request)}`, 20, 60 * 60_000))) {
     return NextResponse.json({ error: 'Too many reports — please slow down' }, { status: 429 })
   }
 

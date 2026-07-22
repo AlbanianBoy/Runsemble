@@ -47,6 +47,13 @@ export async function GET() {
 // Save a completed run. This is the heart of the gamification loop: it records
 // the session, moves the user's real stats (distance, duration, streak, runs),
 // awards distance-scaled XP, unlocks badges, and optionally shares to the feed.
+//
+// Deliberately NOT rate-limited, unlike the other write routes. A save is
+// idempotent on clientRunId, the distance is checked against its GPS evidence,
+// and XP is capped per run and per day — so the abuse a limiter would stop is
+// already stopped. What a limiter would break is real: a device that lost signal
+// on a trail flushes its queued runs in one burst when it reconnects, and
+// refusing those loses runs people actually did.
 export async function POST(request: NextRequest) {
   try {
     const me = await getSessionUser()

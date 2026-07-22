@@ -2,13 +2,13 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, toSafeUser } from '@/lib/auth'
 import { consumeVerificationCode } from '@/lib/verification'
-import { rateLimit, clientIp } from '@/lib/rate-limit'
+import { checkRateLimit, clientIp } from '@/lib/rate-limit'
 import { apiError, readJson } from '@/lib/http'
 
 // Confirm the logged-in user's email with the 6-digit code they were sent.
 export async function POST(request: NextRequest) {
   try {
-    if (!rateLimit(`verify-email:${clientIp(request)}`, 10, 60_000)) {
+    if (!(await checkRateLimit(`verify-email:${clientIp(request)}`, 10, 60_000))) {
       return apiError(429, 'rate_limited', 'Too many attempts — wait a minute and try again')
     }
 
