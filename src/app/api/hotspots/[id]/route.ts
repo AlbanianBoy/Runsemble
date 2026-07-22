@@ -8,6 +8,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    // Same reasoning as the board: this hands back who is going, where, and when.
+    if (!(await getSessionUser())) {
+      return NextResponse.json({ error: 'Please log in' }, { status: 401 })
+    }
+
     const { id } = await params
 
     const hotspot = await db.hotspot.findUnique({

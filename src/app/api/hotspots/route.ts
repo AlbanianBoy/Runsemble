@@ -4,6 +4,7 @@ import { getSessionUser } from '@/lib/auth'
 import { LIMITS, overLimit } from '@/lib/limits'
 import { sweepHotspotReminders } from '@/lib/hotspot-reminders'
 import { SPORT_TYPES, validateEnumFields } from '@/lib/enums'
+import { apiError } from '@/lib/http'
 
 // One request must never be able to walk the whole table. A city's curated
 // spots plus everything genuinely upcoming fits far inside this; past the cap
@@ -48,6 +49,16 @@ function boundingBox(lat: number, lng: number, radiusKm: number) {
 
 export async function GET(request?: NextRequest) {
   try {
+    // Session required. This returns participantNames alongside each run's exact
+    // location and start time, so unauthenticated it published "these named
+    // people will be at this park at 18:30 on Wednesday" to anyone who asked —
+    // no account needed. On an app whose whole risk surface is meeting strangers
+    // in physical space, that is the one list that must not be scrapeable.
+    // Matches /api/users, which has required a session for the same reason.
+    if (!(await getSessionUser())) {
+      return apiError(401, 'unauthenticated', 'Please log in')
+    }
+
     const now = new Date()
 
     // The reminder sweep is a write path riding the app's most-polled read, so
