@@ -180,6 +180,7 @@ model User {
   blockedBy         Block[] @relation("Blocked")
   reportsMade       Report[] @relation("Reporter")
   safeZones         SafeZone[]
+  runShares         RunShare[]
   challengesJoined  ChallengeParticipant[]
   sessions          Session[]
   devices           UserDevice[]
@@ -458,6 +459,70 @@ model RunSession {
   // The retention cron scans for old, not-yet-coarsened runs; this keeps that
   // from being a full-table scan as the runs pile up.
   @@index([pathCoarsenedAt, endedAt])
+}
+
+// ─── Live run sharing ─────────────────────────────────────────────────────────
+// A runner hands one person a link and that person watches the run happen. No
+// account, no app, no follow request: the recipient opens /watch/<token> in
+// whatever browser they already have and sees a moving dot until the run ends.
+// It is the "text someone before you head out in the dark" habit, made real.
+//
+// The URL IS the credential — there is nothing else between a stranger and a
+// live position — so `token` is 32 random bytes, not a cuid. cuids are ordered
+// and partly derived from time and machine, which is fine for a row id nobody
+// can reach without a session and not fine for the only lock on this door.
+//
+// The stored position is EXACT, and that is deliberate. The safe-zone blinding
+// and 200m display fuzz that protect every other coordinate in this product
+// (src/lib/safe-zones.ts, src/lib/location-privacy.ts) are NOT applied here: a
+// contact sent to a blurred 200m cell cannot find anyone, and "somewhere around
+// there" is worthless to the person trying to reach a runner who has stopped
+// moving. This is the one place where precision beats privacy. It is bounded
+// rather than simply given away — opt-in per run, one link at a time, revocable
+// in a tap, dead when the run ends, and hard-expired at four hours whatever
+// happens. The daily cron (src/app/api/cron/coarsen-runs) then deletes the row,
+// so a dead link does not leave a location history behind it.
+//
+// sosAt flags the share so a watcher with the page open sees an alarm, and
+// nothing more: it phones nobody. The runner-facing copy says exactly that and
+// points at 112, because a safety feature that implies help is coming when it
+// is not is worse than no feature.
+//
+// "One active share per runner" is enforced in the API rather than by a unique
+// index: active means (not revoked, not ended, not yet expired), a predicate
+// over three nullable timestamps and the current time, which no index can hold.
+// Asking for a second link while one is live returns the first one.
+model RunShare {
+  id          String    @id @default(cuid())
+  token       String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt   DateTime  @default(now())
+  // Set at creation to now + 4h and never moved. A share can die earlier two
+  // ways — endedAt when the run is saved, revokedAt when the runner pulls it —
+  // but it can never live longer than this, which is what covers the case the
+  // other two miss: the app is killed mid-run and nothing writes an ending.
+  expiresAt   DateTime
+  endedAt     DateTime?
+  revokedAt   DateTime?
+  // First alarm only; the beacon never overwrites it. "Raised at 19:04" is the
+  // fact a watcher needs, and re-arming would keep resetting it to now.
+  sosAt       DateTime?
+  // The live fix, overwritten by each beacon. Deliberately unblinded — see above.
+  lat         Float?
+  lng         Float?
+  accuracyM   Float?
+  // Freshness, not history. The watcher shows the run as stale rather than
+  // pretending a three-minute-old dot is where the runner is standing.
+  lastPingAt  DateTime?
+  distanceKm  Float     @default(0)
+  durationSec Int       @default(0)
+
+  // The runner's own share, newest first — the "do I already have one live?"
+  // lookup on every tracker load.
+  @@index([userId, createdAt])
+  // The retention sweep scans by expiry; without this it is a full-table scan.
+  @@index([expiresAt])
 }
 
 // Unified message model for both DMs (recipientId set) and group chat (groupId set).

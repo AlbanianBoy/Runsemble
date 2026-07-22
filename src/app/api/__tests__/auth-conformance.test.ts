@@ -36,6 +36,11 @@ const PUBLIC: Record<string, string> = {
   // A tombstone: returns 410 unconditionally and touches no data. Account
   // creation moved to /api/auth/signup.
   'users/route.ts:POST': 'always 410 Gone — reads and writes nothing',
+  // The live-run watcher. By design they have no account — a worried partner or
+  // parent opens the link in whatever browser they have. The unguessable token
+  // is the credential, and the response is narrowed to first-name-plus-position
+  // by toPublicRunShare.
+  'run-shares/[token]/route.ts:GET': 'the watcher has no session by design — the token is the credential',
 }
 
 function routeFiles(dir: string): string[] {
