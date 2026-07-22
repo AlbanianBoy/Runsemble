@@ -24,6 +24,7 @@ import { getAdminUser } from '@/lib/admin'
 import { isBlobConfigured } from '@/lib/image-store'
 import { rateLimitBackend } from '@/lib/rate-limit'
 import { processorErasureConfigured } from '@/lib/processor-erasure'
+import { fcmIdentityFromEnv } from '@/lib/fcm'
 import { apiError } from '@/lib/http'
 
 export const dynamic = 'force-dynamic'
@@ -175,6 +176,9 @@ export async function GET() {
       posthog: Boolean(process.env.NEXT_PUBLIC_POSTHOG_KEY),
       resend: Boolean(process.env.RESEND_API_KEY),
       fcm: Boolean(process.env.FCM_PRIVATE_KEY),
+      // false means the service-account identity is the built-in fallback, so
+      // rotating it would need a code change rather than an env change.
+      fcmIdentityFromEnv: fcmIdentityFromEnv(),
       // Ask the module that actually decides, rather than re-deriving it here.
       // This checked BLOB_READ_WRITE_TOKEN alone and reported false on a
       // production instance where uploads work fine — the store is connected via

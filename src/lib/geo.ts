@@ -28,24 +28,13 @@ export function haversineKm(a: LatLng, b: LatLng): number {
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.sqrt(h))
 }
 
-/**
- * Snap a coordinate to a privacy grid of roughly `meters`, so a runner's exact
- * position is never exposed. Deterministic: the same input always rounds to the
- * same cell, so the blurred marker doesn't jitter between renders.
- */
-export function fuzzCoord(point: LatLng, meters = 200): LatLng {
-  const latStep = meters / 111_320
-  // Derive the longitude grid from the SNAPPED latitude, so every point inside
-  // a cell shares exactly the same grid — otherwise two neighbours a couple of
-  // metres apart could snap to microscopically different longitudes.
-  const snappedLat = Math.round(point.lat / latStep) * latStep
-  const cosLat = Math.cos(toRad(snappedLat)) || 1
-  const lngStep = meters / (111_320 * cosLat)
-  return {
-    lat: snappedLat,
-    lng: Math.round(point.lng / lngStep) * lngStep,
-  }
-}
+// NOTE: fuzzCoord was here — a plain 200m grid with no per-user offset. It is
+// gone rather than deprecated, because an exported function that quietly
+// weakens location privacy is one someone will find and use. Everything that
+// publishes a position now goes through fuzzCoordForUser in location-privacy.ts,
+// which offsets each user's grid by an HMAC of their id and LOCATION_SALT — so
+// two runners in the same building no longer snap to the same cell, and the
+// cell cannot be recomputed by anyone who knows only the code.
 
 /** Human-friendly distance label, e.g. "300 m away" or "1.2 km away". */
 export function distanceLabel(km: number): string {

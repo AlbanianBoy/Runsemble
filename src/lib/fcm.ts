@@ -3,9 +3,29 @@
 // All sends are best-effort — a push failure must never break the action that
 // triggered it.
 
-const FCM_PROJECT_ID = 'runsemble-1ec42'
-const FCM_CLIENT_EMAIL = 'firebase-adminsdk-fbsvc@runsemble-1ec42.iam.gserviceaccount.com'
-const FCM_PRIVATE_KEY_ID = '9f0f51ff9e0c3568a385e3fcd63c781e51c7a37d'
+// The service-account identity. The private key has always come from the
+// environment; these three did not, which meant rotating a leaked or expired
+// service account required editing this file and shipping a deploy — during an
+// incident, which is the worst moment to need one. It also made a second
+// Firebase project (a staging one) impossible without a code change.
+//
+// Env first, with the current production values as the fallback so nothing
+// breaks for an instance that sets none of them. Rotating means setting all
+// three: a new key with an old key id fails to authenticate, and the mismatch
+// surfaces as a generic 401 from Google that says nothing about which half is
+// stale. /api/admin/diagnostics reports which source is in use.
+const FCM_PROJECT_ID = process.env.FCM_PROJECT_ID ?? 'runsemble-1ec42'
+const FCM_CLIENT_EMAIL =
+  process.env.FCM_CLIENT_EMAIL ?? 'firebase-adminsdk-fbsvc@runsemble-1ec42.iam.gserviceaccount.com'
+const FCM_PRIVATE_KEY_ID =
+  process.env.FCM_PRIVATE_KEY_ID ?? '9f0f51ff9e0c3568a385e3fcd63c781e51c7a37d'
+
+/** True when the identity comes from the environment rather than the built-in fallback. */
+export function fcmIdentityFromEnv(): boolean {
+  return Boolean(
+    process.env.FCM_PROJECT_ID && process.env.FCM_CLIENT_EMAIL && process.env.FCM_PRIVATE_KEY_ID
+  )
+}
 
 const FCM_ENDPOINT = `https://fcm.googleapis.com/v1/projects/${FCM_PROJECT_ID}/messages:send`
 const TOKEN_ENDPOINT = 'https://oauth2.googleapis.com/token'
