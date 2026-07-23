@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { vi } from 'vitest'
+import type { TxClient } from '@/lib/outbox'
 
 // ─── A Prisma stand-in that lies about exactly nothing ────────────────────────
 // The models come from Prisma.ModelName — the real generated list — so asking for
@@ -69,7 +70,7 @@ export function makeDb(overrides: DbOverrides = {}) {
         },
       })
     },
-  })
+  }) as unknown as TxClient
 
   return { db: client, calls }
 }
