@@ -1,5 +1,5 @@
-// ─── Notification outbox drain cron ───────────────────────────────────────────
-// Scheduled every 5 minutes in vercel.json.
+// ─── Notification outbox drain cron ───────────────────────────────────────────────
+// Scheduled every 5 minutes via .github/workflows/crons.yml.
 // Picks up NotificationOutbox rows that haven't been delivered yet and calls
 // notify() for each. On success the row is marked delivered. On failure the row
 // is rescheduled with a simple exponential back-off (1 min, 5 min, 30 min) and
@@ -14,6 +14,7 @@
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { notify } from '@/lib/notify'
+import { apiError } from '@/lib/http'
 import type { NotifySpec } from '@/lib/notify'
 
 // Retry schedule: attempt 0 → 1 min, attempt 1 → 5 min, attempt 2 → 30 min.
@@ -23,18 +24,17 @@ const MAX_ATTEMPTS = 3
 const BACKOFF_MINUTES = [1, 5, 30]
 
 export async function GET(request: Request) {
-  // Vercel signs cron requests with CRON_SECRET. Reject anything unsigned so
-  // the drain can't be triggered externally to bulk-replay notifications.
+  // Vercel (or GitHub Actions) signs cron requests with CRON_SECRET. Reject
+  // anything unsigned so the drain can't be triggered externally to
+  // bulk-replay notifications.
   const authHeader = request.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+    return apiError(401, 'unauthenticated', 'Missing or invalid cron secret')
   }
 
   const now = new Date()
 
   // Fetch rows that are undelivered and due for their next attempt.
-  // Index covers (deliveredAt, nextAttemptAt): undelivered rows are
-  // deliveredAt = null, nextAttemptAt ≤ now (or null = ready immediately).
   const pending = await db.notificationOutbox.findMany({
     where: {
       deliveredAt: null,
@@ -45,7 +45,7 @@ export async function GET(request: Request) {
       ],
     },
     orderBy: { createdAt: 'asc' },
-    take: 100, // bound the cron's wall time
+    take: 100,
   })
 
   let delivered = 0

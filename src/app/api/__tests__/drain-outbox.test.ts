@@ -3,15 +3,21 @@
 
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { makeDb } from './helpers/mock-db'
+import type { TxClient } from '@/lib/outbox'
 
-// ─ mocks ──────────────────────────────────────────────────────────────────
+// ─ mocks ─────────────────────────────────────────────────────────────────────────
 const mockNotify = vi.fn(async () => {})
 vi.mock('@/lib/notify', () => ({ notify: mockNotify }))
-vi.mock('@/lib/db', () => ({ db: makeDb().db }))
 
-const { db: mockDb } = makeDb()
+// ─ db indirection ──────────────────────────────────────────────────────────────
+// vi.doMock() after a top-level `await import` is inert — the module is already
+// bound. Instead we keep a mutable reference and point the mock factory at it.
+// Each test swaps `activeDb` before calling GET, so the route always reads the
+// db that was live when the call happened.
+let activeDb: TxClient = makeDb().db
+vi.mock('@/lib/db', () => ({ get db() { return activeDb } }))
 
-// We re-import the route handler after mocks are set.
+// Import AFTER mocks are registered.
 const { GET } = await import('@/app/api/cron/drain-outbox/route')
 
 // Helper: build a minimal Request with optional Authorization header.
@@ -26,6 +32,8 @@ const VALID_SECRET = 'test-secret'
 beforeEach(() => {
   vi.resetAllMocks()
   process.env.CRON_SECRET = VALID_SECRET
+  // Reset to a fresh empty db so tests don't bleed into each other.
+  activeDb = makeDb().db
 })
 
 describe('GET /api/cron/drain-outbox', () => {
@@ -37,14 +45,10 @@ describe('GET /api/cron/drain-outbox', () => {
   it('returns 401 when Authorization header has wrong secret', async () => {
     const res = await GET(makeRequest('wrong-secret'))
     expect(res.status).toBe(401)
-    // Mutation test: with a correct secret it would proceed.
   })
 
   it('returns 200 with delivered=0 when the outbox is empty', async () => {
-    // makeDb default: findMany returns []
-    const { db: emptyDb } = makeDb()
-    vi.doMock('@/lib/db', () => ({ db: emptyDb }))
-
+    // activeDb default: findMany returns []
     const res = await GET(makeRequest(VALID_SECRET))
     expect(res.status).toBe(200)
     const body = await res.json() as { delivered: number; failed: number; total: number }
@@ -62,14 +66,13 @@ describe('GET /api/cron/drain-outbox', () => {
       nextAttemptAt: null,
     }
     let updatedData: unknown
-    const { db: filledDb } = makeDb({
+    activeDb = makeDb({
       'notificationOutbox.findMany': () => [row],
       'notificationOutbox.update': (args: unknown) => {
         updatedData = (args as { data: unknown }).data
         return row
       },
-    })
-    vi.doMock('@/lib/db', () => ({ db: filledDb }))
+    }).db
     mockNotify.mockResolvedValueOnce(undefined)
 
     const res = await GET(makeRequest(VALID_SECRET))
@@ -90,14 +93,13 @@ describe('GET /api/cron/drain-outbox', () => {
       nextAttemptAt: null,
     }
     let updatedData: unknown
-    const { db: failDb } = makeDb({
+    activeDb = makeDb({
       'notificationOutbox.findMany': () => [row],
       'notificationOutbox.update': (args: unknown) => {
         updatedData = (args as { data: unknown }).data
         return row
       },
-    })
-    vi.doMock('@/lib/db', () => ({ db: failDb }))
+    }).db
     mockNotify.mockRejectedValueOnce(new Error('FCM down'))
 
     const res = await GET(makeRequest(VALID_SECRET))
@@ -119,14 +121,13 @@ describe('GET /api/cron/drain-outbox', () => {
       nextAttemptAt: null,
     }
     let updatedData: unknown
-    const { db: exhaustedDb } = makeDb({
+    activeDb = makeDb({
       'notificationOutbox.findMany': () => [row],
       'notificationOutbox.update': (args: unknown) => {
         updatedData = (args as { data: unknown }).data
         return row
       },
-    })
-    vi.doMock('@/lib/db', () => ({ db: exhaustedDb }))
+    }).db
     mockNotify.mockRejectedValueOnce(new Error('still down'))
 
     await GET(makeRequest(VALID_SECRET))
@@ -145,14 +146,13 @@ describe('GET /api/cron/drain-outbox', () => {
       nextAttemptAt: null,
     }
     let updatedAttempts: number | undefined
-    const { db: badDb } = makeDb({
+    activeDb = makeDb({
       'notificationOutbox.findMany': () => [row],
       'notificationOutbox.update': (args: unknown) => {
         updatedAttempts = (args as { data: { attempts: number } }).data.attempts
         return row
       },
-    })
-    vi.doMock('@/lib/db', () => ({ db: badDb }))
+    }).db
 
     await GET(makeRequest(VALID_SECRET))
     // Should be set to MAX_ATTEMPTS (3) to stop future retries.
