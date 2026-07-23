@@ -1,4 +1,4 @@
-// ─── Notification outbox drain cron ───────────────────────────────────────────────
+// ─── Notification outbox drain cron ───────────────────────────────────────────
 // Scheduled every 5 minutes via .github/workflows/crons.yml.
 // Picks up NotificationOutbox rows that haven't been delivered yet and calls
 // notify() for each. On success the row is marked delivered. On failure the row
@@ -74,9 +74,12 @@ export async function GET(request: Request) {
       delivered++
     } catch (e) {
       console.error(`outbox drain: failed to deliver row ${row.id}:`, e)
-      const nextAttempt = row.attempts < BACKOFF_MINUTES.length
+      // Only schedule a next attempt if retries remain AFTER this one.
+      // row.attempts + 1 is what we're about to write; if that already
+      // reaches MAX_ATTEMPTS there is no further attempt to schedule.
+      const nextAttempt = row.attempts + 1 < MAX_ATTEMPTS
         ? new Date(now.getTime() + BACKOFF_MINUTES[row.attempts] * 60_000)
-        : null // MAX_ATTEMPTS reached — stop scheduling
+        : null
       await db.notificationOutbox.update({
         where: { id: row.id },
         data: {
