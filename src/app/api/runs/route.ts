@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { describeXpAward, grantBadge, computeStreak, runXp, BADGES, type BadgeSpec } from '@/lib/xp'
 import { notify } from '@/lib/notify'
+import { enqueueNotification } from '@/lib/outbox'
 import { eligibleBuddyIds } from '@/lib/buddies'
 import { getSessionUser } from '@/lib/auth'
 import { SPORT_TYPES, validateEnumFields, isOneOf } from '@/lib/enums'
@@ -157,7 +158,7 @@ export async function POST(request: NextRequest) {
 
     // Work out who is new, without writing anything yet. The buddy rows are
     // created inside the transaction below alongside the run, and the "you ran
-    // together" notifications are sent only once that has actually committed —
+    // together" notifications are enqueued atomically in the same transaction —
     // telling someone they have a new run buddy and then rolling the run back
     // would be a message about an event that never happened.
     const newBuddies: { id: string; name: string }[] = []
@@ -193,6 +194,10 @@ export async function POST(request: NextRequest) {
     // a run in the history worth no XP, or XP for a run that isn't there, and
     // nothing later recomputes either. Everything below this block is a
     // decoration that can be retried or lost without corrupting the record.
+    //
+    // Buddy notifications are enqueued here too — atomically with the run.
+    // If the function crashes after this commit, the drain cron picks them up.
+    // If the transaction rolls back, there are no ghost notifications to send.
     let session
     try {
       session = await db.$transaction(async (tx) => {
@@ -245,6 +250,20 @@ export async function POST(request: NextRequest) {
           },
         })
 
+        // Enqueue buddy notifications atomically with the run.
+        // The drain cron delivers them; if delivery fails here, the cron retries.
+        for (const b of newBuddies) {
+          await enqueueNotification(tx, {
+            userId: b.id,
+            actorId: userId,
+            type: 'run_invite',
+            title: `${user.name} ran with you 🏃`,
+            body: "You're now run buddies. Book your next run together!",
+            entityId: userId,
+            icon: '🤝',
+          })
+        }
+
         return created
       })
     } catch (e) {
@@ -264,7 +283,11 @@ export async function POST(request: NextRequest) {
     // The run is safely recorded. These steps can each fail without making the
     // account wrong, so none of them is allowed to fail the request.
 
-    // Now that the run has committed, tell the people tagged in it.
+    // Attempt immediate delivery for the buddy notifications just enqueued.
+    // The outbox rows already exist — if this crashes, the drain cron retries.
+    // Kept outside the transaction deliberately: notify() does network I/O
+    // (FCM) and holding a DB transaction open across a network call risks
+    // long-held locks on a busy Neon connection pool.
     for (const b of newBuddies) {
       await notify({
         userId: b.id,
@@ -274,7 +297,7 @@ export async function POST(request: NextRequest) {
         body: "You're now run buddies. Book your next run together!",
         entityId: userId,
         icon: '🤝',
-      })
+      }).catch(() => {}) // already in the outbox — failure here is non-fatal
     }
 
     // Close the loop on the hotspot: this participant actually ran.
