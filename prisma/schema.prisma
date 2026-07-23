@@ -186,49 +186,30 @@ model User {
   devices           UserDevice[]
   verificationTokens VerificationToken[]
 
-  // The leaderboard sorts by any of these; each needs its own index or the board
-  // degrades to a full scan + sort. xp is the default board, the rest are one tap away.
   @@index([xp])
   @@index([streak])
   @@index([totalRuns])
   @@index([totalDistanceKm])
   @@index([totalPeopleRunWith])
-  // Discovery filters on a lat/lng bounding box (see /api/users). Without this
-  // the range predicate is a sequential scan of every user on every map load.
   @@index([lat, lng])
 }
 
-// One row per device a user gets push on.
-//
-// This replaces a single fcmToken column on User. FCM issues a token per app
-// install, so with one column a second device's registration overwrote the
-// first — and the first then received nothing, forever, with no error anywhere.
-// A phone plus a tablet, or a reinstall, was enough.
-//
-// The token is the identity: FCM can hand the same device a new one at any time
-// (reinstall, restore, refresh), so it's the unique key and the row is upserted
-// on it rather than on any device id we invent.
 model UserDevice {
   id         String   @id @default(cuid())
   userId     String
-  token      String   @unique // FCM registration token
-  platform   String   @default("unknown") // android | ios | web
-  enabled    Boolean  @default(true) // false once FCM says the token is dead
+  token      String   @unique
+  platform   String   @default("unknown")
+  enabled    Boolean  @default(true)
   lastSeenAt DateTime @default(now())
   createdAt  DateTime @default(now())
 
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  // Fan-out reads every enabled device for one user, on every notification.
   @@index([userId, enabled])
 }
 
-// Login sessions — token lives in an httpOnly cookie.
 model Session {
   id        String   @id @default(cuid())
-  // Only ever the SHA-256 of the cookie value. The raw token exists in the
-  // user's cookie and nowhere else, so a leaked database dump is not a set of
-  // working logins.
   tokenHash String   @unique
   userId    String
   expiresAt DateTime
@@ -239,13 +220,11 @@ model Session {
   @@index([userId])
 }
 
-// Short-lived 6-digit codes for email verification and password reset.
-// Stored as a SHA-256 hash; single-use (consumedAt) with an attempt cap.
 model VerificationToken {
   id         String    @id @default(cuid())
   userId     String
-  type       String    // "email_verify" | "password_reset"
-  codeHash   String    // sha256 hex of the 6-digit code
+  type       String
+  codeHash   String
   expiresAt  DateTime
   attempts   Int       @default(0)
   consumedAt DateTime?
@@ -268,11 +247,11 @@ model Hotspot {
   paceRange   String    @default("any")
   startTime   DateTime
   recurringIntervalMin Int @default(30)
-  daysOfWeek  String?   // for weekly official runs, e.g. "1,3,5" (Mon/Wed/Fri); null = continuous
-  audience    String    @default("all") // all, women, beginner
-  lobbyStartedAt DateTime? // set when someone taps "Start together" in the lobby
+  daysOfWeek  String?
+  audience    String    @default("all")
+  lobbyStartedAt DateTime?
   isActive    Boolean   @default(true)
-  isOfficial  Boolean   @default(false) // curated city spot vs. user-created
+  isOfficial  Boolean   @default(false)
   createdBy   String?
   createdAt   DateTime  @default(now())
   updatedAt   DateTime  @updatedAt
@@ -303,7 +282,7 @@ model RunGroup {
   isPublic    Boolean  @default(true)
   coverImage  String?
   city        String   @default("Antwerp")
-  lobbyStartedAt DateTime? // set when someone taps "Start together" in the group lobby
+  lobbyStartedAt DateTime?
   createdBy   String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -314,7 +293,6 @@ model RunGroup {
   runSessions RunSession[]
   challenges  Challenge[]
 
-  // Backs group discovery exactly: public groups in one city, newest first.
   @@index([isPublic, city, createdAt])
 }
 
@@ -324,14 +302,12 @@ model GroupMember {
   userId      String
   role        GroupRole @default(member)
   joinedAt    DateTime @default(now())
-  checkedInAt DateTime? // lobby presence; fresh within 2h counts as "here"
+  checkedInAt DateTime?
 
   group       RunGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([groupId, userId])
-  // The unique above leads with groupId, so "which groups is this user in?" —
-  // the filter behind both halves of discovery — couldn't use it and scanned.
   @@index([userId])
 }
 
@@ -342,12 +318,7 @@ model FeedPost {
   content     String
   imageUrl    String?
   postType    PostType @default(moment)
-  runSessionId String? // set when the post shares a tracked run (route card)
-  // Client-generated id for the thing the user composed, so a retry after a
-  // timeout collapses onto the same row instead of posting twice. Same
-  // pattern as RunSession.clientRunId. Nullable: rows written before this
-  // existed, and any server-side write, simply have none — Postgres does not
-  // treat NULLs as colliding, so the unique below still permits them.
+  runSessionId String?
   clientId    String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -358,8 +329,6 @@ model FeedPost {
   likedBy     PostLike[]
   commentThread PostComment[]
 
-  // The feed is the hottest read in the app and paginates by (createdAt, id)
-  // desc; without this it was a full-table scan + top-N sort on every load.
   @@index([createdAt, id])
   @@index([authorId])
   @@index([groupId])
@@ -384,11 +353,6 @@ model PostComment {
   postId    String
   authorId  String
   content   String
-  // Client-generated id for the thing the user composed, so a retry after a
-  // timeout collapses onto the same row instead of posting twice. Same
-  // pattern as RunSession.clientRunId. Nullable: rows written before this
-  // existed, and any server-side write, simply have none — Postgres does not
-  // treat NULLs as colliding, so the unique below still permits them.
   clientId  String?
   createdAt DateTime @default(now())
 
@@ -401,12 +365,12 @@ model PostComment {
 
 model Notification {
   id        String   @id @default(cuid())
-  userId    String   // recipient
-  actorId   String?  // who triggered it (if anyone)
-  type      String   // hotspot_join, run_invite, group_message, badge, rank_up, comment, like, run_complete
+  userId    String
+  actorId   String?
+  type      String
   title     String
   body      String?
-  entityId  String?  // id of the related hotspot/group/post/etc.
+  entityId  String?
   icon      String?
   read      Boolean  @default(false)
   createdAt DateTime @default(now())
@@ -414,39 +378,61 @@ model Notification {
   user      User     @relation("NotificationRecipient", fields: [userId], references: [id], onDelete: Cascade)
   actor     User?    @relation("NotificationActor", fields: [actorId], references: [id], onDelete: Cascade)
 
-  // Two reads, two shapes. The unread badge counts on (userId, read); the inbox
-  // lists this user's rows newest-first, which the read-flag index can't order,
-  // so it was fetching the user's whole history and sorting it every open.
   @@index([userId, read])
   @@index([userId, createdAt])
 }
 
+// ─── Durable notification outbox ─────────────────────────────────────────────
+// The run transaction commits, then notifications fire. If the serverless
+// function crashes between those two moments the run is saved but the people
+// tagged in it are never told — permanently, because nothing retries a fan-out
+// that never got to start.
+//
+// The fix: enqueue the notification intent INSIDE the same transaction that
+// commits the run. The run and the promise-to-notify are now one atomic fact.
+// A drain cron (src/app/api/cron/drain-outbox) retries any row that wasn't
+// delivered by the inline fast path.
+//
+// Why Postgres and not Upstash: the enqueue must be transactional with the run
+// write. Redis is not. A Postgres table is a durable queue and the least-
+// moving-parts option here.
+model NotificationOutbox {
+  id             String    @id @default(cuid())
+  // JSON-serialised NotifySpec — userId, actorId, type, title, body, entityId, icon.
+  // Stored as text rather than Json so the column is readable without a cast and
+  // survives any future Prisma Json quirks on Neon.
+  payload        String
+  createdAt      DateTime  @default(now())
+  deliveredAt    DateTime?
+  attempts       Int       @default(0)
+  // When the drain worker should next try this row. Null = try immediately.
+  // Set to an exponential backoff on failure; left null on first insert so
+  // the inline fast-path and the cron both pick it up without a special case.
+  nextAttemptAt  DateTime?
+
+  // The drain query: undelivered rows whose retry window has opened.
+  @@index([deliveredAt, nextAttemptAt])
+}
+
 model RunSession {
   id            String    @id @default(cuid())
-  // Client-generated id; makes offline re-uploads idempotent. Scoped to the
-  // user, not global — two people's devices picking the same id is not a
-  // duplicate run, and globally unique would silently reject the second one.
   clientRunId   String?
   userId        String
-  hotspotId     String?   // set when the run is tied to a hotspot
-  groupId       String?   // set when the run is tied to a group
+  hotspotId     String?
+  groupId       String?
   sportType     SportType @default(running)
   distanceKm    Float     @default(0)
   durationSec   Int       @default(0)
-  avgPaceSecPerKm Int     @default(0) // seconds per km; 0 when distance is 0
+  avgPaceSecPerKm Int     @default(0)
   calories      Int       @default(0)
-  path          String?   // JSON-encoded array of {lat,lng} GPS samples
-  splits        String?   // JSON-encoded array of per-km split seconds
-  companions    Int       @default(0) // how many people ran together
+  path          String?
+  splits        String?
+  companions    Int       @default(0)
   xpEarned      Int       @default(0)
   note          String?
   startedAt     DateTime  @default(now())
   endedAt       DateTime  @default(now())
   createdAt     DateTime  @default(now())
-  // When the exact GPS trace was replaced with a blinded, thinned version by the
-  // retention job. Null = still the raw trace (within the 90-day window). The
-  // marker is what lets the daily cron run safely: a row is coarsened once and
-  // then skipped forever, never re-thinned down to nothing.
   pathCoarsenedAt DateTime?
 
   user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -456,89 +442,37 @@ model RunSession {
 
   @@unique([userId, clientRunId])
   @@index([userId])
-  // The retention cron scans for old, not-yet-coarsened runs; this keeps that
-  // from being a full-table scan as the runs pile up.
   @@index([pathCoarsenedAt, endedAt])
 }
 
-// ─── Live run sharing ─────────────────────────────────────────────────────────
-// A runner hands one person a link and that person watches the run happen. No
-// account, no app, no follow request: the recipient opens /watch/<token> in
-// whatever browser they already have and sees a moving dot until the run ends.
-// It is the "text someone before you head out in the dark" habit, made real.
-//
-// The URL IS the credential — there is nothing else between a stranger and a
-// live position — so `token` is 32 random bytes, not a cuid. cuids are ordered
-// and partly derived from time and machine, which is fine for a row id nobody
-// can reach without a session and not fine for the only lock on this door.
-//
-// The stored position is EXACT, and that is deliberate. The safe-zone blinding
-// and 200m display fuzz that protect every other coordinate in this product
-// (src/lib/safe-zones.ts, src/lib/location-privacy.ts) are NOT applied here: a
-// contact sent to a blurred 200m cell cannot find anyone, and "somewhere around
-// there" is worthless to the person trying to reach a runner who has stopped
-// moving. This is the one place where precision beats privacy. It is bounded
-// rather than simply given away — opt-in per run, one link at a time, revocable
-// in a tap, dead when the run ends, and hard-expired at four hours whatever
-// happens. The daily cron (src/app/api/cron/coarsen-runs) then deletes the row,
-// so a dead link does not leave a location history behind it.
-//
-// sosAt flags the share so a watcher with the page open sees an alarm, and
-// nothing more: it phones nobody. The runner-facing copy says exactly that and
-// points at 112, because a safety feature that implies help is coming when it
-// is not is worse than no feature.
-//
-// "One active share per runner" is enforced in the API rather than by a unique
-// index: active means (not revoked, not ended, not yet expired), a predicate
-// over three nullable timestamps and the current time, which no index can hold.
-// Asking for a second link while one is live returns the first one.
 model RunShare {
   id          String    @id @default(cuid())
   token       String    @unique
   userId      String
   user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt   DateTime  @default(now())
-  // Set at creation to now + 4h and never moved. A share can die earlier two
-  // ways — endedAt when the run is saved, revokedAt when the runner pulls it —
-  // but it can never live longer than this, which is what covers the case the
-  // other two miss: the app is killed mid-run and nothing writes an ending.
   expiresAt   DateTime
   endedAt     DateTime?
   revokedAt   DateTime?
-  // First alarm only; the beacon never overwrites it. "Raised at 19:04" is the
-  // fact a watcher needs, and re-arming would keep resetting it to now.
   sosAt       DateTime?
-  // The live fix, overwritten by each beacon. Deliberately unblinded — see above.
   lat         Float?
   lng         Float?
   accuracyM   Float?
-  // Freshness, not history. The watcher shows the run as stale rather than
-  // pretending a three-minute-old dot is where the runner is standing.
   lastPingAt  DateTime?
   distanceKm  Float     @default(0)
   durationSec Int       @default(0)
 
-  // The runner's own share, newest first — the "do I already have one live?"
-  // lookup on every tracker load.
   @@index([userId, createdAt])
-  // The retention sweep scans by expiry; without this it is a full-table scan.
   @@index([expiresAt])
 }
 
-// Unified message model for both DMs (recipientId set) and group chat (groupId set).
-// Exactly one of recipientId or groupId must be non-null.
 model ChatMessage {
   id          String   @id @default(cuid())
   senderId    String
-  recipientId String?  // set for DMs
-  groupId     String?  // set for group chat
+  recipientId String?
+  groupId     String?
   content     String
-  read        Boolean  @default(false) // only meaningful for DMs
-  // Client-generated id for the thing the user composed, so a retry after a
-  // timeout collapses onto the same row instead of posting twice. Same
-  // pattern as RunSession.clientRunId. Nullable: rows written before this
-  // existed, and any server-side write, simply have none — Postgres does not
-  // treat NULLs as colliding, so the unique below still permits them.
+  read        Boolean  @default(false)
   clientId    String?
   createdAt   DateTime @default(now())
 
@@ -548,8 +482,6 @@ model ChatMessage {
 
   @@index([senderId, recipientId])
   @@index([groupId])
-  // The DM inbox and unread badge query by recipient; this backs those without a
-  // scan as message volume grows.
   @@index([recipientId, read])
   @@unique([senderId, clientId])
 }
@@ -569,7 +501,7 @@ model RunInvite {
 model UserBadge {
   id          String   @id @default(cuid())
   userId      String
-  badgeType   String   // first_run, streak_3, streak_7, streak_30, social_butterfly, early_bird, night_owl, etc.
+  badgeType   String
   title       String
   description String
   icon        String
@@ -584,7 +516,7 @@ model RunRating {
   id          String   @id @default(cuid())
   hotspotId   String
   userId      String
-  rating      Int      // 1-5
+  rating      Int
   comment     String?
   createdAt   DateTime @default(now())
 
@@ -594,22 +526,6 @@ model RunRating {
   @@unique([hotspotId, userId])
 }
 
-// ─── Message requests ─────────────────────────────────────────────────────────
-// A stranger's first message is a request, not a delivery.
-//
-// Anyone could DM anyone, and every message fired a push. On an app whose whole
-// premise is meeting people you don't know yet, that makes the inbox — and the
-// lock screen — reachable by any account that can find you on the map. Blocking
-// works, but only after the message has already arrived and buzzed.
-//
-// So a first message from someone you have no connection with lands here
-// instead: stored, visible when you go looking, and silent. Accepting opens the
-// conversation and lets pushes through. Declining closes it without telling
-// them, which is the point — a decline that notifies is a decline people are
-// afraid to use.
-//
-// Directional: A requesting B is not B requesting A. If B ever messages A, that
-// is acceptance by conduct and the request is settled without a tap.
 model MessageRequest {
   id          String   @id @default(cuid())
   senderId    String
@@ -622,7 +538,6 @@ model MessageRequest {
   recipient   User     @relation("RequestsReceived", fields: [recipientId], references: [id], onDelete: Cascade)
 
   @@unique([senderId, recipientId])
-  // The recipient's "who is waiting on me" list, newest first.
   @@index([recipientId, status, createdAt])
 }
 
@@ -639,14 +554,6 @@ model Buddy {
   @@index([userId])
 }
 
-// An area where this user's location is never shared — home, work, the gym.
-// The 200m display fuzz makes a pin approximate, but an approximate pin at the
-// same spot every evening still says where someone sleeps. Inside a zone the
-// map shows nothing at all (Strava shipped the same idea after real harm).
-//
-// The zone centre IS the sensitive place, so zones are visible only to their
-// owner: they must never pass through toPublicUser, and the projection deletes
-// the key as defense in depth.
 model SafeZone {
   id        String   @id @default(cuid())
   userId    String
@@ -672,46 +579,26 @@ model Block {
   blocked   User     @relation("Blocked", fields: [blockedId], references: [id], onDelete: Cascade)
 
   @@unique([blockerId, blockedId])
-  // Every block-aware read filters "is X blocked by / blocking me" in both
-  // directions; the blockerId side is covered by the unique index, this covers
-  // the reverse lookup that otherwise sequential-scans.
   @@index([blockedId])
 }
 
-// A report an operator needs to see and act on. This app arranges for strangers
-// to meet in person, so a way to flag someone — and a queue behind it — is a
-// duty-of-care requirement, not a feature. Block only hides someone from the
-// reporter; it tells nobody.
-//
-// subjectId is a plain string, not a foreign key: the subject may be a user, a
-// post, or a message, and the report must outlive the subject being deleted so
-// the evidence survives. `evidence` is a JSON snapshot of the reported content at
-// report time, captured server-side, so a deleted post can still be reviewed.
 model Report {
   id           String            @id @default(cuid())
-  // Nullable + SetNull, NOT Cascade: when a reporter deletes their account the
-  // report and its evidence snapshot must survive — otherwise anyone could erase
-  // the abuse case filed against them by deleting the account that filed it.
   reporterId   String?
   subjectType  ReportSubjectType
   subjectId    String
   reason       ReportReason
-  details      String? // free text from the reporter
-  evidence     String? // JSON snapshot of the reported content when filed
+  details      String?
+  evidence     String?
   status       ReportStatus      @default(open)
-  resolvedById String? // admin who actioned it (plain id, no FK)
+  resolvedById String?
   resolvedAt   DateTime?
   createdAt    DateTime          @default(now())
 
   reporter     User?             @relation("Reporter", fields: [reporterId], references: [id], onDelete: SetNull)
 
-  // One report per person per subject: re-filing updates rather than piling up,
-  // so one reporter can't flood the queue. Many DIFFERENT reporters on the same
-  // subject is the signal that matters, and that still accumulates.
   @@unique([reporterId, subjectType, subjectId])
-  // The queue: open reports, newest first.
   @@index([status, createdAt])
-  // All reports about one subject — how many people flagged this person.
   @@index([subjectType, subjectId])
 }
 
@@ -719,9 +606,9 @@ model Challenge {
   id          String   @id @default(cuid())
   title       String
   description String?
-  metric      String   @default("distance") // distance, runs, buddies
+  metric      String   @default("distance")
   goal        Float    @default(0)
-  scope       String   @default("global")   // global, group
+  scope       String   @default("global")
   groupId     String?
   icon        String   @default("🏆")
   startsAt    DateTime @default(now())
