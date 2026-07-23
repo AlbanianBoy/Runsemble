@@ -15,7 +15,7 @@
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { motion } from 'framer-motion'
-import { Pause, Play, Flame, MapPin, Zap, Clock, X, Minus, Plus, Loader2, Trophy, Star, Check, Volume2, VolumeX } from 'lucide-react'
+import { Pause, Play, Flame, MapPin, Zap, Clock, X, Minus, Plus, Loader2, Trophy, Star, Check, Volume2, VolumeX, Share2, ShieldAlert } from 'lucide-react'
 import { toast } from 'sonner'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { useRunsembleStore } from '@/lib/store'
@@ -31,8 +31,10 @@ import { queuePendingRun } from '@/lib/run-sync'
 import { track } from '@/lib/analytics'
 import { formatClock, formatPaceLabel, paceFromRun } from '@/lib/run'
 import { runXp } from '@/lib/run-xp'
+import { BEACON_INTERVAL_MS } from '@/lib/run-share'
+import { createShare, endShare, sendBeacon, shareLink, watchUrl } from '@/lib/run-share-client'
 import { moveDistanceKm, computeElapsedSec, crossedKm, ACCURACY_GATE_M } from '@/lib/run-math'
-import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse } from '@/lib/types'
+import type { RunSaveResponse, BuddiesResponse, HotspotResponse, GroupResponse, RunShareSummary } from '@/lib/types'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { getAvatarColor, getInitials } from './helpers'
@@ -148,6 +150,25 @@ export function RunTracker() {
   const [rating, setRating] = useState(0)
   const [shareToFeed, setShareToFeed] = useState(true)
   const [saving, setSaving] = useState(false)
+
+  // ─── Live share (H42) ──────────────────────────────────────────────────────
+  // The runner can hand one person a link that follows this run in real time.
+  // activeShare is the current link (null when not sharing); sosArmed is the
+  // first of the two taps SOS deliberately requires, so a pocket-tap can't send
+  // a contact a false alarm. sosRaised is derived — once the share carries an
+  // sosAt, the alarm is up and stays up for this run.
+  const [activeShare, setActiveShare] = useState<RunShareSummary | null>(null)
+  const [sharing, setSharing] = useState(false)
+  const [sosArmed, setSosArmed] = useState(false)
+  const sosRaised = activeShare?.sosAt != null
+  // Mirror of activeShare for handleSave/handleClose, which are memoised and
+  // would otherwise close over a stale value and never end the share.
+  const activeShareRef = useRef<RunShareSummary | null>(null)
+  useEffect(() => { activeShareRef.current = activeShare }, [activeShare])
+  // The values the 20s beacon posts, refreshed every render so the interval
+  // reads the live fix rather than the render it was created on. hasFix guards
+  // against posting a position before GPS has produced one.
+  const beaconSampleRef = useRef({ lat: 0, lng: 0, accuracyM: null as number | null, distanceKm: 0, durationSec: 0, hasFix: false })
 
   const phaseRef = useRef<Phase>('ready')
   const elapsedRef = useRef(0)
@@ -278,6 +299,36 @@ export function RunTracker() {
       clearActiveRun()
     }
   }, [phase, routePoints, splits, distanceKm, runContext])
+
+  // Keep the beacon's payload current. A ref write, not state, so it can run on
+  // every render without a re-render loop — the same pattern as ingestRef above.
+  useEffect(() => {
+    beaconSampleRef.current = {
+      lat: pos?.lat ?? 0,
+      lng: pos?.lng ?? 0,
+      accuracyM,
+      distanceKm,
+      durationSec: elapsedSec,
+      hasFix: pos != null,
+    }
+  })
+
+  // While a share is live and the run is going (running OR paused — a runner who
+  // stops for breath is still there, and telling their contact "signal lost"
+  // would be a false alarm), post the position every 20s. A beacon must never
+  // interrupt the run: failures are swallowed, and a 0 back means the share was
+  // ended or revoked server-side, so we stop and clear it locally.
+  useEffect(() => {
+    if (!activeShare || (phase !== 'running' && phase !== 'paused')) return
+    const id = setInterval(() => {
+      const s = beaconSampleRef.current
+      if (!s.hasFix) return
+      sendBeacon({ lat: s.lat, lng: s.lng, accuracyM: s.accuracyM, distanceKm: s.distanceKm, durationSec: s.durationSec })
+        .then((active) => { if (active === 0) setActiveShare(null) })
+        .catch(() => {})
+    }, BEACON_INTERVAL_MS)
+    return () => clearInterval(id)
+  }, [activeShare, phase])
 
   // GPS watch — position updates always (so the ready screen shows where you
   // are). On the web this is the browser Geolocation API; in the native app it's
@@ -601,6 +652,11 @@ export function RunTracker() {
       if (res.streak.usedGrace) toast(`🔥 Streak kept at ${res.streak.streak} — rest day forgiven`)
       res.badgesEarned.forEach((b) => toast(`${b.icon} Badge unlocked: ${b.title}`))
 
+      // The run is saved, so the live link has done its job — end it. Fire and
+      // forget: a share that outlives the run by up to its 4h cap is a backstop,
+      // never a reason to fail or delay a save the runner just completed.
+      if (activeShareRef.current) void endShare().catch(() => {})
+
       closeRunTracker()
     } catch (e) {
       // No signal to reach the server? Don't lose the run. Stash it on the device
@@ -625,6 +681,69 @@ export function RunTracker() {
       setSaving(false)
     }
   }, [currentUser, distanceKm, elapsedSec, runContext, companions, buddyIds, splits, rating, shareToFeed, updateProfile, queryClient, closeRunTracker])
+
+  // Start sharing, then immediately offer the OS share sheet (or clipboard) so
+  // the runner can hand the link straight to their person. An immediate beacon
+  // means the watcher sees a position without waiting out the first 20s tick.
+  const handleStartShare = useCallback(async () => {
+    setSharing(true)
+    try {
+      const share = await createShare()
+      setActiveShare(share)
+      const s = beaconSampleRef.current
+      if (s.hasFix) {
+        void sendBeacon({ lat: s.lat, lng: s.lng, accuracyM: s.accuracyM, distanceKm: s.distanceKm, durationSec: s.durationSec }).catch(() => {})
+      }
+      const result = await shareLink(watchUrl(share.token))
+      if (result === 'copied') toast.success('Link copied — paste it to your contact')
+      else if (result === 'failed') toast('Sharing is on. Tap "Send link again" to get the link.')
+      // 'shared' / 'cancelled' → the OS sheet spoke for us, or they backed out; no toast.
+    } catch {
+      toast.error("Couldn't start sharing — try again")
+    } finally {
+      setSharing(false)
+    }
+  }, [])
+
+  const handleResendShare = useCallback(async () => {
+    const share = activeShareRef.current
+    if (!share) return
+    const result = await shareLink(watchUrl(share.token))
+    if (result === 'copied') toast.success('Link copied')
+    else if (result === 'failed') toast.error("Couldn't share the link")
+  }, [])
+
+  const handleStopShare = useCallback(async () => {
+    setSharing(true)
+    try {
+      await endShare()
+      setActiveShare(null)
+      setSosArmed(false)
+      toast('Sharing stopped')
+    } catch {
+      toast.error("Couldn't stop sharing — try again")
+    } finally {
+      setSharing(false)
+    }
+  }, [])
+
+  // SOS is the second of two taps (arm → confirm). It flags the share so a
+  // watcher with the page open sees an alarm; it does NOT contact anyone, which
+  // the in-run copy says plainly. It needs a real fix — an alarm with no
+  // position helps no one, and 0,0 would drop the runner in the ocean.
+  const handleConfirmSos = useCallback(async () => {
+    if (!activeShareRef.current) return
+    const s = beaconSampleRef.current
+    if (!s.hasFix) { toast('Waiting for GPS before SOS can send your location'); return }
+    setSosArmed(false)
+    try {
+      await sendBeacon({ lat: s.lat, lng: s.lng, accuracyM: s.accuracyM, distanceKm: s.distanceKm, durationSec: s.durationSec, sos: true })
+      setActiveShare((prev) => (prev ? { ...prev, sosAt: new Date().toISOString() } : prev))
+      toast('SOS raised — your contact can see it on the link')
+    } catch {
+      toast.error("Couldn't raise SOS — try again")
+    }
+  }, [])
 
   const label = runContext?.label ?? 'Solo run'
   // Long-press the GPS chip to copy the native flight recorder to the clipboard —
@@ -839,6 +958,71 @@ export function RunTracker() {
                     </>
                   )}
                 </div>
+
+                {/* Share live — one link that follows this run for one person.
+                    The honest copy sits directly under the controls, where the
+                    runner reads it, not in a toast that vanishes. */}
+                <div className="mt-5 border-t pt-4">
+                  {!activeShare ? (
+                    <button
+                      onClick={handleStartShare}
+                      disabled={sharing}
+                      className="w-full h-11 rounded-full border border-border flex items-center justify-center gap-2 text-sm font-semibold active:scale-[.98] transition-transform disabled:opacity-60"
+                    >
+                      {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />} Share live with someone
+                    </button>
+                  ) : (
+                    <div className="space-y-2.5">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={handleResendShare}
+                          className="flex-1 h-11 rounded-full bg-primary/10 text-primary flex items-center justify-center gap-2 text-sm font-semibold active:scale-[.98] transition-transform"
+                        >
+                          <Share2 className="h-4 w-4" /> Send link again
+                        </button>
+                        <button
+                          onClick={handleStopShare}
+                          disabled={sharing}
+                          className="h-11 px-4 rounded-full border border-border text-sm font-semibold active:scale-95 transition-transform disabled:opacity-60"
+                        >
+                          Stop
+                        </button>
+                      </div>
+
+                      {sosRaised ? (
+                        <p className="flex items-center justify-center gap-1.5 text-sm font-semibold text-red-600 dark:text-red-400">
+                          <ShieldAlert className="h-4 w-4" /> SOS raised — your contact can see it
+                        </p>
+                      ) : sosArmed ? (
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={handleConfirmSos}
+                            className="flex-1 h-11 rounded-full bg-red-600 text-white text-sm font-bold active:scale-[.98] transition-transform"
+                          >
+                            Confirm SOS
+                          </button>
+                          <button
+                            onClick={() => setSosArmed(false)}
+                            className="h-11 px-4 rounded-full border border-border text-sm font-semibold active:scale-95 transition-transform"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => setSosArmed(true)}
+                          className="w-full h-11 rounded-full border-2 border-red-500 text-red-600 dark:text-red-400 flex items-center justify-center gap-2 text-sm font-bold active:scale-[.98] transition-transform"
+                        >
+                          <ShieldAlert className="h-4 w-4" /> Raise SOS
+                        </button>
+                      )}
+
+                      <p className="text-[11px] leading-snug text-muted-foreground text-center">
+                        Anyone with the link sees your live location until you stop or the run ends. This isn&apos;t an emergency service — call <strong className="text-foreground">112</strong> if you&apos;re in danger.
+                      </p>
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </div>
@@ -848,7 +1032,7 @@ export function RunTracker() {
         <div className="flex-1 overflow-y-auto">
           <div className="flex items-center justify-between px-5 pt-[calc(env(safe-area-inset-top,0px)+1rem)] pb-1">
             <span className="text-sm font-semibold">{label}</span>
-            <button onClick={closeRunTracker} className="text-muted-foreground hover:text-foreground" aria-label="Close">
+            <button onClick={() => { if (activeShareRef.current) void endShare().catch(() => {}); closeRunTracker() }} className="text-muted-foreground hover:text-foreground" aria-label="Close">
               <X className="h-5 w-5" />
             </button>
           </div>
@@ -974,6 +1158,7 @@ export function RunTracker() {
                     recorderActiveRef.current = false
                     void stopRecording().then(() => clearRecording(runId))
                   }
+                  if (activeShareRef.current) void endShare().catch(() => {})
                   closeRunTracker()
                 }}
                 variant="ghost"

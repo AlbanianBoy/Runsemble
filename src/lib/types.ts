@@ -387,3 +387,25 @@ export interface MessageRequestsResponse {
   requests: ApiMessageRequest[]
   count: number
 }
+
+// ─── Live run sharing (H42) ─────────────────────────────────────────────────
+// The runner-facing envelopes from /api/run-shares. The WATCHER's payload is a
+// different shape — PublicRunShare, exported from lib/run-share.ts (a DB-free
+// module both the server route and the public page import) — so it is not
+// repeated here. These three carry the token (the runner needs it to build the
+// link) but never a position; the tracker already knows where the runner is.
+export interface RunShareSummary {
+  id: string
+  token: string
+  expiresAt: string
+  sosAt: string | null
+}
+export interface RunShareResponse {
+  share: RunShareSummary | null
+  /** Only on POST: true when a new share was minted, false when the existing live one was returned. */
+  created?: boolean
+}
+export interface RunShareBeaconResponse {
+  /** How many of the caller's shares the ping landed on. 0 means the share is dead — stop beaconing. */
+  active: number
+}

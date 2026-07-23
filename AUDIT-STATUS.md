@@ -5,7 +5,7 @@ shipped (verified commit-by-commit). Last reconciled: 2026-07-23.
 
 **Legend:** ✅ done · 🟡 partial · 🟢 foundation shipped, rest handed off · ⬜ open (codeable) · 🔒 needs you (decision / money / legal) · ➖ duplicate, fixed under linked ID · ✔️ verified not-an-issue
 
-**Tally: 125 of 141 resolved.** 5 need a decision, 4 need infra/money, 1 needs your product call, 1 half-shipped (H42), 5 deliberately closed as no-action.
+**Tally: 126 of 141 resolved.** 5 need a decision, 4 need infra/money, 1 needs your product call (H26), 5 deliberately closed as no-action. H42 (live-run share + SOS) is now fully built.
 
 ---
 
@@ -19,11 +19,11 @@ shipped (verified commit-by-commit). Last reconciled: 2026-07-23.
 |✅|C4|Women-only runs were cosmetic — gender now collected + enforced|
 |✅|C5|Moderation queue had no enforcement power — suspend now refuses sessions|
 
-## HIGH (45) — 37 done · 1 half-shipped · 7 need you
+## HIGH (45) — 38 done · 7 need you
 
 **✅ done (37):** H3 (transaction + `after()`), H4, H5, H6, H7, H8, H9➖C1, H10➖H5, H11➖H8, H12 (buddy tag needs co-presence evidence + is removable), H13, H14 (rate limiting live), H16➖H4, H17 (erasure reaches PostHog), H19 (idle-backoff polling), H20, H21, H23➖H7, H24, H25, H27 (stranger-DM request gate), H28, H29➖C4, H30, H33➖H7, H34, H35➖H27, H36, H37➖H12, H38, H39, H40, H41, H43, H44, H45
 
-**🟢 H42** — SOS / share-my-run-live. **Foundation + API shipped** (RunShare model + migration, `run-share.ts` core lib + 31 tests, 24 h retention purge, **and now the 3 API routes: create/get/delete, beacon, and the public `/watch/[token]` read — 10 route tests, gated + noindex + no-store**). **Remaining:** the public `/watch` page (3 files) and the run-tracker wiring (client helper + types + the Share/SOS controls) — specced in `HANDOFF-H42.md`.
+**✅ H42** — SOS / share-my-run-live. **Fully built end-to-end**: RunShare model + migration, `run-share.ts` core lib (31 tests), 24 h retention purge, the 3 API routes (create/get/delete, beacon, public `/watch/[token]` — 10 route tests, gated + noindex + no-store), the public `/watch` page (map + SOS banner + freshness, renders verified), the client helper, and the run-tracker Share/SOS controls (two-tap SOS, 20 s beacon, share ended on save/discard). Ships when pushed + the `run_shares` migration is applied.
 
 **🔒 need you (7):**
 | | | |
@@ -68,7 +68,7 @@ shipped (verified commit-by-commit). Last reconciled: 2026-07-23.
 **Nothing is blocking a launch that a decision from you doesn't gate.** The
 remaining work is:
 
-1. **Finish H42** — the live-share plumbing. Specced in `HANDOFF-H42.md`.
+1. ~~Finish H42~~ — **done**, end to end. Needs a `git push` + `npx prisma migrate deploy` to go live.
 2. **Buildable when you want it: H2** durable outbox (Upstash is connected now).
 3. **Your decisions (no code from me possible):** H15 (location default), H31
    (official-run content), H32 (brand colour), H26 (two-sided buddies), M21

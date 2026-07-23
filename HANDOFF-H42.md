@@ -127,14 +127,17 @@ drift apart.
 
 ---
 
-## ❌ TO BUILD — what's left
+## ✅ H42 IS COMPLETE
 
-**The API layer above is now DONE and tested — do not rebuild it.** What remains
-is the client-facing part: types, a client helper, the public watch page, and
-wiring the controls into the run tracker (sections 2–5 below). Section 1 is kept
-for reference so you know exactly what the endpoints return.
+Everything below (sections 1–5) is now built, verified (typecheck ×2, lint, 455
+tests, `next build`) and committed. The watch page render was confirmed in the
+browser. Nothing here is left to do except **`git push`** and, once merged,
+**`npx prisma migrate deploy`** to apply the `run_shares` migration. The only
+remaining verification is the live end-to-end flow on a real device (create a
+share, watch the dot move, raise SOS) — that needs GPS and can't be done from a
+desktop. Sections 1–5 are kept as a record of what shipped.
 
-### 1. API routes — ✅ ALREADY BUILT (reference only, do not rebuild)
+### 1. API routes — ✅ BUILT
 
 **`src/app/api/run-shares/route.ts`** — `GET`, `POST`, `DELETE`:
 - **GET** (auth): return the caller's one active share, or null.

@@ -85,7 +85,7 @@ describe('DELETE /api/run-shares', () => {
   })
 
   it('ends the run (endedAt) without revoking it — a normal finish is not "cut off"', async () => {
-    const updateMany = vi.fn(async () => ({ count: 1 }))
+    const updateMany = vi.fn((..._args: unknown[]) => Promise.resolve({ count: 1 }))
     overrides = { 'runShare.updateMany': updateMany }
     const { DELETE } = await import('@/app/api/run-shares/route')
     await DELETE()
@@ -122,7 +122,7 @@ describe('POST /api/run-shares/beacon', () => {
   })
 
   it('raises SOS as a second update guarded on sosAt:null, so re-arming never moves the time', async () => {
-    const updateMany = vi.fn(async () => ({ count: 1 }))
+    const updateMany = vi.fn((..._args: unknown[]) => Promise.resolve({ count: 1 }))
     overrides = { 'runShare.updateMany': updateMany }
     const { POST } = await import('@/app/api/run-shares/beacon/route')
     await POST(beaconReq({ ...validFix, sos: true }))
