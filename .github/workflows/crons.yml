@@ -1,0 +1,65 @@
+name: Cron jobs
+
+# Replaces the `crons` block that was in vercel.json.
+# Vercel Hobby does not execute cron jobs; GitHub Actions does, for free.
+#
+# All three routes validate the same Bearer CRON_SECRET header that Vercel
+# would have set, so no route changes are needed.
+
+on:
+  schedule:
+    # drain-outbox: every 5 minutes (matches former vercel.json schedule)
+    - cron: '*/5 * * * *'
+    # coarsen-runs: daily at 03:00 UTC
+    - cron: '0 3 * * *'
+    # weekly-challenge: every Monday at 04:00 UTC
+    - cron: '0 4 * * 1'
+  # Allow manual triggers from the Actions tab for debugging
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which cron to run'
+        required: true
+        type: choice
+        options:
+          - drain-outbox
+          - coarsen-runs
+          - weekly-challenge
+
+jobs:
+  drain-outbox:
+    # Only run on the drain-outbox schedule (*/5) or manual trigger
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'drain-outbox'
+      || (github.event_name == 'schedule' && startsWith(github.event.schedule, '*/5'))
+    runs-on: ubuntu-latest
+    steps:
+      - name: Drain notification outbox
+        run: |
+          curl --fail-with-body -s \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.NEXT_PUBLIC_APP_URL }}/api/cron/drain-outbox"
+
+  coarsen-runs:
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'coarsen-runs'
+      || (github.event_name == 'schedule' && github.event.schedule == '0 3 * * *')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Coarsen runs
+        run: |
+          curl --fail-with-body -s \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.NEXT_PUBLIC_APP_URL }}/api/cron/coarsen-runs"
+
+  weekly-challenge:
+    if: |
+      github.event_name == 'workflow_dispatch' && github.event.inputs.job == 'weekly-challenge'
+      || (github.event_name == 'schedule' && github.event.schedule == '0 4 * * 1')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Weekly challenge
+        run: |
+          curl --fail-with-body -s \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.NEXT_PUBLIC_APP_URL }}/api/cron/weekly-challenge"
