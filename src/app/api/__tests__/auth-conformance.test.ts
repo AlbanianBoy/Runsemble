@@ -41,6 +41,10 @@ const PUBLIC: Record<string, string> = {
   // is the credential, and the response is narrowed to first-name-plus-position
   // by toPublicRunShare.
   'run-shares/[token]/route.ts:GET': 'the watcher has no session by design — the token is the credential',
+  // Basemap tile proxy. Serves only public OpenStreetMap raster tiles by grid
+  // coordinate — no user data is reachable — and must load for the map before
+  // anything else, so gating it on a session would just add latency to every tile.
+  'map/tile/[z]/[x]/[y]/route.ts:GET': 'serves public OSM tiles by coordinate; touches no user data',
 }
 
 function routeFiles(dir: string): string[] {

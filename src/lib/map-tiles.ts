@@ -9,18 +9,22 @@
 // (a live capture showed 8/8 tile requests returning 503). OpenStreetMap's
 // standard tiles are the reliable keyless default and are fine at pilot volume.
 //
+// The default is our own same-origin proxy (src/app/api/map/tile/[z]/[x]/[y]),
+// NOT the OSM CDN directly: keyless CDNs 503 the browser's concurrent tile burst
+// from a residential IP, so we fetch tiles server-side and edge-cache them. The
+// browser only ever talks to us. See the proxy route for the full reasoning.
+//
 // For a premium style later (MapTiler, Stadia, or a keyed CARTO account), set
 // NEXT_PUBLIC_MAP_TILE_URL to that provider's {z}/{x}/{y} template — plus a key
-// query param — and add its host to img-src in next.config.ts. No component
-// changes needed. Note NEXT_PUBLIC_* is inlined at build time, so a provider
-// swap needs a rebuild, not just an env edit.
+// query param — and add its host to img-src in next.config.ts. That bypasses the
+// proxy entirely. Note NEXT_PUBLIC_* is inlined at build time, so a provider swap
+// needs a rebuild, not just an env edit.
 //
-// Template tokens: {s} rotates the a/b/c subdomains; {z}/{x}/{y} are the tile
-// coords. We deliberately omit {r} (the @2x retina suffix) — OSM's standard
-// tiles don't serve @2x and would 404 on it.
+// Template tokens: {z}/{x}/{y} are the tile coords. We omit {s} (subdomain
+// rotation is pointless for a same-origin path) and {r} (the @2x retina suffix,
+// which OSM's standard tiles don't serve).
 export const TILE_URL =
-  process.env.NEXT_PUBLIC_MAP_TILE_URL ??
-  'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
+  process.env.NEXT_PUBLIC_MAP_TILE_URL ?? '/api/map/tile/{z}/{x}/{y}'
 
 export const TILE_ATTRIBUTION =
   process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION ??
