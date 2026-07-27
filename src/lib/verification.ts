@@ -1,7 +1,8 @@
 // ─── Verification codes (server-only) ─────────────────────────────────────────
-// Short-lived 6-digit codes for email verification and password reset. Codes
-// are stored as a SHA-256 hash (never in plaintext), single-use, expire in
-// 15 min, and are capped at 5 wrong attempts to blunt brute force.
+// Short-lived 6-digit codes for email verification, password reset, and phone
+// verification. Codes are stored as a SHA-256 hash (never in plaintext),
+// single-use, expire in 15 min, and are capped at 5 wrong attempts to blunt
+// brute force.
 
 import { createHash, randomInt, timingSafeEqual } from 'crypto'
 import { db } from './db'
@@ -9,7 +10,7 @@ import { db } from './db'
 const CODE_TTL_MS = 15 * 60 * 1000
 const MAX_ATTEMPTS = 5
 
-export type VerificationType = 'email_verify' | 'password_reset'
+export type VerificationType = 'email_verify' | 'password_reset' | 'phone_verify'
 
 function hashCode(code: string): string {
   return createHash('sha256').update(code).digest('hex')

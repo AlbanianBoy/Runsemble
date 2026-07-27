@@ -125,6 +125,13 @@ model User {
   analyticsConsent  Boolean   @default(false)
   emailVerified     Boolean   @default(false) // confirmed via 6-digit code
   emailVerifiedAt   DateTime?
+  // Phone verification (Sybil resistance): a confirmed number flips the top-level
+  // `verified` trust badge. phone is stored unverified at send-time so the verify
+  // route can confirm it belongs to this account. Nullable + additive so the
+  // migration is safe to apply to a live table.
+  phone             String?
+  phoneVerified     Boolean   @default(false)
+  phoneVerifiedAt   DateTime?
   preferredSport    String    @default("running")
   paceLevel         PaceLevel @default(beginner)
   schedulePreference String   @default("")  // comma-separated: "morning", "morning,evening", etc.

@@ -8,7 +8,10 @@
 //   - /api/*       -> untouched (network only; offline saves land in a later step)
 // Runs on runsemble.net, so it also benefits the iPhone PWA + web, not just Android.
 
-const VERSION = 'v1'
+// Bump on any deploy that must force old shells/chunks out of the cache. v2:
+// clears caches left by builds served during the frozen-deploy window so a
+// device that was stuck on a stale bundle picks the new one up on next launch.
+const VERSION = 'v2'
 const SHELL = `rs-shell-${VERSION}`
 const STATIC = `rs-static-${VERSION}`
 const TILES = `rs-tiles-${VERSION}`
