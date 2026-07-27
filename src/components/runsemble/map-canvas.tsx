@@ -378,6 +378,46 @@ function RecentreControl({ me }: { me: LatLng }) {
   )
 }
 
+// ─── Keep Leaflet's viewport in sync with its container ─────────────────────────
+// The map lives in a dvh-based, safe-area-aware box loaded via
+// next/dynamic({ ssr:false }). That height resolves a beat AFTER Leaflet
+// initialises, so Leaflet caches a 0×0 (or wrong) viewport and never requests a
+// single tile — the container just paints its background and you get a blank map
+// with only the markers floating on top. The same desync happens later when the
+// mobile browser chrome hides on scroll (100dvh changes) or the device rotates.
+// invalidateSize() recomputes the viewport and pulls the tiles in, so we call it
+// right after mount (a few times, to catch the late dvh/safe-area resolution) and
+// on every subsequent size change. Calling it when the size is already correct is
+// a cheap no-op, so over-calling is safe.
+function MapResizeFix() {
+  const map = useMap()
+  useEffect(() => {
+    const fix = () => map.invalidateSize({ animate: false })
+    const raf = requestAnimationFrame(fix)
+    const t1 = setTimeout(fix, 250)
+    const t2 = setTimeout(fix, 700)
+
+    // The container's own height is driven by CSS, not by Leaflet, so recomputing
+    // the viewport here can't feed back into a resize loop.
+    const ro = new ResizeObserver(fix)
+    ro.observe(map.getContainer())
+    window.addEventListener('resize', fix)
+    window.addEventListener('orientationchange', fix)
+    window.visualViewport?.addEventListener('resize', fix)
+
+    return () => {
+      cancelAnimationFrame(raf)
+      clearTimeout(t1)
+      clearTimeout(t2)
+      ro.disconnect()
+      window.removeEventListener('resize', fix)
+      window.removeEventListener('orientationchange', fix)
+      window.visualViewport?.removeEventListener('resize', fix)
+    }
+  }, [map])
+  return null
+}
+
 export interface MapCanvasProps {
   hotspots: ApiHotspot[]
   runners: ApiUser[]
@@ -408,6 +448,7 @@ export default function MapCanvas({
       className="h-full w-full"
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
+      <MapResizeFix />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
         url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
