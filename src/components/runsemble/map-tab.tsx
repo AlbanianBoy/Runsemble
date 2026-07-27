@@ -368,7 +368,7 @@ export function MapTab() {
       {/* Find people by name */}
       <div className="relative mb-2">
         <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
-        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search runners by name…" className="rounded-full pl-9" />
+        <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search runners by name…" className="rounded-full pl-9 glass shadow-sm border-border/50" />
       </div>
       {searchQ.length >= 2 && (
         <div className="mb-2 rounded-2xl border bg-card divide-y overflow-hidden">
@@ -396,13 +396,13 @@ export function MapTab() {
       )}
 
       {/* Pace + distance filters */}
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-2 -mx-1 px-1" style={{ scrollbarWidth: 'none' }}>
+      <div className="glass rounded-full shadow-sm border border-border/50 flex items-center gap-1 overflow-x-auto px-1.5 py-1 w-fit max-w-full" style={{ scrollbarWidth: 'none' }}>
         {PACE_OPTIONS.map((p) => (
           <button
             key={p.id}
             onClick={() => setPaceFilter(p.id)}
             className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
-              paceFilter === p.id ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+              paceFilter === p.id ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {p.label}
@@ -418,7 +418,7 @@ export function MapTab() {
             onClick={() => setRadiusKm(r.v)}
             disabled={!hasFix && r.v !== null}
             className={`rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
-              radiusKm === r.v ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'
+              radiusKm === r.v ? 'bg-primary text-primary-foreground' : 'bg-transparent text-muted-foreground hover:text-foreground'
             }`}
           >
             {r.label}
@@ -498,8 +498,8 @@ export function MapTab() {
                   onClick={() => setSelectedRunner(r)}
                   className="shrink-0 w-[128px] rounded-xl border border-border/60 bg-card/80 p-2.5 text-left hover:bg-card active:scale-[0.98] transition-all"
                 >
-                  <Avatar className="h-9 w-9 mb-1.5">
-                    <AvatarFallback className={`text-xs text-white ${getAvatarColor(r.name)}`}>
+                  <Avatar className="h-11 w-11 mb-1.5">
+                    <AvatarFallback className={`text-sm text-white ${getAvatarColor(r.name)}`}>
                       {getInitials(r.name)}
                     </AvatarFallback>
                   </Avatar>
