@@ -55,7 +55,10 @@ function metricValue(e: LeaderboardEntry, metric: LeaderboardMetric): string {
 
 const PODIUM = ['🥇', '🥈', '🥉']
 
-export function Leaderboard() {
+// onBack lets the host decide where "Back" goes. It lived in the profile tab
+// (hence the setProfileView default); now Activity hosts it too and passes an
+// onBack that returns to the feed.
+export function Leaderboard({ onBack }: { onBack?: () => void }) {
   const { currentUser, setProfileView } = useRunsembleStore()
   const [metric, setMetric] = useState<LeaderboardMetric>('xp')
   // Named `timeWindow` rather than `window` so it can't shadow the global one.
@@ -85,7 +88,7 @@ export function Leaderboard() {
 
   return (
     <div className="space-y-4 pb-4">
-      <button onClick={() => setProfileView('main')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <button onClick={onBack ?? (() => setProfileView('main'))} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
 

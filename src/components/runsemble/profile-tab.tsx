@@ -3,18 +3,16 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Target, Download, LogOut, Share2 } from 'lucide-react'
+import { Trophy, Users, Flame, Pencil, Loader2, Check, MapPin, Route, ChevronRight, Download, LogOut, Share2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { useRunsembleStore, getRankFromXP, type PaceLevel } from '@/lib/store'
 import { apiGet, apiSend } from '@/lib/api'
 import { AVAILABLE_NOW_MINUTES } from '@/lib/availability'
 import type { BadgesResponse } from '@/lib/types'
-import { Leaderboard } from './leaderboard'
 import { RunHistory } from './run-history'
 import { ThemeToggle } from './theme-toggle'
 import { SafeZonesCard } from './safe-zones-card'
 import { Switch } from '@/components/ui/switch'
-import { ChallengesView } from './challenges-view'
 import { BuddiesView } from './buddies-view'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -219,9 +217,7 @@ export function ProfileTab() {
 
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
 
-  if (profileView === 'leaderboard') return <Leaderboard />
   if (profileView === 'runs') return <RunHistory />
-  if (profileView === 'challenges') return <ChallengesView />
   if (profileView === 'buddies') return <BuddiesView />
 
   const rank = getRankFromXP(currentUser.xp)
@@ -347,19 +343,9 @@ export function ProfileTab() {
 
       {/* Quick links */}
       <motion.div {...fadeUp} className="grid grid-cols-2 gap-3">
-        <button onClick={() => setProfileView('leaderboard')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-amber-500/15 text-amber-600 flex items-center justify-center"><Trophy className="h-5 w-5" /></div>
-          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Leaderboard</p><p className="text-[11px] text-muted-foreground">See the rankings</p></div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </button>
         <button onClick={() => setProfileView('runs')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
           <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center"><Route className="h-5 w-5" /></div>
           <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Your Runs</p><p className="text-[11px] text-muted-foreground">Run history</p></div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </button>
-        <button onClick={() => setProfileView('challenges')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-teal-500/15 text-teal-600 flex items-center justify-center"><Target className="h-5 w-5" /></div>
-          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Challenges</p><p className="text-[11px] text-muted-foreground">Join & compete</p></div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
         <button onClick={() => setProfileView('buddies')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">

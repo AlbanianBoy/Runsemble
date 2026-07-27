@@ -20,7 +20,7 @@ function daysLeft(endsAt: string): string {
   return d === 0 ? 'ends today' : `${d} day${d > 1 ? 's' : ''} left`
 }
 
-export function ChallengesView() {
+export function ChallengesView({ onBack }: { onBack?: () => void }) {
   const { currentUser, setProfileView } = useRunsembleStore()
   const queryClient = useQueryClient()
   const uid = currentUser?.id
@@ -44,7 +44,7 @@ export function ChallengesView() {
 
   return (
     <div className="space-y-4 pb-4">
-      <button onClick={() => setProfileView('main')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <button onClick={onBack ?? (() => setProfileView('main'))} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
 

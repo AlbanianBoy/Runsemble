@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
-import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route, WifiOff } from 'lucide-react'
+import { Heart, MessageCircle, Flame, Users, ChevronRight, CalendarClock, ImagePlus, X, Loader2, MoreHorizontal, Route, WifiOff, Trophy, Target } from 'lucide-react'
 import { toast } from 'sonner'
 import { newClientId } from '@/lib/client-id'
 import { useRunsembleStore } from '@/lib/store'
@@ -34,6 +34,8 @@ import { isAvailableNow } from '@/lib/availability'
 import { CommentsSheet } from './comments-sheet'
 import { ReportSheet } from './report-sheet'
 import { TrustBadge } from './trust-badge'
+import { Leaderboard } from './leaderboard'
+import { ChallengesView } from './challenges-view'
 
 const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
 
@@ -62,6 +64,10 @@ export function FeedTab() {
   const [commentsPostId, setCommentsPostId] = useState<string | null>(null)
   const [reportPost, setReportPost] = useState<{ id: string; author: string } | null>(null)
   const [scope, setScope] = useState<'following' | 'all'>('all')
+  // Leaderboard and challenges moved here from the profile — they're community
+  // features, not personal ones. The feed is the default section; the other two
+  // are entered from cards in the feed and hand Back a return-to-feed.
+  const [section, setSection] = useState<'feed' | 'leaderboard' | 'challenges'>('feed')
 
   const feedKey = ['feed', currentUser?.id, scope] as const
 
@@ -203,6 +209,9 @@ export function FeedTab() {
     }
   }
 
+  if (section === 'leaderboard') return <Leaderboard onBack={() => setSection('feed')} />
+  if (section === 'challenges') return <ChallengesView onBack={() => setSection('feed')} />
+
   return (
     <div className="space-y-4 pb-4">
       {/* Feed scope toggle */}
@@ -288,6 +297,29 @@ export function FeedTab() {
             </div>
           </CardContent>
         </Card>
+      </div>
+
+      {/* Community — leaderboard and challenges live in Activity now, not buried
+          in your personal profile (a public ranking there reads as intimidating). */}
+      <div className="grid grid-cols-2 gap-3">
+        <button onClick={() => setSection('leaderboard')} className="rounded-xl border border-border/60 bg-card shadow-sm p-3.5 flex items-center gap-3 text-left hover:shadow-md transition-shadow">
+          <div className="h-8 w-8 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+            <Trophy className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm leading-none">Leaderboard</p>
+            <p className="text-[11px] text-muted-foreground mt-1">See the rankings</p>
+          </div>
+        </button>
+        <button onClick={() => setSection('challenges')} className="rounded-xl border border-border/60 bg-card shadow-sm p-3.5 flex items-center gap-3 text-left hover:shadow-md transition-shadow">
+          <div className="h-8 w-8 rounded-full bg-primary/10 text-primary flex items-center justify-center shrink-0">
+            <Target className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <p className="font-semibold text-sm leading-none">Challenges</p>
+            <p className="text-[11px] text-muted-foreground mt-1">Join &amp; compete</p>
+          </div>
+        </button>
       </div>
 
       <Separator />
