@@ -1,19 +1,22 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Rss, MapPin, Users, User, Play } from 'lucide-react'
+import { Activity, MapPin, Users, User, Play } from 'lucide-react'
 import { useRunsembleStore, type TabType } from '@/lib/store'
 
-// Feed | Explore | [Start] | Groups | Profile
-// Groups tab surfaces both group chats AND direct messages (Instagram-style).
-const leftTabs: { id: TabType; icon: typeof Rss; label: string }[] = [
-  { id: 'feed', icon: Rss, label: 'Feed' },
+// Activity | Explore | [Start] | Social | You
+// Tab ids stay the same ('feed'/'groups'/'profile') so routing is untouched;
+// only the labels and what each tab surfaces change. Social leads with messages,
+// then group chats and buddies; Activity carries the feed plus leaderboard and
+// challenges; You is the personal dashboard/history/settings.
+const leftTabs: { id: TabType; icon: typeof Activity; label: string }[] = [
+  { id: 'feed', icon: Activity, label: 'Activity' },
   { id: 'map', icon: MapPin, label: 'Explore' },
 ]
 
-const rightTabs: { id: TabType; icon: typeof Rss; label: string }[] = [
-  { id: 'groups', icon: Users, label: 'Groups' },
-  { id: 'profile', icon: User, label: 'Profile' },
+const rightTabs: { id: TabType; icon: typeof Activity; label: string }[] = [
+  { id: 'groups', icon: Users, label: 'Social' },
+  { id: 'profile', icon: User, label: 'You' },
 ]
 
 export function BottomNav() {
@@ -62,7 +65,7 @@ function NavButton({
   badge,
   onClick,
 }: {
-  tab: { id: TabType; icon: typeof Rss; label: string }
+  tab: { id: TabType; icon: typeof Activity; label: string }
   active: boolean
   badge: number
   onClick: () => void
