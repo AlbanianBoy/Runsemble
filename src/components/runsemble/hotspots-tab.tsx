@@ -34,6 +34,7 @@ import {
 } from '@/components/ui/dialog'
 import { getAvatarColor, getInitials, AudienceBadge } from './helpers'
 import { ANTWERP_CENTER } from '@/lib/geo'
+import { TILE_URL, TILE_ATTRIBUTION, TILE_MAX_ZOOM } from '@/lib/map-tiles'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
@@ -129,7 +130,7 @@ function LocationPickerMap({
         attributionControl: false,
       }).setView([center.lat, center.lng], 13)
 
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map)
+      L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM }).addTo(map)
       L.control.zoom({ position: 'bottomright' }).addTo(map)
 
       // Always delegates to the ref so we never call a stale callback

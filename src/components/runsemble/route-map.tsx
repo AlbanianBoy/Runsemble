@@ -5,6 +5,7 @@
 // finish summary and in run history.
 
 import { MapContainer, TileLayer, Polyline, CircleMarker } from 'react-leaflet'
+import { TILE_URL, TILE_ATTRIBUTION, TILE_MAX_ZOOM } from '@/lib/map-tiles'
 import 'leaflet/dist/leaflet.css'
 import type { LatLng } from '@/lib/geo'
 import { ANTWERP_CENTER } from '@/lib/geo'
@@ -44,11 +45,7 @@ export default function RouteMap({ points }: RouteMapProps) {
       className="h-full w-full"
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
-      <TileLayer
-        attribution='&copy; OpenStreetMap &copy; CARTO'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        maxZoom={19}
-      />
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} />
       {latlngs.length >= 2 && (
         <Polyline positions={latlngs} pathOptions={{ color: '#14b8a6', weight: 5, opacity: 0.9 }} />
       )}

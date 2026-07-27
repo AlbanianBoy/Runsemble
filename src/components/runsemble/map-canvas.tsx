@@ -22,6 +22,7 @@ import { LocateFixed } from 'lucide-react'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { type LatLng } from '@/lib/geo'
+import { TILE_URL, TILE_ATTRIBUTION, TILE_MAX_ZOOM } from '@/lib/map-tiles'
 import type { ApiHotspot, ApiUser } from '@/lib/types'
 import { getAvatarHex } from './helpers'
 
@@ -449,11 +450,7 @@ export default function MapCanvas({
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
       <MapResizeFix />
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> &copy; <a href="https://carto.com/attributions">CARTO</a>'
-        url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
-        maxZoom={19}
-      />
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} />
 
       {/* Hotspots — true coordinates, stacked while they overlap on screen */}
       <HotspotMarkers hotspots={hotspots} onSelectHotspot={onSelectHotspot} />
