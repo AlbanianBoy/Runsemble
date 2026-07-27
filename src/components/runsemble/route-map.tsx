@@ -45,7 +45,7 @@ export default function RouteMap({ points }: RouteMapProps) {
       className="h-full w-full"
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
-      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} />
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} referrerPolicy="no-referrer" />
       {latlngs.length >= 2 && (
         <Polyline positions={latlngs} pathOptions={{ color: '#14b8a6', weight: 5, opacity: 0.9 }} />
       )}

@@ -54,7 +54,7 @@ export default function WatchMap({ lat, lng, accuracyM, stale }: WatchMapProps) 
       className="h-full w-full"
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
-      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} />
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} referrerPolicy="no-referrer" />
 
       {accuracyM != null && accuracyM > 0 && (
         <Circle

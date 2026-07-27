@@ -450,7 +450,10 @@ export default function MapCanvas({
       style={{ background: 'oklch(0.96 0.01 220)' }}
     >
       <MapResizeFix />
-      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} />
+      {/* no-referrer: OSM/CARTO tile CDNs 503 requests that carry a runsemble.net
+          Referer (verified live — direct tile fetch 200, same tile from the app
+          503). Overrides the page's strict-origin referrer policy for tiles only. */}
+      <TileLayer attribution={TILE_ATTRIBUTION} url={TILE_URL} maxZoom={TILE_MAX_ZOOM} referrerPolicy="no-referrer" />
 
       {/* Hotspots — true coordinates, stacked while they overlap on screen */}
       <HotspotMarkers hotspots={hotspots} onSelectHotspot={onSelectHotspot} />

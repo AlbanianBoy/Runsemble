@@ -130,7 +130,7 @@ function LocationPickerMap({
         attributionControl: false,
       }).setView([center.lat, center.lng], 13)
 
-      L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM }).addTo(map)
+      L.tileLayer(TILE_URL, { attribution: TILE_ATTRIBUTION, maxZoom: TILE_MAX_ZOOM, referrerPolicy: 'no-referrer' }).addTo(map)
       L.control.zoom({ position: 'bottomright' }).addTo(map)
 
       // Always delegates to the ref so we never call a stale callback
