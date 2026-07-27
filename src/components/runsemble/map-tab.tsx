@@ -338,8 +338,13 @@ export function MapTab() {
   }
 
   return (
-    <div>
-      {toggle}
+    <div className="relative h-[calc(100dvh-128px-env(safe-area-inset-bottom))]">
+      {/* Maps-app layout: the map is the whole surface and the controls float on
+          top of it, instead of stacking above and squeezing it into half a
+          screen. pointer-events pass through the gaps so the map stays draggable
+          between the controls. */}
+      <div className="absolute inset-x-0 top-0 z-[500] space-y-2 pointer-events-none [&>*]:pointer-events-auto">
+        {toggle}
 
       {/* Run invites waiting for you */}
       {receivedInvites.length > 0 && (
@@ -421,15 +426,15 @@ export function MapTab() {
         ))}
       </div>
       {!hasFix && (
-        <p className="px-1 -mt-1 text-[11px] text-muted-foreground">
+        <p className="glass rounded-full px-3 py-1 text-[11px] text-muted-foreground w-fit">
           Turn on location to see how far away people are.
         </p>
       )}
+      </div>
 
-      {/* dvh (not vh) so the mobile browser's collapsing toolbar is accounted
-          for, plus the bottom safe-area inset so the availability toggle and
-          nearby cards clear the home indicator / bottom nav on notched phones. */}
-      <div className="relative h-[calc(100dvh-232px-env(safe-area-inset-bottom))]">
+      {/* The map fills the whole tab — MapResizeFix keeps Leaflet's viewport in
+          sync as this box settles — and everything else floats over it. */}
+      <div className="absolute inset-0">
       <div className="rs-map-wrap absolute inset-0 overflow-hidden rounded-2xl border border-border/60 shadow-sm">
         {isLoading && <Skeleton className="absolute inset-0 z-[600] h-full w-full rounded-2xl" />}
         <MapCanvas
@@ -443,17 +448,15 @@ export function MapTab() {
         />
       </div>
 
-      {/* Coming up — who's free later today */}
-      {comingUp.length > 0 && (
-        <div className="absolute top-3 left-3 right-3 z-[500]">
+      {/* The core loop, always in reach: who's free to run right now (and who's
+          free later, stacked above it), plus a one-tap switch to say you are too.
+          Sits over the bottom of the map like a transit or ride-hail app. */}
+      <div className="absolute inset-x-2 bottom-3 z-[500] space-y-2">
+        {/* Coming up — the soonest person in full, then a +N count. Paired here
+            with "free now" so both live in one glance at the bottom of the map. */}
+        {comingUp.length > 0 && (
           <div className="glass rounded-full px-3 py-1.5 text-[11px] font-medium shadow-sm border border-border/50 inline-flex items-center gap-1.5 max-w-full">
             <Clock className="h-3 w-3 text-primary shrink-0" />
-            {/* The soonest one in full, then a count. This used to join everyone
-                into one string and truncate it, which on a phone cut after
-                roughly the first entry — so three people showed as one name and
-                an ellipsis, and you learned neither who nor how many. The list
-                is sorted by time, so the first is the one that matters next, and
-                a number carries the rest without ever being cut off. */}
             <span className="truncate">
               Coming up: {comingUp[0]!.name.split(' ')[0]}{' '}
               {availableFromLabel(comingUp[0]!.availableFrom!)}
@@ -464,13 +467,7 @@ export function MapTab() {
               </span>
             )}
           </div>
-        </div>
-      )}
-
-      {/* The core loop, always in reach: who's free to run right now, and a
-          one-tap switch to say you are too. Sits over the bottom of the map like
-          a transit or ride-hail app rather than a single floating button. */}
-      <div className="absolute inset-x-2 bottom-3 z-[500]">
+        )}
         <div className="glass rounded-2xl border border-border/50 shadow-lg p-3">
           <div className="flex items-center justify-between gap-3 mb-2.5">
             <p className="text-sm font-bold">
