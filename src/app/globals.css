@@ -327,7 +327,9 @@ html, body {
    SVG overlays, not tiles — become the loudest thing on screen. The Strava trick,
    and the biggest single map-quality lever now that the map is the home screen. */
 .leaflet-tile {
-  filter: saturate(0.6) contrast(1.03);
+  /* Light OSM wanted heavy desaturation so the teal overlays popped; a MapTiler
+     dark style is already calm, so keep most of its richness and just crisp it. */
+  filter: saturate(0.95) contrast(1.06);
 }
 .leaflet-container {
   font-family: inherit;

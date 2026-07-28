@@ -23,8 +23,11 @@
 // Template tokens: {z}/{x}/{y} are the tile coords. We omit {s} (subdomain
 // rotation is pointless for a same-origin path) and {r} (the @2x retina suffix,
 // which OSM's standard tiles don't serve).
+// The ?v tag is part of the proxy's cache key at Vercel's edge — bump it whenever
+// the tile SOURCE changes (e.g. OSM → MapTiler), otherwise the 30-day edge cache
+// keeps serving the old provider's tiles under the same path. v2 = MapTiler dark.
 export const TILE_URL =
-  process.env.NEXT_PUBLIC_MAP_TILE_URL ?? '/api/map/tile/{z}/{x}/{y}'
+  process.env.NEXT_PUBLIC_MAP_TILE_URL ?? '/api/map/tile/{z}/{x}/{y}?v=2'
 
 export const TILE_ATTRIBUTION =
   process.env.NEXT_PUBLIC_MAP_TILE_ATTRIBUTION ??
