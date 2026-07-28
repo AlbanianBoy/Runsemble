@@ -14,6 +14,7 @@ import type {
   LeaderboardWindow,
 } from '@/lib/types'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from './empty-state'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getAvatarColor, getInitials } from './helpers'
 
@@ -143,9 +144,12 @@ export function Leaderboard({ onBack }: { onBack?: () => void }) {
         <>
           {/* A windowed board really can be empty — an all-time one never was */}
           {entries.length === 0 && (
-            <p className="rounded-xl bg-card p-4 text-center text-sm text-muted-foreground">
-              No runs logged {timeWindow === 'all' ? 'yet' : 'in this window yet'}. First one takes the top spot.
-            </p>
+            <EmptyState
+              icon={<Trophy />}
+              title={timeWindow === 'all' ? 'No runs logged yet' : 'Nothing in this window yet'}
+            >
+              The first run to log takes the top spot — go claim it.
+            </EmptyState>
           )}
 
           {/* Podium */}

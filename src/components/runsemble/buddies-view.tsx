@@ -11,6 +11,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from './empty-state'
 import {
   AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle,
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
@@ -92,10 +93,9 @@ export function BuddiesView({ onBack }: { onBack?: () => void }) {
         {isLoading ? (
           <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-16 w-full rounded-xl" />)}</div>
         ) : buddies.length === 0 ? (
-          <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
-            <Users className="h-8 w-8 mx-auto mb-2 opacity-40" />
-            No buddies yet. Tag the people you run with after a run to add them here.
-          </CardContent></Card>
+          <EmptyState icon={<Users />} title="No run buddies yet">
+            Run with someone, then tag them at the finish — they&rsquo;ll show up here as a buddy you can message and invite again.
+          </EmptyState>
         ) : (
           <div className="space-y-2">
             {buddies.map((b) => (

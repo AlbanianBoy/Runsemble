@@ -36,6 +36,7 @@ import { TrustBadge } from './trust-badge'
 import { Leaderboard } from './leaderboard'
 import { ChallengesView } from './challenges-view'
 import RouteThumb from './route-thumb'
+import { EmptyState } from './empty-state'
 
 // Posts per page. Small enough that opening the feed is one quick request on
 // mobile data, large enough to fill a screen without immediately asking again.
@@ -386,24 +387,31 @@ export function FeedTab() {
           </CardContent>
         </Card>
       ) : posts.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="p-8 text-center text-sm text-muted-foreground">
-            {scope === 'following' ? (
-              <>
-                <p className="font-medium text-foreground mb-1">Your feed is quiet</p>
-                <p>Run with people to add buddies — their posts and your groups show up here.</p>
-                <Button variant="outline" size="sm" className="rounded-full mt-4" onClick={() => setScope('all')}>
-                  Browse everyone
-                </Button>
-              </>
-            ) : (
-              <>
-                <p className="font-medium text-foreground mb-1">No posts yet</p>
-                <p>Track a run and share it to get things going.</p>
-              </>
-            )}
-          </CardContent>
-        </Card>
+        scope === 'following' ? (
+          <EmptyState
+            icon={<Users />}
+            title="Your feed is quiet"
+            action={
+              <Button variant="outline" size="sm" className="rounded-full" onClick={() => setScope('all')}>
+                Browse everyone
+              </Button>
+            }
+          >
+            Run with people to add buddies — their posts and your groups show up here.
+          </EmptyState>
+        ) : (
+          <EmptyState
+            icon={<Route />}
+            title="No posts yet"
+            action={
+              <Button size="sm" className="rounded-full" onClick={() => setPostDialogOpen(true)}>
+                Share something
+              </Button>
+            }
+          >
+            Track a run and share it, or post a question — that&rsquo;s how it starts.
+          </EmptyState>
+        )
       ) : (
         <motion.div className="space-y-3" variants={staggerContainer} initial="initial" animate="animate">
           {posts.map((post) => {

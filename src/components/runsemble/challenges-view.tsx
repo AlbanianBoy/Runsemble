@@ -10,6 +10,7 @@ import type { ApiChallenge, ChallengesResponse } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
+import { EmptyState } from './empty-state'
 
 function metricUnit(m: string) {
   return m === 'distance' ? 'km' : m === 'buddies' ? 'buddies' : 'runs'
@@ -56,7 +57,9 @@ export function ChallengesView({ onBack }: { onBack?: () => void }) {
       {isLoading ? (
         <div className="space-y-3">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-32 w-full rounded-xl" />)}</div>
       ) : challenges.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">No active challenges right now.</CardContent></Card>
+        <EmptyState icon={<Trophy />} title="No challenges running yet">
+          New community challenges show up here — join one and every run you log counts toward it.
+        </EmptyState>
       ) : (
         <div className="space-y-3">
           {challenges.map((c) => <ChallengeCard key={c.id} c={c} onToggle={() => joinMut.mutate({ id: c.id, joined: c.joined })} pending={joinMut.isPending} />)}
