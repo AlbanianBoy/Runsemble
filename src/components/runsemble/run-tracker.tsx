@@ -1178,8 +1178,8 @@ export function RunTracker() {
 function SummaryStat({ icon, value, label }: { icon: React.ReactNode; value: string; label: string }) {
   return (
     <div className="rounded-2xl border bg-card p-4">
-      <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-1.5">{icon}<span className="uppercase tracking-wider">{label}</span></div>
-      <p className="text-xl font-bold tabular">{value}</p>
+      <div className="flex items-center gap-1.5 text-muted-foreground text-xs mb-2">{icon}<span className="uppercase tracking-wider font-medium">{label}</span></div>
+      <p className="font-mono text-2xl font-bold tabular leading-none">{value}</p>
     </div>
   )
 }
