@@ -26,6 +26,7 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction,
 } from '@/components/ui/alert-dialog'
 import { getAvatarColor, getInitials } from './helpers'
+import { BuddiesView } from './buddies-view'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
@@ -39,6 +40,7 @@ export function GroupsTab() {
   const [newName, setNewName] = useState('')
   const [newDesc, setNewDesc] = useState('')
   const [newPublic, setNewPublic] = useState(true)
+  const [showBuddies, setShowBuddies] = useState(false)
   const queryClient = useQueryClient()
 
   const [search, setSearch] = useState('')
@@ -235,6 +237,9 @@ export function GroupsTab() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['group', selectedGroupId] }),
     onError: (e: Error) => toast.error(e.message),
   })
+
+  // Buddies moved here from the profile — entered from the main Social list.
+  if (showBuddies) return <BuddiesView onBack={() => setShowBuddies(false)} />
 
   // ── Detail view ──────────────────────────────────────────────────────────────
   if (groupView === 'detail') {
@@ -502,6 +507,22 @@ export function GroupsTab() {
 
   return (
     <div className="space-y-5 pb-4">
+      {/* Buddies live here now (moved from the profile) — the people you've run
+          with belong with the rest of your social graph, not in "you". */}
+      <button
+        onClick={() => setShowBuddies(true)}
+        className="w-full rounded-2xl border border-border/60 bg-card p-3 flex items-center gap-3 text-left hover:shadow-md transition-shadow"
+      >
+        <div className="h-10 w-10 rounded-full bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+          <Users className="h-5 w-5" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold">Your buddies</p>
+          <p className="text-[11px] text-muted-foreground">People you&rsquo;ve run with</p>
+        </div>
+        <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+      </button>
+
       {messageRequests.length > 0 && (
         <div>
           <h3 className="text-sm font-semibold text-muted-foreground mb-2">

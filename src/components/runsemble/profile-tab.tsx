@@ -13,7 +13,6 @@ import { RunHistory } from './run-history'
 import { ThemeToggle } from './theme-toggle'
 import { SafeZonesCard } from './safe-zones-card'
 import { Switch } from '@/components/ui/switch'
-import { BuddiesView } from './buddies-view'
 import { Card, CardContent } from '@/components/ui/card'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -218,7 +217,6 @@ export function ProfileTab() {
   if (!currentUser) return <Skeleton className="h-64 w-full rounded-xl" />
 
   if (profileView === 'runs') return <RunHistory />
-  if (profileView === 'buddies') return <BuddiesView />
 
   const rank = getRankFromXP(currentUser.xp)
   const xpProgress = rank.progress * 100
@@ -342,15 +340,10 @@ export function ProfileTab() {
       </motion.div>
 
       {/* Quick links */}
-      <motion.div {...fadeUp} className="grid grid-cols-2 gap-3">
-        <button onClick={() => setProfileView('runs')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
+      <motion.div {...fadeUp}>
+        <button onClick={() => setProfileView('runs')} className="w-full rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
           <div className="h-9 w-9 rounded-full bg-primary/15 text-primary flex items-center justify-center"><Route className="h-5 w-5" /></div>
           <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Your Runs</p><p className="text-[11px] text-muted-foreground">Run history</p></div>
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
-        </button>
-        <button onClick={() => setProfileView('buddies')} className="rounded-xl border bg-card p-3.5 text-left hover:shadow-md transition-shadow flex items-center gap-3">
-          <div className="h-9 w-9 rounded-full bg-emerald-500/15 text-emerald-600 flex items-center justify-center"><Users className="h-5 w-5" /></div>
-          <div className="flex-1 min-w-0"><p className="text-sm font-semibold">Buddies</p><p className="text-[11px] text-muted-foreground">Friends & DMs</p></div>
           <ChevronRight className="h-4 w-4 text-muted-foreground" />
         </button>
       </motion.div>

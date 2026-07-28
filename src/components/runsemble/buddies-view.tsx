@@ -20,7 +20,7 @@ import { getAvatarColor, getInitials } from './helpers'
 
 // Buddies + direct-message inbox — the relationship layer that keeps people
 // running together.
-export function BuddiesView() {
+export function BuddiesView({ onBack }: { onBack?: () => void }) {
   const { currentUser, setProfileView, openDm } = useRunsembleStore()
   const uid = currentUser?.id
   const queryClient = useQueryClient()
@@ -55,7 +55,7 @@ export function BuddiesView() {
 
   return (
     <div className="space-y-5 pb-4">
-      <button onClick={() => setProfileView('main')} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
+      <button onClick={onBack ?? (() => setProfileView('main'))} className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground transition-colors">
         <ArrowLeft className="h-4 w-4" /> Back
       </button>
 
