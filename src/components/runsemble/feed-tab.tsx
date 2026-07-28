@@ -1,7 +1,6 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
-import dynamic from 'next/dynamic'
 import { useQuery, useInfiniteQuery, useMutation, useQueryClient, type InfiniteData } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
@@ -36,8 +35,7 @@ import { ReportSheet } from './report-sheet'
 import { TrustBadge } from './trust-badge'
 import { Leaderboard } from './leaderboard'
 import { ChallengesView } from './challenges-view'
-
-const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
+import RouteThumb from './route-thumb'
 
 // Posts per page. Small enough that opening the feed is one quick request on
 // mobile data, large enough to fill a screen without immediately asking again.
@@ -484,7 +482,7 @@ export function FeedTab() {
                             <div className="mt-2.5 rounded-2xl overflow-hidden border bg-muted/30">
                               {pts.length >= 2 ? (
                                 <div className="relative h-52">
-                                  <RouteMap points={pts} />
+                                  <RouteThumb points={pts} className="h-full w-full" />
                                   {/* Distance overlaid, bottom-left, over a soft scrim so it reads on any map tile. */}
                                   <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/55 to-transparent pointer-events-none">
                                     <p className="text-2xl font-extrabold tabular text-white leading-none drop-shadow-sm">

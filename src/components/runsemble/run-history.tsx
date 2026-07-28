@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import dynamic from 'next/dynamic'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, MapPin, Clock, Zap, Flame, Play } from 'lucide-react'
 import { useRunsembleStore } from '@/lib/store'
@@ -12,8 +11,7 @@ import type { RunsResponse, ApiRunSession } from '@/lib/types'
 import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
-
-const RouteMap = dynamic(() => import('./route-map'), { ssr: false })
+import RouteThumb from './route-thumb'
 
 export function RunHistory() {
   const { currentUser, setProfileView, openRunTracker } = useRunsembleStore()
@@ -122,7 +120,7 @@ export function RunHistory() {
                   {open && (
                     <div className="px-3.5 pb-3.5">
                       {pts.length >= 2 && (
-                        <div className="h-36 rounded-xl overflow-hidden border mb-3"><RouteMap points={pts} /></div>
+                        <div className="h-36 rounded-xl overflow-hidden border bg-muted/30 mb-3"><RouteThumb points={pts} className="h-full w-full" /></div>
                       )}
                       {splits.length > 0 ? (
                         <div className="space-y-1">
