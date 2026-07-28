@@ -1,19 +1,27 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { Manrope, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/lib/providers";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { RunSyncRegister } from "@/components/run-sync-register";
 import { ErrorBoundary } from "@/components/error-boundary";
 
-const geistSans = Geist({
+// Manrope over the stock Geist: a refined geometric-humanist sans that reads
+// premium and distinctive rather than default-template. Variable, so every
+// weight the UI uses ships from one file. The CSS var name stays --font-geist-sans
+// so the @theme mapping and every downstream reference keep working untouched.
+const sans = Manrope({
   variable: "--font-geist-sans",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
+// Mono stays for the instrument-panel stats (pace, distance, time) — a clean
+// monospace with tabular figures is exactly right for numbers that update live.
+const mono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -47,7 +55,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+        className={`${sans.variable} ${mono.variable} antialiased bg-background text-foreground`}
       >
         <Providers>
           <ErrorBoundary>{children}</ErrorBoundary>

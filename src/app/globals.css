@@ -52,7 +52,7 @@
 }
 
 :root {
-  --radius: 0.75rem;
+  --radius: 0.875rem;
   --background: oklch(0.985 0.002 90);
   --foreground: oklch(0.18 0.02 50);
   --card: oklch(1 0 0);
@@ -146,6 +146,14 @@
   }
   body {
     @apply bg-background text-foreground;
+    /* Manrope reads a little loose at default tracking; a hair negative looks
+       composed and premium without hurting legibility. */
+    letter-spacing: -0.011em;
+  }
+  /* Tighten display type a touch more than body — headings should feel set,
+     not spaced out. */
+  h1, h2, h3, h4 {
+    letter-spacing: -0.021em;
   }
   /* Keyboard focus is visible on everything, including the many hand-rolled
      <button>s that never got a focus style. Deliberately in @layer base: the
