@@ -18,6 +18,23 @@ import { NextRequest, NextResponse } from 'next/server'
 // OSM's tile usage policy requires a valid, identifying User-Agent.
 const OSM_UA = 'Runsemble/1.0 (+https://runsemble.net)'
 
+// A premium dark basemap when a MapTiler key is present — the single biggest lift
+// the hero map can get, versus the flat desaturated OSM fallback. The key lives
+// server-side only (MAPTILER_KEY, never a NEXT_PUBLIC_* var), so it never reaches
+// the browser: the client keeps hitting this same-origin proxy and we attach the
+// key here. No CSP change is needed for the same reason — the browser only ever
+// talks to this route. Inert until a key is set; MAPTILER_STYLE picks the style
+// (default streets-v2-dark). Free tier ~100k tile loads/month, and our 30-day
+// edge cache keeps us far under it.
+const MAPTILER_KEY = process.env.MAPTILER_KEY
+const MAPTILER_STYLE = process.env.MAPTILER_STYLE ?? 'streets-v2-dark'
+
+function upstreamTileUrl(z: string, x: string, y: string): string {
+  return MAPTILER_KEY
+    ? `https://api.maptiler.com/maps/${MAPTILER_STYLE}/256/${z}/${x}/${y}.png?key=${MAPTILER_KEY}`
+    : `https://tile.openstreetmap.org/${z}/${x}/${y}.png`
+}
+
 // A 1×1 transparent PNG, returned when upstream fails so a single missing tile
 // shows as a gap over the map background rather than a broken-image icon.
 const BLANK_PNG = Buffer.from(
@@ -47,7 +64,7 @@ export async function GET(
   }
 
   try {
-    const upstream = await fetch(`https://tile.openstreetmap.org/${z}/${x}/${y}.png`, {
+    const upstream = await fetch(upstreamTileUrl(z, x, y), {
       headers: { 'User-Agent': OSM_UA, Accept: 'image/png,image/*' },
       // We do our own edge caching via the response headers below; don't let the
       // data cache double-store the image bytes.
