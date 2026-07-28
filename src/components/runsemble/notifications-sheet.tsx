@@ -10,6 +10,7 @@ import { useIdleBackoffPoll } from '@/lib/use-visible-poll'
 import { tabForPush, isDmPush, queryKeysForPush } from '@/lib/push-routing'
 import type { ApiNotification, NotificationsResponse } from '@/lib/types'
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet'
+import { EmptyState } from './empty-state'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { getAvatarColor, getInitials } from './helpers'
@@ -127,11 +128,9 @@ export function NotificationsSheet() {
 
         <div className="flex-1 overflow-y-auto">
           {notifications.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-full text-center px-6 text-muted-foreground">
-              <Bell className="h-10 w-10 mb-3 opacity-30" />
-              <p className="text-sm">No notifications yet.</p>
-              <p className="text-xs mt-1">Join a run or track your first run to get started.</p>
-            </div>
+            <EmptyState className="h-full" icon={<Bell />} title="No notifications yet">
+              Join a run or track your first one — updates from people you run with land here.
+            </EmptyState>
           ) : (
             <div className="divide-y">
               {notifications.map((n) => (

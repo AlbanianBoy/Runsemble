@@ -12,6 +12,7 @@ import { Card, CardContent } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Skeleton } from '@/components/ui/skeleton'
 import RouteThumb from './route-thumb'
+import { EmptyState } from './empty-state'
 
 export function RunHistory() {
   const { currentUser, setProfileView, openRunTracker } = useRunsembleStore()
@@ -61,10 +62,9 @@ export function RunHistory() {
       {isLoading ? (
         <div className="space-y-2">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full rounded-xl" />)}</div>
       ) : runs.length === 0 ? (
-        <Card><CardContent className="p-8 text-center text-sm text-muted-foreground">
-          <Flame className="h-8 w-8 mx-auto mb-2 opacity-40" />
-          No tracked runs yet. Hit Start to log your first one!
-        </CardContent></Card>
+        <EmptyState icon={<Flame />} title="No runs logged yet">
+          Hit Start and log your first one — it&rsquo;ll live here with your route, pace and splits.
+        </EmptyState>
       ) : (
         <>
           <Card className="overflow-hidden">

@@ -27,6 +27,7 @@ import {
 } from '@/components/ui/alert-dialog'
 import { getAvatarColor, getInitials } from './helpers'
 import { BuddiesView } from './buddies-view'
+import { EmptyState } from './empty-state'
 
 const fadeUp = { initial: { opacity: 0, y: 12 }, animate: { opacity: 1, y: 0 } }
 
@@ -659,14 +660,13 @@ export function GroupsTab() {
         />
 
         {discoverGroups.length === 0 && !isLoading && (
-          <Card><CardContent className="p-6 text-center text-sm text-muted-foreground">
-            <Users className="h-7 w-7 mx-auto mb-2 text-muted-foreground/50" />
+          <EmptyState icon={<Users />} title={query ? 'No matches' : 'No groups here yet'}>
             {query
               ? `No groups match "${query}".`
               : scopedToCity
-                ? `No ${myGroups.length > 0 ? 'other ' : ''}groups in ${scopedToCity} yet — search to look further afield, or create one.`
+                ? `No ${myGroups.length > 0 ? 'other ' : ''}groups in ${scopedToCity} yet — widen your search, or start one.`
                 : `No ${myGroups.length > 0 ? 'other ' : ''}groups to join yet — create one to get started.`}
-          </CardContent></Card>
+          </EmptyState>
         )}
 
         {discoverGroups.length > 0 && (
