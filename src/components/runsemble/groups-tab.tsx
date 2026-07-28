@@ -284,9 +284,9 @@ export function GroupsTab() {
             </div>
           </div>
           <div className="flex gap-4 text-center">
-            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.memberCount}</p><p className="text-xs text-muted-foreground">members</p></div>
-            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.totalKmThisWeek?.toFixed(0)}</p><p className="text-xs text-muted-foreground">km this week</p></div>
-            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-bold text-lg">{selectedGroup.totalMessages || 0}</p><p className="text-xs text-muted-foreground">messages</p></div>
+            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-mono text-2xl font-bold tabular leading-none">{selectedGroup.memberCount}</p><p className="text-xs text-muted-foreground">members</p></div>
+            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-mono text-2xl font-bold tabular leading-none">{selectedGroup.totalKmThisWeek?.toFixed(0)}</p><p className="text-xs text-muted-foreground">km this week</p></div>
+            <div className="flex-1 bg-muted/50 rounded-xl p-3"><p className="font-mono text-2xl font-bold tabular leading-none">{selectedGroup.totalMessages || 0}</p><p className="text-xs text-muted-foreground">messages</p></div>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" className="flex-1 rounded-xl" onClick={() => setGroupView('chat')}><MessageCircle className="h-4 w-4 mr-2" />Chat</Button>

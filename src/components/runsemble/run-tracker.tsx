@@ -900,15 +900,15 @@ export function RunTracker() {
               <>
                 <div className="text-center">
                   <p className="rs-label-caps text-muted-foreground">Time</p>
-                  <p className="text-5xl font-bold tabular leading-tight">{formatClock(elapsedSec)}</p>
+                  <p className="font-mono text-5xl font-bold tabular leading-none">{formatClock(elapsedSec)}</p>
                 </div>
                 <div className="mt-3 grid grid-cols-3 divide-x divide-border border-t pt-3">
                   <div className="text-center">
-                    <p className="text-2xl font-bold tabular">{distanceKm.toFixed(2)}</p>
+                    <p className="font-mono text-3xl font-bold tabular leading-none">{distanceKm.toFixed(2)}</p>
                     <p className="rs-label-caps text-muted-foreground mt-0.5">Distance (km)</p>
                   </div>
                   <div className="text-center">
-                    <p className="text-2xl font-bold tabular">{formatPaceLabel(avgPace).replace(' /km', '')}</p>
+                    <p className="font-mono text-3xl font-bold tabular leading-none">{formatPaceLabel(avgPace).replace(' /km', '')}</p>
                     <p className="rs-label-caps text-muted-foreground mt-0.5">Avg pace /km</p>
                   </div>
                   {/* XP was invisible until the run was already over, so the

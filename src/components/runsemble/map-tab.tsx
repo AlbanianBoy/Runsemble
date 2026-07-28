@@ -470,10 +470,12 @@ export function MapTab() {
         )}
         <div className="glass rounded-2xl border border-border/50 shadow-lg p-3">
           <div className="flex items-center justify-between gap-3 mb-2.5">
-            <p className="text-sm font-bold">
-              {availableRunners.length > 0
-                ? `${availableRunners.length} free to run now`
-                : 'No one free right now'}
+            <p className="text-base font-bold tracking-tight">
+              {availableRunners.length > 0 ? (
+                <><span className="font-mono text-primary">{availableRunners.length}</span> free to run now</>
+              ) : (
+                'No one free right now'
+              )}
             </p>
             <Button
               size="sm"
