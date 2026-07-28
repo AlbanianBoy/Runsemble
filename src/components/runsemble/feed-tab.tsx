@@ -676,8 +676,10 @@ export function FeedTab() {
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex-1 px-2">
-      <p className="text-sm font-bold tabular leading-tight">{value}</p>
-      <p className="rs-label-caps text-muted-foreground mt-0.5">{label}</p>
+      {/* Instrument-panel numbers: mono + tabular + large, so a run's stats read
+          like a device readout — the hero content of a running app, not a caption. */}
+      <p className="font-mono text-xl font-bold tabular leading-none">{value}</p>
+      <p className="rs-label-caps text-muted-foreground mt-1.5">{label}</p>
     </div>
   )
 }

@@ -319,22 +319,22 @@ export function ProfileTab() {
       <motion.div {...fadeUp} className="grid grid-cols-4 gap-2">
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Trophy className="h-4 w-4" /></div>
-          <p className="font-bold text-base tabular">{currentUser.totalRuns}</p>
+          <p className="font-mono text-xl font-bold tabular leading-none">{currentUser.totalRuns}</p>
           <p className="rs-label text-muted-foreground">Runs</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><MapPin className="h-4 w-4" /></div>
-          <p className="font-bold text-base tabular">{(currentUser.totalDistanceKm ?? 0).toFixed(0)}</p>
+          <p className="font-mono text-xl font-bold tabular leading-none">{(currentUser.totalDistanceKm ?? 0).toFixed(0)}</p>
           <p className="rs-label text-muted-foreground">km</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Users className="h-4 w-4" /></div>
-          <p className="font-bold text-base tabular">{currentUser.totalPeopleRunWith}</p>
+          <p className="font-mono text-xl font-bold tabular leading-none">{currentUser.totalPeopleRunWith}</p>
           <p className="rs-label text-muted-foreground">Buddies</p>
         </CardContent></Card>
         <Card><CardContent className="p-2.5 text-center">
           <div className="flex justify-center text-primary mb-1"><Flame className="h-4 w-4" /></div>
-          <p className="font-bold text-base tabular">{currentUser.longestStreak}</p>
+          <p className="font-mono text-xl font-bold tabular leading-none">{currentUser.longestStreak}</p>
           <p className="rs-label text-muted-foreground">Best</p>
         </CardContent></Card>
       </motion.div>
