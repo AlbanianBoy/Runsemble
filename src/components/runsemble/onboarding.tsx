@@ -140,7 +140,7 @@ export function OnboardingWelcome() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-brand">
+    <div className="min-h-screen flex flex-col items-center justify-center p-6 relative overflow-hidden bg-background text-foreground">
       <div className="relative z-10 flex flex-col items-center w-full">
         <motion.div
           initial={{ opacity: 0, scale: 0.9 }}
@@ -148,18 +148,18 @@ export function OnboardingWelcome() {
           transition={{ duration: 0.6 }}
           className="text-center mb-2"
         >
-          <h1 className="text-4xl font-bold text-white mb-2">Runsemble</h1>
-          <p className="text-white/80 text-lg">Because together is better.</p>
+          <h1 className="text-5xl font-bold tracking-tight text-primary mb-2">Runsemble</h1>
+          <p className="text-muted-foreground text-lg">Because together is better.</p>
         </motion.div>
 
         <div className="mt-6 mb-8">
-          <StepDots current={0} tone="brand" />
+          <StepDots current={0} tone="default" />
         </div>
 
         <AnimatePresence mode="wait">
           {!showResponse ? (
             <motion.div key="q" {...fadeUp} className="w-full max-w-sm">
-              <p className="text-white/90 text-center text-lg mb-6 font-medium">
+              <p className="text-foreground/90 text-center text-lg mb-6 font-medium">
                 When did you last feel good after a workout?
               </p>
               <div className="space-y-3">
@@ -171,8 +171,8 @@ export function OnboardingWelcome() {
                     onClick={() => handleSelect(opt)}
                     className={`w-full py-3.5 px-5 rounded-2xl text-left font-medium transition-all duration-200 border-2 backdrop-blur-sm ${
                       selected === opt
-                        ? 'bg-white text-orange-700 border-white shadow-lg shadow-white/20'
-                        : 'bg-white/15 text-white border-white/30 hover:bg-white/25 hover:border-white/50'
+                        ? 'bg-primary text-primary-foreground border-primary shadow-lg shadow-primary/25'
+                        : 'bg-card/70 text-foreground border-border hover:bg-card hover:border-primary/40'
                     }`}
                   >
                     {opt}
@@ -184,7 +184,7 @@ export function OnboardingWelcome() {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.8 }}
                 onClick={() => setOnboardingStep('profile')}
-                className="block mx-auto mt-6 text-white/50 hover:text-white/80 text-sm transition-colors duration-200 underline-offset-4 hover:underline"
+                className="block mx-auto mt-6 text-muted-foreground hover:text-foreground text-sm transition-colors duration-200 underline-offset-4 hover:underline"
               >
                 Skip for now
               </motion.button>
@@ -193,7 +193,7 @@ export function OnboardingWelcome() {
                 animate={{ opacity: 1 }}
                 transition={{ delay: 1 }}
                 onClick={() => setOnboardingStep('login')}
-                className="block mx-auto mt-3 text-white/80 hover:text-white text-sm font-medium transition-colors duration-200 underline-offset-4 hover:underline"
+                className="block mx-auto mt-3 text-foreground/80 hover:text-foreground text-sm font-medium transition-colors duration-200 underline-offset-4 hover:underline"
               >
                 Already have an account? Log in
               </motion.button>
@@ -201,7 +201,7 @@ export function OnboardingWelcome() {
           ) : (
             <motion.div key="r" {...fadeUp} className="w-full max-w-sm text-center">
               <motion.p
-                className="text-white text-2xl font-semibold mb-2"
+                className="text-foreground text-2xl font-semibold mb-2"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.1 }}
@@ -209,7 +209,7 @@ export function OnboardingWelcome() {
                 {selected === 'Yesterday' ? 'Love that.' : "Let's change that."}
               </motion.p>
               <motion.p
-                className="text-white/80 text-xl mb-8"
+                className="text-muted-foreground text-xl mb-8"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.25 }}
@@ -223,7 +223,7 @@ export function OnboardingWelcome() {
               >
                 <Button
                   size="lg"
-                  className="rounded-full px-8 py-6 text-base font-semibold bg-white text-orange-700 hover:bg-white/90 hover:shadow-xl hover:shadow-white/20 shadow-xl shadow-black/10 transition-all duration-300"
+                  className="rounded-full px-8 py-6 text-base font-semibold bg-primary text-primary-foreground hover:bg-primary/90 hover:shadow-xl hover:shadow-primary/30 shadow-lg shadow-primary/25 transition-all duration-300"
                   onClick={() => setOnboardingStep('profile')}
                 >
                   Let&apos;s go{' '}
