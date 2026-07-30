@@ -15,6 +15,7 @@ export interface AdminReport {
   details: string | null
   evidence: string | null
   status: string
+  highPriority: boolean
   createdAt: string
   reporterName: string
   reporterEmail: string
@@ -90,6 +91,9 @@ export function ReportQueue({ reports }: { reports: AdminReport[] }) {
               <div className="flex items-center justify-between gap-2 flex-wrap">
                 <p>
                   <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-medium uppercase">{r.subjectType}</span>{' '}
+                  {r.highPriority && (
+                    <span className="rounded bg-rose-500/15 text-rose-500 px-1.5 py-0.5 text-[11px] font-bold uppercase">Priority</span>
+                  )}{' '}
                   <span className="font-medium">{r.reason}</span>
                   {r.subjectReportCount > 1 && (
                     <span className="ml-2 text-[11px] font-semibold text-destructive">{r.subjectReportCount}× reported</span>

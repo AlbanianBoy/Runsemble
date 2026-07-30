@@ -25,8 +25,8 @@ export async function POST(
     // Enforce a restricted audience server-side. The women-only badge was
     // advertised but never checked — anyone could join. Now the join is refused
     // unless the runner is eligible.
-    if (!canJoinAudience(me.gender, hotspot.audience)) {
-      return apiError(403, 'forbidden', 'This run is for women only.')
+    if (!canJoinAudience(me, hotspot.audience)) {
+      return apiError(403, 'forbidden', 'Women-only — add a profile photo, or this run isn’t open to you.')
     }
 
     // Check if already a participant

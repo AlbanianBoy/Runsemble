@@ -762,7 +762,7 @@ export function MapTab() {
               </div>
               <p className="text-[11px] text-muted-foreground leading-snug">
                 {(currentUser?.availabilityAudience ?? 'everyone') === 'women'
-                  ? 'Only runners who’ve said they’re women see your times. You still appear on the map.'
+                  ? 'Only women with a profile photo see your times — self-declared, not ID-verified. Meet in public first, and report anyone who’s off.'
                   : 'Everyone nearby sees the times you set. A regular slot tells people your routine.'}
               </p>
             </div>

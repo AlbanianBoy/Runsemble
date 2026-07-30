@@ -40,14 +40,42 @@ export type ReportStatus = (typeof REPORT_STATUSES)[number]
 export type Gender = (typeof GENDERS)[number]
 
 /**
+ * Additional friction for women-only spaces. A self-declared 'woman' is necessary
+ * but NOT sufficient: there is no reliable, ethical way to verify gender (ID is
+ * heavy / exclusionary / privacy-laden; face-AI is biased and wrong), so instead
+ * we raise the bar with a profile photo — real accountability for anyone claiming
+ * a women-only space, and it nudges photo adoption — plus, once the SMS flow is
+ * live, phone verification. The phone gate is enabled with
+ * NEXT_PUBLIC_WOMEN_ONLY_REQUIRE_PHONE=true and is OFF by default, so switching it
+ * on before verification exists can't lock everyone out. The real backstop is
+ * report/block + fast moderation, not this gate.
+ */
+const WOMEN_ONLY_REQUIRE_PHONE = process.env.NEXT_PUBLIC_WOMEN_ONLY_REQUIRE_PHONE === 'true'
+
+export interface AudienceEligibility {
+  gender?: string | null
+  avatar?: string | null
+  phoneVerified?: boolean | null
+}
+
+/** The bar to be inside a women-only space: a self-declared woman WITH a profile
+ *  photo (and, when the gate is enabled, phone-verified). */
+export function meetsWomenOnlyBar(u: AudienceEligibility): boolean {
+  if (u.gender !== 'woman') return false
+  if (!u.avatar) return false
+  if (WOMEN_ONLY_REQUIRE_PHONE && !u.phoneVerified) return false
+  return true
+}
+
+/**
  * Whether a runner may join a run restricted to a given audience. Server-side
  * source of truth for "women-only" — without this the badge was cosmetic and
- * anyone could join. 'women' requires a self-declared 'woman'; 'beginner' and
- * 'all' are open. Missing gender fails a restricted audience closed.
+ * anyone could join. 'women' requires meetsWomenOnlyBar; 'beginner' and 'all' are
+ * open. Fails a restricted audience closed.
  */
-export function canJoinAudience(gender: string | null | undefined, audience: string | null | undefined): boolean {
+export function canJoinAudience(u: AudienceEligibility, audience: string | null | undefined): boolean {
   if (!audience || audience === 'all' || audience === 'beginner') return true
-  if (audience === 'women') return gender === 'woman'
+  if (audience === 'women') return meetsWomenOnlyBar(u)
   return true
 }
 
@@ -74,11 +102,11 @@ export type AvailabilityAudience = (typeof AVAILABILITY_AUDIENCES)[number]
  * that other people see, so an unrecognised value here must not publish it.
  */
 export function canSeeAvailability(
-  viewerGender: string | null | undefined,
+  viewer: AudienceEligibility,
   audience: string | null | undefined
 ): boolean {
   if (!audience || audience === 'everyone') return true
-  if (audience === 'women') return viewerGender === 'woman'
+  if (audience === 'women') return meetsWomenOnlyBar(viewer)
   return false
 }
 

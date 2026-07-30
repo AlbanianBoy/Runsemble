@@ -16,6 +16,9 @@ import { isInsideSafeZone, type SafeZoneLike } from './safe-zones'
 export interface Viewer {
   id: string
   gender: string | null
+  // Needed for the women-only bar (photo +, when enabled, phone) — see meetsWomenOnlyBar.
+  avatar?: string | null
+  phoneVerified?: boolean | null
 }
 
 interface UserRow {
@@ -87,7 +90,7 @@ export function toPublicUser<T extends UserRow>(
   // still discoverable; only the schedule goes quiet. You always see your own.
   const audience = (user as Record<string, unknown>).availabilityAudience
   const hideAvailability =
-    viewer?.id !== user.id && !canSeeAvailability(viewer?.gender, audience as string | null)
+    viewer?.id !== user.id && !canSeeAvailability(viewer ?? {}, audience as string | null)
   if (hideAvailability) {
     rest.isAvailable = false
     rest.availableFrom = null

@@ -98,9 +98,16 @@ describe('availability audience (who may see you are free to run)', () => {
     expect(pub.availableUntil).toBeNull()
   })
 
-  it('shows a women-only schedule to a woman', () => {
-    const pub = toPublicUser(restricted, { id: 'other', gender: 'woman' })
+  it('shows a women-only schedule to a woman with a profile photo', () => {
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'woman', avatar: 'https://x/p.jpg' })
     expect(pub.isAvailable).toBe(true)
+  })
+
+  it('hides a women-only schedule from a woman without a profile photo', () => {
+    // The women-only bar requires a photo (accountability), not just a
+    // self-declared gender — see meetsWomenOnlyBar.
+    const pub = toPublicUser(restricted, { id: 'other', gender: 'woman', avatar: null })
+    expect(pub.isAvailable).toBe(false)
   })
 
   it('fails closed for a viewer who has not declared a gender', () => {

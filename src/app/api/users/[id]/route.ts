@@ -80,7 +80,7 @@ export async function GET(
     // with coordinates snapped to the privacy grid.
     const payload = isSelf
       ? toSafeUser(user)
-      : toPublicUser(user, me ? { id: me.id, gender: me.gender } : null)
+      : toPublicUser(user, me ? { id: me.id, gender: me.gender, avatar: me.avatar, phoneVerified: me.phoneVerified } : null)
     return NextResponse.json({ user: payload })
   } catch (error) {
     console.error('Error fetching user:', error)

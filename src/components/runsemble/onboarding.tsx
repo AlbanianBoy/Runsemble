@@ -705,7 +705,7 @@ export function OnboardingRuns() {
   // be tapping Join on one of three recommended runs and getting a 403 — a rule
   // learned as a rejection, in the worst possible place to learn it.
   const eligible = (data?.hotspots ?? []).filter((h) =>
-    canJoinAudience(currentUser?.gender, h.audience)
+    canJoinAudience(currentUser ?? {}, h.audience)
   )
   const official = eligible.filter((h) => h.isOfficial)
   const picks = (official.length >= 2 ? official : eligible).slice(0, 3)

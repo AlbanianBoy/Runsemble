@@ -48,7 +48,8 @@ export default async function AdminPage() {
       db.report.findMany({
         where: { status: { in: ['open', 'reviewing'] } },
         include: { reporter: { select: { name: true, email: true } } },
-        orderBy: { createdAt: 'desc' },
+        // High-priority (women-only-context) reports first, then newest.
+        orderBy: [{ highPriority: 'desc' }, { createdAt: 'desc' }],
         take: 100,
       }),
       db.block.count(),
@@ -84,6 +85,7 @@ export default async function AdminPage() {
     details: r.details,
     evidence: r.evidence,
     status: r.status,
+    highPriority: r.highPriority,
     createdAt: r.createdAt.toISOString(),
     // reporter is null once they delete their account — the report survives
     // (SetNull) so the case isn't lost, but there's no name to show.

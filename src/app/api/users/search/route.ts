@@ -35,7 +35,7 @@ export async function GET(request: NextRequest) {
       take: 20,
     })
 
-    const viewer = me ? { id: me.id, gender: me.gender } : null
+    const viewer = me ? { id: me.id, gender: me.gender, avatar: me.avatar, phoneVerified: me.phoneVerified } : null
     return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error searching users:', error)

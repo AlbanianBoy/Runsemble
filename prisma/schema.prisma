@@ -598,6 +598,10 @@ model Report {
   details      String?
   evidence     String?
   status       ReportStatus      @default(open)
+  // Fast-track flag: a report tied to a women-only context (the reporter or the
+  // reported user is in a women-only space) surfaces at the top of the queue, so a
+  // stranger who slipped into a women-only run is reviewed in hours, not days.
+  highPriority Boolean           @default(false)
   resolvedById String?
   resolvedAt   DateTime?
   createdAt    DateTime          @default(now())
@@ -606,6 +610,7 @@ model Report {
 
   @@unique([reporterId, subjectType, subjectId])
   @@index([status, createdAt])
+  @@index([status, highPriority, createdAt])
   @@index([subjectType, subjectId])
 }
 

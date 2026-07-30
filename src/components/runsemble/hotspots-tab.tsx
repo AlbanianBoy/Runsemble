@@ -540,6 +540,11 @@ export function HotspotsTab() {
                   <SelectItem value="beginner">Beginners</SelectItem>
                 </SelectContent>
               </Select>
+              {form.audience === 'women' && (
+                <p className="text-[11px] text-muted-foreground leading-snug">
+                  Women-only is self-declared (not ID-verified) and needs a profile photo to join — meet in a public spot first.
+                </p>
+              )}
             </div>
 
             {/* Start time */}

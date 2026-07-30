@@ -129,7 +129,7 @@ export async function GET(request?: NextRequest) {
     // the ~200m privacy grid (exact coords must never reach another client).
     // The viewer decides whether each runner's availability is visible to
     // them — see canSeeAvailability.
-    const viewer = me ? { id: me.id, gender: me.gender } : null
+    const viewer = me ? { id: me.id, gender: me.gender, avatar: me.avatar, phoneVerified: me.phoneVerified } : null
     return NextResponse.json({ users: users.map((u) => toPublicUser(u, viewer)) })
   } catch (error) {
     console.error('Error fetching users:', error)

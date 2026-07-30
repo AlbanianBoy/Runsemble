@@ -54,10 +54,17 @@ export async function POST(request: NextRequest) {
   // One report per person per subject: re-filing updates it rather than stacking,
   // so a single reporter can't flood the queue. Different reporters still each get
   // their own row — many reports on one subject is the signal worth seeing.
+  // Fast-track anything tied to a women-only context: the reported person is in a
+  // women-only space, or the reporter relies on women-only. That's the "someone
+  // slipped into women-only" case — it must be reviewed in hours, not days.
+  const subjectAudience =
+    subjectType === 'user' ? (evidence as { availabilityAudience?: string | null }).availabilityAudience : null
+  const highPriority = subjectAudience === 'women' || me.availabilityAudience === 'women'
+
   await db.report.upsert({
     where: { reporterId_subjectType_subjectId: { reporterId: me.id, subjectType, subjectId } },
-    create: { reporterId: me.id, subjectType, subjectId, reason, details, evidence: JSON.stringify(evidence) },
-    update: { reason, details, evidence: JSON.stringify(evidence), status: 'open', resolvedById: null, resolvedAt: null },
+    create: { reporterId: me.id, subjectType, subjectId, reason, details, highPriority, evidence: JSON.stringify(evidence) },
+    update: { reason, details, highPriority, evidence: JSON.stringify(evidence), status: 'open', resolvedById: null, resolvedAt: null },
   })
 
   return NextResponse.json({ ok: true }, { status: 201 })
@@ -69,7 +76,7 @@ async function snapshotSubject(
   subjectId: string
 ): Promise<Record<string, unknown> | null> {
   if (subjectType === 'user') {
-    const u = await db.user.findUnique({ where: { id: subjectId }, select: { id: true, name: true, bio: true, city: true } })
+    const u = await db.user.findUnique({ where: { id: subjectId }, select: { id: true, name: true, bio: true, city: true, availabilityAudience: true } })
     return u ?? null
   }
   if (subjectType === 'post') {
